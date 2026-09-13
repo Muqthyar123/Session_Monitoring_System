@@ -9,8 +9,8 @@ class TimetablePeriodResponse(BaseModel):
     section: str
     day: str
     period: int
-    start_time: str
-    end_time: str
+    start_time: str = Field(..., alias="startTime")
+    end_time: str = Field(..., alias="endTime")
     subject: str
     faculty: Optional[str] = None
     room: Optional[str] = None

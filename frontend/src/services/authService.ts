@@ -1,60 +1,69 @@
-import { mockDelay, ApiError } from "./apiClient";
 import {
-  MOCK_ADMIN_USER,
-  MOCK_CR_USER,
-  MOCK_LR_USER,
-  MOCK_DEMO_CREDENTIALS,
-  type AuthUser,
-  type Role,
-} from "@/data/mock/mockData";
+  request,
+  getStoredUser,
+  setStoredToken,
+  setStoredUser,
+  ApiError,
+} from "./apiClient";
+import type { AuthUser, Role } from "@/data/mock/mockData";
 
-const STORAGE_KEY = "fams.demo.user";
+export interface LoginResponsePayload {
+  access_token: str;
+  token_type: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: Role;
+    section?: string;
+    year?: string;
+    roll_number?: string;
+  };
+}
 
-/** MOCK login. Real authentication (JWT) will be handled by the backend. */
 export async function login(
   email: string,
   password: string,
-  portal: "ADMIN" | "CRLR",
+  portal: "ADMIN" | "CRLR"
 ): Promise<AuthUser> {
-  const normalized = email.trim().toLowerCase();
-  const c = MOCK_DEMO_CREDENTIALS;
+  const data = await request<LoginResponsePayload>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({
+      email: email.trim(),
+      password,
+      portal,
+    }),
+  });
 
-  let user: AuthUser | null = null;
-  if (normalized === c.admin.email && password === c.admin.password) user = MOCK_ADMIN_USER;
-  if (normalized === c.cr.email && password === c.cr.password) user = MOCK_CR_USER;
-  if (normalized === c.lr.email && password === c.lr.password) user = MOCK_LR_USER;
+  const authUser: AuthUser = {
+    id: data.user.id,
+    name: data.user.name,
+    email: data.user.email,
+    role: data.user.role,
+    section: data.user.section,
+    year: data.user.year,
+  };
 
-  if (!user) throw new ApiError("Invalid email or password.", 401);
+  setStoredToken(data.access_token);
+  setStoredUser(authUser);
 
-  if (portal === "ADMIN" && user.role !== "ADMIN") {
-    throw new ApiError("This account is not an administrator account.", 403);
-  }
-  if (portal === "CRLR" && user.role === "ADMIN") {
-    throw new ApiError("Administrators must use the Admin login page.", 403);
-  }
-
-  return mockDelay(user, 600);
+  return authUser;
 }
 
 export function persistUser(user: AuthUser | null) {
-  if (typeof window === "undefined") return;
-  if (user) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-  else window.localStorage.removeItem(STORAGE_KEY);
-}
-
-export function readPersistedUser(): AuthUser | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
-  } catch {
-    return null;
+  setStoredUser(user);
+  if (!user) {
+    setStoredToken(null);
   }
 }
 
+export function readPersistedUser(): AuthUser | null {
+  return getStoredUser<AuthUser>();
+}
+
 export async function logout(): Promise<void> {
-  persistUser(null);
-  return mockDelay(undefined, 150);
+  setStoredToken(null);
+  setStoredUser(null);
 }
 
 export function homeRouteForRole(role: Role): string {

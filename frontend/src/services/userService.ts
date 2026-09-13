@@ -1,40 +1,59 @@
-import { mockDelay, downloadFile } from "./apiClient";
-import { MOCK_CRLR_USERS, type CRLRUser } from "@/data/mock/mockData";
+import { request, downloadApiFile } from "./apiClient";
+import type { CRLRUser } from "@/data/mock/mockData";
 
-/** In-memory store so the demo UI behaves like a real CRUD screen. */
-let store: CRLRUser[] = [...MOCK_CRLR_USERS];
+export interface SectionItem {
+  id: string;
+  year: string;
+  section_name: string;
+  department?: string;
+  assigned_cr_id?: string;
+  assigned_lr_id?: string;
+  cr_name?: string;
+  lr_name?: string;
+}
+
+export async function getSections(): Promise<SectionItem[]> {
+  return request<SectionItem[]>("/sections");
+}
 
 export async function getCRLRUsers(): Promise<CRLRUser[]> {
-  return mockDelay([...store]);
+  return request<CRLRUser[]>("/admin/users");
 }
 
 export async function createCRLRUser(data: Omit<CRLRUser, "id">): Promise<CRLRUser> {
-  const user: CRLRUser = { ...data, id: `c-${Date.now()}` };
-  store = [user, ...store];
-  return mockDelay(user, 350);
+  return request<CRLRUser>("/admin/users", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function updateCRLRUser(id: string, data: Omit<CRLRUser, "id">): Promise<CRLRUser> {
-  const updated: CRLRUser = { ...data, id };
-  store = store.map((u) => (u.id === id ? updated : u));
-  return mockDelay(updated, 350);
+  return request<CRLRUser>(`/admin/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function deleteCRLRUser(id: string): Promise<void> {
-  store = store.filter((u) => u.id !== id);
-  return mockDelay(undefined, 300);
+  return request<void>(`/admin/users/${id}`, {
+    method: "DELETE",
+  });
 }
 
-/** MOCK upload — real validation/parsing happens in the backend. */
 export async function uploadCRLRExcel(file: File): Promise<{ message: string }> {
-  if (!file.name.toLowerCase().endsWith(".xlsx")) {
-    throw new Error("Please check the Excel format. Only .xlsx files are supported.");
-  }
-  return mockDelay({ message: "Upload successful" }, 1100);
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await request<any>("/admin/users/import", {
+    method: "POST",
+    body: formData,
+  });
+
+  return {
+    message: res.message || `Import completed successfully: ${res.created} users created, ${res.updated} updated.`,
+  };
 }
 
 export function downloadCRLRTemplate() {
-  const header = "Name,Roll Number,Email,Role,Year,Section\n";
-  const sample = "Aarav Menon,22CS2A01,aarav.menon@example.com,CR,2nd Year,II-A\n";
-  downloadFile("CR_LR_Template.csv", header + sample);
+  downloadApiFile("/admin/users/template", "CR_LR_Import_Template.xlsx");
 }

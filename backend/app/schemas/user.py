@@ -14,11 +14,13 @@ class UserBase(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
     role: UserRole
-    roll_number: Optional[str] = None
+    roll_number: Optional[str] = Field(None, alias="rollNumber")
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None
     is_active: bool = True
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UserCreate(UserBase):
@@ -29,12 +31,14 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     role: Optional[UserRole] = None
-    roll_number: Optional[str] = None
+    roll_number: Optional[str] = Field(None, alias="rollNumber")
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=6)
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class UserResponse(UserBase):

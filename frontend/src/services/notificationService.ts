@@ -1,18 +1,18 @@
-import { mockDelay } from "./apiClient";
-import { MOCK_NOTIFICATIONS, type AppNotification } from "@/data/mock/mockData";
-
-let notifications: AppNotification[] = MOCK_NOTIFICATIONS.map((n) => ({ ...n }));
+import { request } from "./apiClient";
+import type { AppNotification } from "@/data/mock/mockData";
 
 export async function getNotifications(): Promise<AppNotification[]> {
-  return mockDelay(notifications.map((n) => ({ ...n })), 400);
+  return request<AppNotification[]>("/notifications");
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  notifications = notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
-  return mockDelay(undefined, 200);
+  return request<void>(`/notifications/${id}/read`, {
+    method: "PATCH",
+  });
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  notifications = notifications.map((n) => ({ ...n, read: true }));
-  return mockDelay(undefined, 250);
+  return request<void>("/notifications/read-all", {
+    method: "PATCH",
+  });
 }
