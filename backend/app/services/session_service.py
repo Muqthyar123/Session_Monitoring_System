@@ -169,8 +169,14 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
     end_time_str = session["end_time"]
 
     # Parse full local datetime objects for start and end times
-    start_dt = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
-    end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
+    def _parse_time_dt(t_str: str) -> datetime:
+        dt = datetime.strptime(f"{date_str} {t_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
+        if dt.hour < 8:
+            dt = dt.replace(hour=dt.hour + 12)
+        return dt
+
+    start_dt = _parse_time_dt(start_time_str)
+    end_dt = _parse_time_dt(end_time_str)
 
     status = session.get("session_status", SessionStatus.UPCOMING.value)
     faculty_resp = session.get("faculty_response", FacultyResponseStatus.PENDING.value)

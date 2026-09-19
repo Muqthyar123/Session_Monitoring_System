@@ -86,12 +86,12 @@ async def test_matrix_grid_timetable_import():
     assert p1["start_time"] == "09:10"
     assert p1["end_time"] == "10:00"
 
-    # Tuesday Period 5: DL&CO (afternoon PM time 13:30)
+    # Tuesday Period 5: DL&CO (afternoon PM time 01:30)
     p5 = next(r for r in records if r["period"] == 5)
     assert p5["subject"] == "DL&CO"
     assert p5["faculty"] == "B.NAGAIAH"
-    assert p5["start_time"] == "13:30"
-    assert p5["end_time"] == "14:20"
+    assert p5["start_time"] == "01:30"
+    assert p5["end_time"] == "02:20"
 
     # Check Thursday merged Python Lab records (Periods 1 & 2)
     thu_records = await db.timetables.find({"section": "CSE-A", "day": "Thursday"}).sort("period", 1).to_list(100)

@@ -63,6 +63,11 @@ function SessionsPage() {
   const [sectionFilter, setSectionFilter] = useState(ALL);
   const [statusFilter, setStatusFilter] = useState(ALL);
 
+  const availableSections = useMemo(() => {
+    const fromData = (data ?? []).map((s) => s.section).filter(Boolean);
+    return Array.from(new Set(fromData)).sort();
+  }, [data]);
+
   const rows = useMemo(
     () =>
       (data ?? []).filter(
@@ -87,7 +92,7 @@ function SessionsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>All sections</SelectItem>
-            {MOCK_SECTIONS.map((s) => (
+            {availableSections.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
               </SelectItem>

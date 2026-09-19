@@ -323,27 +323,22 @@ def _get_cell_value(ws: openpyxl.worksheet.worksheet.Worksheet, row: int, col: i
 
 
 def _parse_time_range(time_str: str, period_num: int) -> Tuple[str, str]:
-    """Parse time string like '09:10 - 10:00' or '01:30 - 02:20' into 24-hour HH:MM format."""
+    """Parse time string like '09:10 - 10:00' or '01:30 - 02:20' into 12-hour HH:MM format."""
     parts = re.split(r"\s*[-–toTO]\s*", str(time_str).strip())
     if len(parts) != 2:
         return "", ""
 
-    def convert_time(t_raw: str, is_afternoon: bool) -> str:
+    def convert_time(t_raw: str) -> str:
         t_clean = str(t_raw).strip()
         m = re.match(r"^(\d{1,2}):(\d{2})", t_clean)
         if not m:
             return ""
         h, m_val = int(m.group(1)), int(m.group(2))
-        if is_afternoon and h < 12:
-            h += 12
+        if h > 12:
+            h -= 12
         return f"{h:02d}:{m_val:02d}"
 
-    start_raw, end_raw = parts[0].strip(), parts[1].strip()
-    m_start = re.match(r"^(\d{1,2})", start_raw)
-    start_h = int(m_start.group(1)) if m_start else 0
-
-    is_pm = (period_num >= 5) or (start_h in [1, 2, 3, 4, 5])
-    return convert_time(start_raw, is_pm), convert_time(end_raw, is_pm)
+    return convert_time(parts[0]), convert_time(parts[1])
 
 
 def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sheet_name: str) -> List[Dict[str, Any]]:

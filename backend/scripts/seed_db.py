@@ -48,72 +48,68 @@ async def seed():
     else:
         logger.info("Admin user already exists.")
 
-    # 2. CR User
-    cr_user = await db.users.find_one({"email": "cr@example.com"})
-    if not cr_user:
-        res = await db.users.insert_one(
-            {
-                "name": "Rahul Kumar (CR)",
-                "email": "cr@example.com",
-                "password_hash": demo_pass_hash,
-                "role": UserRole.CR.value,
-                "roll_number": "22CS2A01",
-                "phone": "9876543211",
-                "year": "2nd Year",
-                "section": "II-A",
-                "is_active": True,
-                "created_at": now,
-                "updated_at": now,
-            }
-        )
-        cr_id = str(res.inserted_id)
-        logger.info("Created CR User: cr@example.com / demo1234 (ID: %s)", cr_id)
-    else:
-        cr_id = str(cr_user["_id"])
-        logger.info("CR user already exists.")
+    # 2. CR & LR Users for each section (CSE-A to CSE-J)
+    sections_list = ["CSE-A", "CSE-B", "CSE-C", "CSE-D", "CSE-E", "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"]
 
-    # 3. LR User
-    lr_user = await db.users.find_one({"email": "lr@example.com"})
-    if not lr_user:
-        res = await db.users.insert_one(
-            {
-                "name": "Sneha Sharma (LR)",
-                "email": "lr@example.com",
-                "password_hash": demo_pass_hash,
-                "role": UserRole.LR.value,
-                "roll_number": "22CS2A02",
-                "phone": "9876543212",
-                "year": "2nd Year",
-                "section": "II-A",
-                "is_active": True,
-                "created_at": now,
-                "updated_at": now,
-            }
-        )
-        lr_id = str(res.inserted_id)
-        logger.info("Created LR User: lr@example.com / demo1234 (ID: %s)", lr_id)
-    else:
-        lr_id = str(lr_user["_id"])
-        logger.info("LR user already exists.")
+    for sec in sections_list:
+        slug = sec.replace("-", "").lower()
+        cr_email = "cr@example.com" if sec == "CSE-A" else f"cr.{slug}@example.com"
+        lr_email = "lr@example.com" if sec == "CSE-A" else f"lr.{slug}@example.com"
+        sec_letter = sec.split("-")[-1]
 
-    # 4. Sections
-    sections = [
-        {"year": "2nd Year", "section_name": "II-A", "assigned_cr_id": cr_id, "assigned_lr_id": lr_id},
-        {"year": "2nd Year", "section_name": "II-B", "assigned_cr_id": None, "assigned_lr_id": None},
-        {"year": "2nd Year", "section_name": "II-C", "assigned_cr_id": None, "assigned_lr_id": None},
-        {"year": "3rd Year", "section_name": "III-A", "assigned_cr_id": None, "assigned_lr_id": None},
-        {"year": "3rd Year", "section_name": "III-B", "assigned_cr_id": None, "assigned_lr_id": None},
-    ]
+        # CR User
+        cr_existing = await db.users.find_one({"email": cr_email})
+        if not cr_existing:
+            cr_res = await db.users.insert_one(
+                {
+                    "name": f"{sec} CR",
+                    "email": cr_email,
+                    "password_hash": demo_pass_hash,
+                    "role": UserRole.CR.value,
+                    "roll_number": f"22CS{sec_letter}01",
+                    "phone": "9876543211",
+                    "year": "2nd Year",
+                    "section": sec,
+                    "is_active": True,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+            cr_id = str(cr_res.inserted_id)
+        else:
+            cr_id = str(cr_existing["_id"])
 
-    for sec in sections:
+        # LR User
+        lr_existing = await db.users.find_one({"email": lr_email})
+        if not lr_existing:
+            lr_res = await db.users.insert_one(
+                {
+                    "name": f"{sec} LR",
+                    "email": lr_email,
+                    "password_hash": demo_pass_hash,
+                    "role": UserRole.LR.value,
+                    "roll_number": f"22CS{sec_letter}02",
+                    "phone": "9876543212",
+                    "year": "2nd Year",
+                    "section": sec,
+                    "is_active": True,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+            lr_id = str(lr_res.inserted_id)
+        else:
+            lr_id = str(lr_existing["_id"])
+
+        # Section record
         await db.sections.update_one(
-            {"section_name": sec["section_name"]},
+            {"section_name": sec},
             {
                 "$set": {
-                    "year": sec["year"],
-                    "section_name": sec["section_name"],
-                    "assigned_cr_id": sec["assigned_cr_id"],
-                    "assigned_lr_id": sec["assigned_lr_id"],
+                    "year": "2nd Year",
+                    "section_name": sec,
+                    "assigned_cr_id": cr_id,
+                    "assigned_lr_id": lr_id,
                     "is_active": True,
                     "updated_at": now,
                 },
@@ -121,7 +117,7 @@ async def seed():
             },
             upsert=True,
         )
-    logger.info("Seeded %d sample sections.", len(sections))
+    logger.info("Seeded CR & LR accounts and section records for %d sections.", len(sections_list))
 
     # 5. Timetable Data (Monday to Saturday for II-A with continuous DBMS session)
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]

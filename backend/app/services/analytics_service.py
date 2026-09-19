@@ -13,7 +13,8 @@ async def get_admin_dashboard_analytics() -> dict:
     now_local = datetime.now(tz_kolkata)
     date_str = now_local.strftime("%Y-%m-%d")
 
-    total_sections = await db.sections.count_documents({"is_active": True})
+    active_sec_names = set(await db.sections.distinct("section_name", {"is_active": True})) | set(await db.timetables.distinct("section"))
+    total_sections = len(active_sec_names)
     total_crs = await db.users.count_documents({"role": UserRole.CR.value, "is_active": True})
     total_lrs = await db.users.count_documents({"role": UserRole.LR.value, "is_active": True})
 
@@ -29,12 +30,9 @@ async def get_admin_dashboard_analytics() -> dict:
     presence_pct = round((present_count / responded_total * 100), 1) if responded_total > 0 else 100.0
 
     # Section-wise breakdown
-    sections_cursor = db.sections.find({"is_active": True}).sort("section_name", 1)
-    all_sections = await sections_cursor.to_list(length=100)
-
+    sorted_sections = sorted(list(active_sec_names))
     section_wise = []
-    for sec in all_sections:
-        s_name = sec["section_name"]
+    for s_name in sorted_sections:
         sec_sessions = [s for s in sessions_today if s["section"] == s_name]
         p = sum(1 for s in sec_sessions if s.get("faculty_response") == FacultyResponseStatus.PRESENT.value)
         a = sum(1 for s in sec_sessions if s.get("faculty_response") == FacultyResponseStatus.ABSENT.value)

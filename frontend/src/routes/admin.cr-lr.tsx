@@ -63,13 +63,18 @@ const ALL = "all";
 
 type FormState = Omit<CRLRUser, "id">;
 
+const DEFAULT_SECTIONS = [
+  "CSE-A", "CSE-B", "CSE-C", "CSE-D", "CSE-E",
+  "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"
+];
+
 const emptyForm: FormState = {
   name: "",
   rollNumber: "",
   email: "",
   role: "CR",
   year: MOCK_YEARS[0]!,
-  section: MOCK_SECTIONS[0]!,
+  section: "CSE-A",
 };
 
 function CRLRManagementPage() {
@@ -85,6 +90,11 @@ function CRLRManagementPage() {
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<CRLRUser | null>(null);
+
+  const availableSections = useMemo(() => {
+    const fromData = (data ?? []).map((u) => u.section).filter(Boolean);
+    return Array.from(new Set([...DEFAULT_SECTIONS, ...fromData])).sort();
+  }, [data]);
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -258,7 +268,7 @@ function CRLRManagementPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>All sections</SelectItem>
-              {MOCK_SECTIONS.map((s) => (
+              {availableSections.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
                 </SelectItem>
@@ -368,7 +378,7 @@ function CRLRManagementPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MOCK_SECTIONS.map((s) => (
+                    {availableSections.map((s) => (
                       <SelectItem key={s} value={s}>
                         {s}
                       </SelectItem>
