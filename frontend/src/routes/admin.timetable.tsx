@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, FileSpreadsheet, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/layouts/AdminLayout";
@@ -50,8 +50,20 @@ export const Route = createFileRoute("/admin/timetable")({
 function TimetablePage() {
   const uploads = useAsyncData(() => getTimetableUploads(), []);
   const [year, setYear] = useState(MOCK_YEARS[1] || "2nd Year");
-  const [section, setSection] = useState("II-A");
+  const [section, setSection] = useState("");
   const timetable = useAsyncData(() => getTimetable(year, section), [year, section]);
+
+  useEffect(() => {
+    if (uploads.data && uploads.data.length > 0) {
+      const validSections = uploads.data.map((u) => u.section);
+      if (!section || !validSections.includes(section)) {
+        setSection(uploads.data[0].section);
+        if (uploads.data[0].academicYear) {
+          setYear(uploads.data[0].academicYear);
+        }
+      }
+    }
+  }, [uploads.data]);
 
   const handleUploadSuccess = async (file: File) => {
     const result = await uploadTimetable(file);
@@ -218,6 +230,7 @@ function TimetablePage() {
                       <TableHead>Start</TableHead>
                       <TableHead>End</TableHead>
                       <TableHead>Subject</TableHead>
+                      <TableHead>Faculty</TableHead>
                       <TableHead>Room / Lab</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -229,8 +242,9 @@ function TimetablePage() {
                           <TableCell>{p.period}</TableCell>
                           <TableCell>{p.startTime}</TableCell>
                           <TableCell>{p.endTime}</TableCell>
-                          <TableCell>{p.subject}</TableCell>
-                          <TableCell>{p.room}</TableCell>
+                          <TableCell className="font-medium">{p.subject}</TableCell>
+                          <TableCell className="text-muted-foreground">{p.faculty || "-"}</TableCell>
+                          <TableCell>{p.room || "-"}</TableCell>
                         </TableRow>
                       ))}
                   </TableBody>

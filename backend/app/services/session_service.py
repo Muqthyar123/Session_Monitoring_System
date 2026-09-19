@@ -89,6 +89,16 @@ async def generate_and_sync_sessions_for_date(target_date: Optional[datetime] = 
 
     sections_cursor = db.sections.find({"is_active": True})
     active_sections = await sections_cursor.to_list(length=1000)
+    existing_sec_names = {s["section_name"] for s in active_sections if "section_name" in s}
+
+    # Also collect distinct sections from db.timetables if not already in active_sections
+    distinct_tt_sections = await db.timetables.distinct("section")
+    for tt_sec in distinct_tt_sections:
+        if tt_sec and tt_sec not in existing_sec_names:
+            sample = await db.timetables.find_one({"section": tt_sec})
+            yr = sample.get("year", "2nd Year") if sample else "2nd Year"
+            active_sections.append({"section_name": tt_sec, "year": yr, "is_active": True})
+            existing_sec_names.add(tt_sec)
 
     generated_sessions = []
 

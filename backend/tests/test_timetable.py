@@ -35,10 +35,10 @@ def create_matrix_timetable_excel_bytes() -> bytes:
     for col_idx, val in enumerate(tue_row, start=1):
         ws.cell(row=9, column=col_idx, value=val)
 
-    # Thursday row (Row 10) - Merged Python Lab across Period 1 & 2
+    # Thursday row (Row 10) - Merged Python Lab with multiline text across Period 1 & 2
     ws.cell(row=10, column=1, value="T H U")
     ws.merge_cells("B10:C10")  # Merge Period 1 and 2
-    ws.cell(row=10, column=2, value="PYTHON LAB (2201 LAB)")
+    ws.cell(row=10, column=2, value="PYTHON LAB\n(2201 LAB)")
     ws.cell(row=10, column=4, value="BREAK")
     ws.cell(row=10, column=5, value="DMGT (2103)")
     ws.cell(row=10, column=6, value="ADS&AA (2103)")
@@ -69,6 +69,11 @@ async def test_matrix_grid_timetable_import():
     assert res["failed"] == 0
 
     db = get_database()
+    # Check auto-upsert in db.sections
+    sec_doc = await db.sections.find_one({"section_name": "CSE-A"})
+    assert sec_doc is not None
+    assert sec_doc["year"] == "2nd Year"
+
     # Check inserted Tuesday records
     records = await db.timetables.find({"section": "CSE-A", "day": "Tuesday"}).sort("period", 1).to_list(100)
     assert len(records) == 7

@@ -374,10 +374,13 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
     time_row_idx = None
 
     for r in range(1, min(15, ws.max_row + 1)):
-        cell_val = str(_get_cell_value(ws, r, 1) or "").replace("\n", "").replace(" ", "").upper().strip()
-        if "DAY" in cell_val or "PERIOD" in cell_val:
-            header_row_idx = r
-            time_row_idx = r + 1
+        for col_check in range(1, min(5, ws.max_column + 1)):
+            cell_val = str(_get_cell_value(ws, r, col_check) or "").replace("\n", "").replace(" ", "").upper().strip()
+            if "DAY" in cell_val or "PERIOD" in cell_val:
+                header_row_idx = r
+                time_row_idx = r + 1
+                break
+        if header_row_idx:
             break
 
     if not header_row_idx:
@@ -439,7 +442,13 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
     last_day_row_idx = time_row_idx
 
     for r in range(time_row_idx + 1, ws.max_row + 1):
-        raw_day_cell = str(_get_cell_value(ws, r, 1) or "").replace("\n", "").replace("\r", "").replace(" ", "").upper().strip()
+        raw_day_cell = ""
+        for day_c in range(1, min(3, ws.max_column + 1)):
+            c_val = str(_get_cell_value(ws, r, day_c) or "").replace("\n", "").replace("\r", "").replace(" ", "").upper().strip()
+            if any(c_val.startswith(k) for k in day_mapping):
+                raw_day_cell = c_val
+                break
+
         matched_day = None
         for k, d in day_mapping.items():
             if raw_day_cell.startswith(k):
@@ -453,9 +462,10 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
                 if not cell_raw or cell_raw.upper() in ["BREAK", "LUNCH", "FREE", "NONE"]:
                     continue
 
+                cell_clean = re.sub(r"[\r\n]+", " ", cell_raw).strip()
                 room = None
-                subject = cell_raw
-                m_room = re.search(r"^(.*?)\s*\(([^)]+)\)$", cell_raw)
+                subject = cell_clean
+                m_room = re.search(r"^(.*?)\s*\(([^)]+)\)$", cell_clean)
                 if m_room:
                     subject = m_room.group(1).strip()
                     room = m_room.group(2).strip()
@@ -480,8 +490,8 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
             cell_val = str(_get_cell_value(ws, r, c) or "").strip()
             if ":" in cell_val:
                 parts = cell_val.split(":", 1)
-                subj_code = parts[0].replace("\n", " ").strip().upper()
-                fac_name = parts[1].replace("\n", " ").strip()
+                subj_code = parts[0].replace("\n", " ").replace("\r", " ").strip().upper()
+                fac_name = parts[1].replace("\n", " ").replace("\r", " ").strip()
                 if subj_code and fac_name:
                     faculty_legend[subj_code] = fac_name
 
@@ -520,11 +530,15 @@ async def parse_and_import_timetable_excel(
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
         
-        # Check if sheet is a College Matrix Grid sheet (e.g. contains DAY in column A)
+        # Check if sheet is a College Matrix Grid sheet (e.g. contains DAY in top rows)
         is_matrix_grid = False
         for r in range(1, min(15, ws.max_row + 1)):
-            if "DAY" in str(ws.cell(row=r, column=1).value or "").strip().upper():
-                is_matrix_grid = True
+            for c in range(1, min(6, ws.max_column + 1)):
+                val_upper = str(_get_cell_value(ws, r, c) or "").strip().upper()
+                if "DAY" in val_upper or "TIME TABLE" in val_upper or any(k in val_upper for k in ["MON", "TUE", "WED", "THU", "FRI", "SAT"]):
+                    is_matrix_grid = True
+                    break
+            if is_matrix_grid:
                 break
 
         if is_matrix_grid:
@@ -623,6 +637,7 @@ async def parse_and_import_timetable_excel(
     db = get_database()
 
     inserted_count = 0
+    section_map = {}
     for rec in records_to_insert:
         await db.timetables.update_one(
             {
@@ -634,6 +649,30 @@ async def parse_and_import_timetable_excel(
             upsert=True,
         )
         inserted_count += 1
+        sec = rec["section"]
+        yr = rec.get("year", "2nd Year")
+        if sec not in section_map:
+            section_map[sec] = yr
+
+    # Auto-upsert sections into db.sections so sessions can be generated
+    for sec, yr in section_map.items():
+        await db.sections.update_one(
+            {"section_name": sec},
+            {
+                "$set": {
+                    "section_name": sec,
+                    "year": yr,
+                    "is_active": True,
+                    "updated_at": datetime.now(timezone.utc),
+                },
+                "$setOnInsert": {
+                    "created_at": datetime.now(timezone.utc),
+                    "assigned_cr_id": None,
+                    "assigned_lr_id": None,
+                },
+            },
+            upsert=True,
+        )
 
     await db.audit_logs.insert_one(
         {
