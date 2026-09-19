@@ -9,6 +9,7 @@ from app.services.excel_service import (
     parse_and_import_timetable_excel,
 )
 from app.services.timetable_service import (
+    delete_all_timetables,
     delete_timetable_by_section,
     get_all_timetables,
     get_timetable_by_section,
@@ -61,6 +62,16 @@ async def get_section_timetable_api(
 ):
     data = await get_timetable_by_section(section, year=year)
     return ApiResponse(success=True, data=data)
+
+
+@router.delete("", response_model=ApiResponse[dict])
+async def delete_all_timetables_api(
+    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+):
+    count = await delete_all_timetables()
+    return ApiResponse(
+        success=True, message=f"Cleared all {count} timetable records."
+    )
 
 
 @router.delete("/{section}", response_model=ApiResponse[dict])

@@ -18,6 +18,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUser(authService.readPersistedUser());
     setInitializing(false);
+
+    const handleUnauthorized = () => {
+      authService.logout();
+      setUser(null);
+    };
+
+    window.addEventListener("fams:unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("fams:unauthorized", handleUnauthorized);
+    };
   }, []);
 
   const value = useMemo<AuthContextValue>(

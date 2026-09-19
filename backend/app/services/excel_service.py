@@ -303,7 +303,6 @@ def _format_time_str(val: Any) -> str:
     if isinstance(val, (datetime, time)):
         return val.strftime("%H:%M")
     val_str = str(val).strip()
-    # Match H:MM or HH:MM
     match = re.match(r"^(\d{1,2}):(\d{2})", val_str)
     if match:
         h, m = int(match.group(1)), int(match.group(2))
@@ -311,10 +310,199 @@ def _format_time_str(val: Any) -> str:
     return val_str
 
 
+def _get_cell_value(ws: openpyxl.worksheet.worksheet.Worksheet, row: int, col: int) -> Any:
+    """Safely get cell value, handling openpyxl MergedCell instances by fetching top-left value."""
+    cell = ws.cell(row=row, column=col)
+    val = getattr(cell, "value", None)
+    if val is not None:
+        return val
+    for rng in ws.merged_cells.ranges:
+        if rng.min_row <= row <= rng.max_row and rng.min_col <= col <= rng.max_col:
+            return ws.cell(row=rng.min_row, column=rng.min_col).value
+    return None
+
+
+def _parse_time_range(time_str: str, period_num: int) -> Tuple[str, str]:
+    """Parse time string like '09:10 - 10:00' or '01:30 - 02:20' into 24-hour HH:MM format."""
+    parts = re.split(r"\s*[-–toTO]\s*", str(time_str).strip())
+    if len(parts) != 2:
+        return "", ""
+
+    def convert_time(t_raw: str, is_afternoon: bool) -> str:
+        t_clean = str(t_raw).strip()
+        m = re.match(r"^(\d{1,2}):(\d{2})", t_clean)
+        if not m:
+            return ""
+        h, m_val = int(m.group(1)), int(m.group(2))
+        if is_afternoon and h < 12:
+            h += 12
+        return f"{h:02d}:{m_val:02d}"
+
+    start_raw, end_raw = parts[0].strip(), parts[1].strip()
+    m_start = re.match(r"^(\d{1,2})", start_raw)
+    start_h = int(m_start.group(1)) if m_start else 0
+
+    is_pm = (period_num >= 5) or (start_h in [1, 2, 3, 4, 5])
+    return convert_time(start_raw, is_pm), convert_time(end_raw, is_pm)
+
+
+def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sheet_name: str) -> List[Dict[str, Any]]:
+    """Parse College Matrix Grid Timetable sheet (e.g. DAY | 1 | 2 | Break | 3 | 4 | Lunch | 5 | 6 | 7)."""
+    # 1. Search top 12 rows for Section, Year, Semester
+    detected_section = None
+    detected_year = "2nd Year"
+
+    for r in range(1, min(12, ws.max_row + 1)):
+        row_str = " ".join(str(_get_cell_value(ws, r, c) or "") for c in range(1, ws.max_column + 1))
+        sec_match = re.search(r"\[\s*([A-Za-z0-9]+\s*-\s*[A-Za-z0-9]+)\s*\]", row_str, re.IGNORECASE)
+        if not sec_match:
+            sec_match = re.search(r"\b([A-Z]{2,5}\s*-\s*[A-Z0-9]+)\b", row_str)
+        if sec_match and not detected_section:
+            detected_section = re.sub(r"\s+", "", sec_match.group(1)).upper()
+
+        year_match = re.search(r"\b(I|II|III|IV)\s*B\.?Tech\b", row_str, re.IGNORECASE)
+        if year_match:
+            roman = year_match.group(1).upper()
+            mapping = {"I": "1st Year", "II": "2nd Year", "III": "3rd Year", "IV": "4th Year"}
+            detected_year = mapping.get(roman, f"{roman} Year")
+
+    if not detected_section:
+        detected_section = sheet_name.strip().upper() if "-" in sheet_name or len(sheet_name) <= 10 else "CSE-A"
+
+    # 2. Locate header row with DAY and Period numbers
+    header_row_idx = None
+    time_row_idx = None
+
+    for r in range(1, min(15, ws.max_row + 1)):
+        cell_val = str(_get_cell_value(ws, r, 1) or "").replace("\n", "").replace(" ", "").upper().strip()
+        if "DAY" in cell_val or "PERIOD" in cell_val:
+            header_row_idx = r
+            time_row_idx = r + 1
+            break
+
+    if not header_row_idx:
+        for r in range(1, min(15, ws.max_row + 1)):
+            cols_with_digits = 0
+            for c in range(1, min(10, ws.max_column + 1)):
+                c_val = str(_get_cell_value(ws, r, c) or "").strip()
+                if re.search(r"^\d+$", c_val) or "09:" in c_val or "10:" in c_val:
+                    cols_with_digits += 1
+            if cols_with_digits >= 3:
+                header_row_idx = r
+                time_row_idx = r + 1
+                break
+
+    if not header_row_idx:
+        return []
+
+    # Map column indexes to period numbers & time slots
+    period_col_map: Dict[int, Tuple[int, str, str]] = {}
+    
+    for c in range(2, ws.max_column + 1):
+        p_val = str(_get_cell_value(ws, header_row_idx, c) or "").strip()
+        time_val = str(_get_cell_value(ws, time_row_idx, c) or "").strip()
+
+        if p_val.upper() in ["BREAK", "LUNCH"] or time_val.upper() in ["BREAK", "LUNCH"]:
+            continue
+
+        p_num_match = re.search(r"\b(\d+)\b", p_val)
+        if not p_num_match:
+            p_num_match = re.search(r"\b(\d+)\b", time_val)
+
+        if p_num_match:
+            p_num = int(p_num_match.group(1))
+        else:
+            p_num = len(period_col_map) + 1
+
+        start_t, end_t = _parse_time_range(time_val, p_num)
+        if not start_t:
+            start_t, end_t = _parse_time_range(p_val, p_num)
+        if not start_t:
+            default_times = {
+                1: ("09:10", "10:00"), 2: ("10:00", "10:50"), 3: ("11:00", "11:50"),
+                4: ("11:50", "12:40"), 5: ("13:30", "14:20"), 6: ("14:20", "15:10"), 7: ("15:10", "16:00")
+            }
+            start_t, end_t = default_times.get(p_num, ("09:00", "10:00"))
+        period_col_map[c] = (p_num, start_t, end_t)
+
+    # 3. Parse Day rows (MON to SAT)
+    day_mapping = {
+        "MON": "Monday", "MONDAY": "Monday",
+        "TUE": "Tuesday", "TUESDAY": "Tuesday",
+        "WED": "Wednesday", "WEDNESDAY": "Wednesday",
+        "THU": "Thursday", "THURSDAY": "Thursday",
+        "FRI": "Friday", "FRIDAY": "Friday",
+        "SAT": "Saturday", "SATURDAY": "Saturday"
+    }
+
+    records = []
+    last_day_row_idx = time_row_idx
+
+    for r in range(time_row_idx + 1, ws.max_row + 1):
+        raw_day_cell = str(_get_cell_value(ws, r, 1) or "").replace("\n", "").replace("\r", "").replace(" ", "").upper().strip()
+        matched_day = None
+        for k, d in day_mapping.items():
+            if raw_day_cell.startswith(k):
+                matched_day = d
+                break
+
+        if matched_day:
+            last_day_row_idx = r
+            for col_idx, (p_num, start_t, end_t) in period_col_map.items():
+                cell_raw = str(_get_cell_value(ws, r, col_idx) or "").strip()
+                if not cell_raw or cell_raw.upper() in ["BREAK", "LUNCH", "FREE", "NONE"]:
+                    continue
+
+                room = None
+                subject = cell_raw
+                m_room = re.search(r"^(.*?)\s*\(([^)]+)\)$", cell_raw)
+                if m_room:
+                    subject = m_room.group(1).strip()
+                    room = m_room.group(2).strip()
+
+                records.append({
+                    "year": detected_year,
+                    "section": detected_section,
+                    "day": matched_day,
+                    "period": p_num,
+                    "start_time": start_t,
+                    "end_time": end_t,
+                    "subject": subject,
+                    "faculty": None,
+                    "room": room,
+                    "updated_at": datetime.now(timezone.utc),
+                })
+
+    # 4. Parse Faculty Legend Table below last day row
+    faculty_legend: Dict[str, str] = {}
+    for r in range(last_day_row_idx + 1, ws.max_row + 1):
+        for c in range(1, ws.max_column + 1):
+            cell_val = str(_get_cell_value(ws, r, c) or "").strip()
+            if ":" in cell_val:
+                parts = cell_val.split(":", 1)
+                subj_code = parts[0].replace("\n", " ").strip().upper()
+                fac_name = parts[1].replace("\n", " ").strip()
+                if subj_code and fac_name:
+                    faculty_legend[subj_code] = fac_name
+
+    # Assign faculty names to matching subject records
+    for rec in records:
+        subj_upper = rec["subject"].upper()
+        if subj_upper in faculty_legend:
+            rec["faculty"] = faculty_legend[subj_upper]
+        else:
+            for k, v in faculty_legend.items():
+                if k in subj_upper or subj_upper in k:
+                    rec["faculty"] = v
+                    break
+
+    return records
+
+
 async def parse_and_import_timetable_excel(
     file_bytes: bytes, filename: str, actor_id: str
 ) -> Dict[str, Any]:
-    """Parse timetable workbook and store validated timetable records in MongoDB."""
+    """Parse timetable workbook (supporting Matrix Grid or Tabular format) and store in MongoDB."""
     if not filename.lower().endswith(".xlsx"):
         raise ValueError("Invalid file format. Only .xlsx files are supported.")
 
@@ -331,6 +519,21 @@ async def parse_and_import_timetable_excel(
     # Process all sheets in workbook
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
+        
+        # Check if sheet is a College Matrix Grid sheet (e.g. contains DAY in column A)
+        is_matrix_grid = False
+        for r in range(1, min(15, ws.max_row + 1)):
+            if "DAY" in str(ws.cell(row=r, column=1).value or "").strip().upper():
+                is_matrix_grid = True
+                break
+
+        if is_matrix_grid:
+            matrix_records = _parse_matrix_timetable_excel(ws, sheet_name)
+            records_to_insert.extend(matrix_records)
+            total_rows += len(matrix_records)
+            continue
+
+        # Standard Tabular parsing fallback
         rows = list(ws.iter_rows(values_only=True))
         if not rows:
             continue
@@ -338,12 +541,10 @@ async def parse_and_import_timetable_excel(
         header_row = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
         header_lower = [h.lower() for h in header_row]
 
-        # Determine column positions
         col_map = {}
         for idx, h in enumerate(header_lower):
             col_map[h] = idx
 
-        # If sheet name looks like a section (e.g. "II-A"), use it as default section if missing in columns
         default_section = sheet_name.strip().upper() if "-" in sheet_name or len(sheet_name) <= 10 else None
 
         for row_idx, row_values in enumerate(rows[1:], start=2):
@@ -374,7 +575,6 @@ async def parse_and_import_timetable_excel(
             if day not in DAYS_OF_WEEK:
                 row_errors.append(f"Invalid Day: '{day}'. Must be one of {DAYS_OF_WEEK}.")
 
-            # Validate period number
             try:
                 period_num = int(re.sub(r"\D", "", period_raw))
             except Exception:
@@ -423,7 +623,6 @@ async def parse_and_import_timetable_excel(
     db = get_database()
 
     inserted_count = 0
-    # Store records using upsert to avoid duplicate key errors
     for rec in records_to_insert:
         await db.timetables.update_one(
             {
@@ -436,7 +635,6 @@ async def parse_and_import_timetable_excel(
         )
         inserted_count += 1
 
-    # Log audit entry
     await db.audit_logs.insert_one(
         {
             "actor_id": actor_id,

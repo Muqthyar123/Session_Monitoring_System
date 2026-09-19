@@ -117,7 +117,7 @@ function AdminLoginPage() {
           </form>
 
           <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">Demo credentials (mock only)</p>
+            <p className="font-medium text-foreground">System Administrator Account</p>
             <p>
               {MOCK_DEMO_CREDENTIALS.admin.email} / {MOCK_DEMO_CREDENTIALS.admin.password}
             </p>

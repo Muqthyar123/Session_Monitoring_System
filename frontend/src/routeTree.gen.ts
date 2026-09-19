@@ -21,6 +21,7 @@ import { Route as CrlrAnalyticsRouteImport } from './routes/crlr.analytics'
 import { Route as CrlrAttendanceRouteImport } from './routes/crlr.attendance'
 import { Route as CrlrDashboardRouteImport } from './routes/crlr.dashboard'
 import { Route as CrlrNotificationsRouteImport } from './routes/crlr.notifications'
+import { Route as CrlrTimetableRouteImport } from './routes/crlr.timetable'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -82,6 +83,11 @@ const CrlrNotificationsRoute = CrlrNotificationsRouteImport.update({
   path: '/crlr/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CrlrTimetableRoute = CrlrTimetableRouteImport.update({
+  id: '/crlr/timetable',
+  path: '/crlr/timetable',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/crlr/attendance': typeof CrlrAttendanceRoute
   '/crlr/dashboard': typeof CrlrDashboardRoute
   '/crlr/notifications': typeof CrlrNotificationsRoute
+  '/crlr/timetable': typeof CrlrTimetableRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/crlr/attendance': typeof CrlrAttendanceRoute
   '/crlr/dashboard': typeof CrlrDashboardRoute
   '/crlr/notifications': typeof CrlrNotificationsRoute
+  '/crlr/timetable': typeof CrlrTimetableRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/crlr/attendance': typeof CrlrAttendanceRoute
   '/crlr/dashboard': typeof CrlrDashboardRoute
   '/crlr/notifications': typeof CrlrNotificationsRoute
+  '/crlr/timetable': typeof CrlrTimetableRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/crlr/attendance'
     | '/crlr/dashboard'
     | '/crlr/notifications'
+    | '/crlr/timetable'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/crlr/attendance'
     | '/crlr/dashboard'
     | '/crlr/notifications'
+    | '/crlr/timetable'
   id:
     | '__root__'
     | '/'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/crlr/attendance'
     | '/crlr/dashboard'
     | '/crlr/notifications'
+    | '/crlr/timetable'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -184,6 +196,7 @@ export interface RootRouteChildren {
   CrlrAttendanceRoute: typeof CrlrAttendanceRoute
   CrlrDashboardRoute: typeof CrlrDashboardRoute
   CrlrNotificationsRoute: typeof CrlrNotificationsRoute
+  CrlrTimetableRoute: typeof CrlrTimetableRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -272,6 +285,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CrlrNotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/crlr/timetable': {
+      id: '/crlr/timetable'
+      path: '/crlr/timetable'
+      fullPath: '/crlr/timetable'
+      preLoaderRoute: typeof CrlrTimetableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -288,6 +308,7 @@ const rootRouteChildren: RootRouteChildren = {
   CrlrAttendanceRoute: CrlrAttendanceRoute,
   CrlrDashboardRoute: CrlrDashboardRoute,
   CrlrNotificationsRoute: CrlrNotificationsRoute,
+  CrlrTimetableRoute: CrlrTimetableRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

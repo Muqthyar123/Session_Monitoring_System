@@ -86,6 +86,9 @@ export async function request<T>(
       // Clear token and user on 401 Unauthorized
       setStoredToken(null);
       setStoredUser(null);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("fams:unauthorized"));
+      }
     }
 
     const json = await response.json().catch(() => null);

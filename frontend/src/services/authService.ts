@@ -1,5 +1,6 @@
 import {
   request,
+  getStoredToken,
   getStoredUser,
   setStoredToken,
   setStoredUser,
@@ -8,7 +9,7 @@ import {
 import type { AuthUser, Role } from "@/data/mock/mockData";
 
 export interface LoginResponsePayload {
-  access_token: str;
+  access_token: string;
   token_type: string;
   user: {
     id: string;
@@ -58,6 +59,11 @@ export function persistUser(user: AuthUser | null) {
 }
 
 export function readPersistedUser(): AuthUser | null {
+  const token = getStoredToken();
+  if (!token) {
+    setStoredUser(null);
+    return null;
+  }
   return getStoredUser<AuthUser>();
 }
 

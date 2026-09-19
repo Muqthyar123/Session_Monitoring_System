@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, ClipboardCheck, BarChart3, Bell, LogOut, GraduationCap } from "lucide-react";
+import { LayoutDashboard, Calendar, ClipboardCheck, BarChart3, Bell, LogOut, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/common/RoleGuard";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { to: "/crlr/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/crlr/timetable", label: "Timetable", icon: Calendar },
   { to: "/crlr/attendance", label: "Attendance", icon: ClipboardCheck },
   { to: "/crlr/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/crlr/notifications", label: "Alerts", icon: Bell },

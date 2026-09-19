@@ -33,3 +33,9 @@ async def delete_timetable_by_section(section: str) -> int:
     db = get_database()
     result = await db.timetables.delete_many({"section": section.strip().upper()})
     return result.deleted_count
+
+
+async def delete_all_timetables() -> int:
+    db = get_database()
+    result = await db.timetables.delete_many({})
+    return result.deleted_count

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download, FileSpreadsheet, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { FileUpload } from "@/components/common/FileUpload";
@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/table";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import {
+  deleteAllTimetables,
+  deleteSectionTimetable,
   downloadTimetableTemplate,
   getTimetable,
   getTimetableUploads,
@@ -47,9 +49,16 @@ export const Route = createFileRoute("/admin/timetable")({
 
 function TimetablePage() {
   const uploads = useAsyncData(() => getTimetableUploads(), []);
-  const [year, setYear] = useState(MOCK_YEARS[0]!);
-  const [section, setSection] = useState(MOCK_SECTIONS[0]!);
+  const [year, setYear] = useState(MOCK_YEARS[1] || "2nd Year");
+  const [section, setSection] = useState("II-A");
   const timetable = useAsyncData(() => getTimetable(year, section), [year, section]);
+
+  const handleUploadSuccess = async (file: File) => {
+    const result = await uploadTimetable(file);
+    uploads.reload();
+    timetable.reload();
+    return result;
+  };
 
   const uploadColumns: Column<TimetableUpload>[] = [
     { key: "academicYear", header: "Academic Year", cell: (r) => r.academicYear },
@@ -70,7 +79,7 @@ function TimetablePage() {
       key: "actions",
       header: "Actions",
       cell: (r) => (
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -82,11 +91,18 @@ function TimetablePage() {
             View
           </Button>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={() => document.getElementById("timetable-upload")?.scrollIntoView({ behavior: "smooth" })}
+            className="text-destructive border-destructive/30 hover:bg-destructive/10"
+            onClick={async () => {
+              if (confirm(`Are you sure you want to delete the timetable for section ${r.section}?`)) {
+                await deleteSectionTimetable(r.section);
+                uploads.reload();
+                timetable.reload();
+              }
+            }}
           >
-            Replace
+            <Trash2 className="size-3.5 mr-1" /> Delete
           </Button>
         </div>
       ),
@@ -111,16 +127,35 @@ function TimetablePage() {
         <CardHeader>
           <CardTitle className="text-base">Upload Timetable</CardTitle>
           <CardDescription>
-            Workbook format reference: All_Class_Timetables_Format.xlsx (one sheet per section).
+            Upload section timetable workbook (supports Matrix Grid format or standard 9-column template).
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FileUpload onUpload={uploadTimetable} />
+          <FileUpload onUpload={handleUploadSuccess} />
         </CardContent>
       </Card>
 
       <section className="space-y-3">
-        <h2 className="text-base font-semibold">Uploaded Timetables</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Uploaded Timetables</h2>
+          {(uploads.data?.length ?? 0) > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive border-destructive/30 hover:bg-destructive/10"
+              onClick={async () => {
+                if (confirm("Are you sure you want to delete ALL uploaded timetables?")) {
+                  await deleteAllTimetables();
+                  uploads.reload();
+                  timetable.reload();
+                }
+              }}
+            >
+              <Trash2 className="size-3.5 mr-1" /> Clear All Timetables
+            </Button>
+          ) : null}
+        </div>
+
         {uploads.loading ? (
           <LoadingState rows={3} />
         ) : uploads.error ? (
@@ -155,7 +190,7 @@ function TimetablePage() {
                 <SelectValue placeholder="Select Section" />
               </SelectTrigger>
               <SelectContent>
-                {MOCK_SECTIONS.map((s) => (
+                {(uploads.data ?? []).map((u) => u.section).concat(["II-A"]).filter((v, i, a) => a.indexOf(v) === i).map((s) => (
                   <SelectItem key={s} value={s}>
                     {s}
                   </SelectItem>

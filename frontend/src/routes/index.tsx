@@ -70,8 +70,8 @@ function Landing() {
         </Card>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Demo build — mock data only. No backend is connected.
+      <p className="text-xs text-muted-foreground text-center">
+        Production System — Connected to Live FastAPI Backend &amp; MongoDB Database.
       </p>
     </div>
   );

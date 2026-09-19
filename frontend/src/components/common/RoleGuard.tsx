@@ -5,8 +5,7 @@ import type { Role } from "@/data/mock/mockData";
 import { LoadingState } from "@/components/common/States";
 
 /**
- * Frontend-only route protection. Real authorization will also be enforced
- * by the backend.
+ * Robust Frontend route protection that handles client-side hydration and safe navigation.
  */
 export function RoleGuard({
   allow,
@@ -19,20 +18,19 @@ export function RoleGuard({
 }) {
   const { user, initializing } = useAuth();
   const navigate = useNavigate();
-  const allowed = user ? allow.includes(user.role) : false;
 
   useEffect(() => {
-    if (initializing) return;
-    if (!user) {
-      navigate({ to: redirectTo, replace: true });
-      return;
+    if (!initializing) {
+      if (!user) {
+        navigate({ to: redirectTo, replace: true });
+      } else if (!allow.includes(user.role)) {
+        const fallback = user.role === "ADMIN" ? "/admin/dashboard" : "/crlr/dashboard";
+        navigate({ to: fallback, replace: true });
+      }
     }
-    if (!allowed) {
-      navigate({ to: user.role === "ADMIN" ? "/admin/dashboard" : "/crlr/dashboard", replace: true });
-    }
-  }, [initializing, user, allowed, navigate, redirectTo]);
+  }, [user, initializing, allow, redirectTo, navigate]);
 
-  if (initializing || !user || !allowed) {
+  if (initializing || !user || !allow.includes(user.role)) {
     return (
       <div className="mx-auto max-w-md p-8">
         <LoadingState rows={3} label="Checking access..." />

@@ -117,9 +117,8 @@ function CRLRLoginPage() {
           </form>
 
           <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">Demo credentials (mock only)</p>
-            <p>CR: {MOCK_DEMO_CREDENTIALS.cr.email} / {MOCK_DEMO_CREDENTIALS.cr.password}</p>
-            <p>LR: {MOCK_DEMO_CREDENTIALS.lr.email} / {MOCK_DEMO_CREDENTIALS.lr.password}</p>
+            <p className="font-medium text-foreground">Section Representatives</p>
+            <p>Log in using your assigned CR or LR email address &amp; password.</p>
           </div>
 
           <p className="mt-4 text-center text-sm text-muted-foreground">

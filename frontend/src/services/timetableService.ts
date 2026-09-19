@@ -3,13 +3,32 @@ import type { TimetablePeriod, TimetableUpload } from "@/data/mock/mockData";
 
 export async function getTimetableUploads(): Promise<TimetableUpload[]> {
   const data = await request<any[]>("/admin/timetable");
-  // Map timetables list summary
-  return data.map((t, idx) => ({
-    id: t.id || `t-${idx}`,
-    academicYear: t.year || "2nd Year",
-    section: t.section || "II-A",
-    file: `${t.section}_Timetable.xlsx`,
-    uploadedDate: t.updated_at ? new Date(t.updated_at).toLocaleDateString() : "Today",
+  const sectionMap = new Map<string, { section: string; year: string; updated_at: string; count: number }>();
+
+  data.forEach((t) => {
+    const sec = t.section || "II-A";
+    const existing = sectionMap.get(sec);
+    if (existing) {
+      existing.count += 1;
+      if (t.updated_at && t.updated_at > existing.updated_at) {
+        existing.updated_at = t.updated_at;
+      }
+    } else {
+      sectionMap.set(sec, {
+        section: sec,
+        year: t.year || "2nd Year",
+        updated_at: t.updated_at || "",
+        count: 1,
+      });
+    }
+  });
+
+  return Array.from(sectionMap.values()).map((s) => ({
+    id: `sec-${s.section}`,
+    academicYear: s.year,
+    section: s.section,
+    file: `${s.section}_Timetable.xlsx`,
+    uploadedDate: s.updated_at ? new Date(s.updated_at).toLocaleDateString() : "Today",
     status: "Processed",
   }));
 }
@@ -35,4 +54,16 @@ export async function uploadTimetable(file: File): Promise<{ message: string }> 
 
 export function downloadTimetableTemplate() {
   downloadApiFile("/admin/timetable/template", "Timetable_Template.xlsx");
+}
+
+export async function deleteSectionTimetable(section: string): Promise<void> {
+  await request(`/admin/timetable/${encodeURIComponent(section)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteAllTimetables(): Promise<void> {
+  await request("/admin/timetable", {
+    method: "DELETE",
+  });
 }
