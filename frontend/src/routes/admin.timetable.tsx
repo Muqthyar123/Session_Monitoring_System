@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, FileSpreadsheet, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/layouts/AdminLayout";
@@ -50,20 +50,44 @@ export const Route = createFileRoute("/admin/timetable")({
 function TimetablePage() {
   const uploads = useAsyncData(() => getTimetableUploads(), []);
   const [year, setYear] = useState(MOCK_YEARS[1] || "2nd Year");
+
+  const romanMap: Record<string, string> = {
+    "1st Year": "I",
+    "2nd Year": "II",
+    "3rd Year": "III",
+    "4th Year": "IV",
+  };
+
+  const availableSections = useMemo(() => {
+    const uploadedForYear = (uploads.data ?? [])
+      .filter((u) => u.academicYear === year)
+      .map((u) => u.section);
+    return Array.from(new Set(uploadedForYear)).sort();
+  }, [uploads.data, year]);
+
   const [section, setSection] = useState("");
-  const timetable = useAsyncData(() => getTimetable(year, section), [year, section]);
 
   useEffect(() => {
-    if (uploads.data && uploads.data.length > 0) {
-      const validSections = uploads.data.map((u) => u.section);
-      if (!section || !validSections.includes(section)) {
-        setSection(uploads.data[0].section);
-        if (uploads.data[0].academicYear) {
-          setYear(uploads.data[0].academicYear);
-        }
-      }
+    if (availableSections.length > 0 && (!section || !availableSections.includes(section))) {
+      setSection(availableSections[0]);
+    } else if (availableSections.length === 0 && section !== "") {
+      setSection("");
     }
-  }, [uploads.data]);
+  }, [availableSections, section]);
+
+  const timetable = useAsyncData(() => {
+    if (!section) return Promise.resolve([]);
+    return getTimetable(year, section);
+  }, [year, section]);
+
+  const handleYearChange = (newYear: string) => {
+    setYear(newYear);
+    const uploadedForNewYear = (uploads.data ?? [])
+      .filter((u) => u.academicYear === newYear)
+      .map((u) => u.section);
+    const sectionsForNewYear = Array.from(new Set(uploadedForNewYear)).sort();
+    setSection(sectionsForNewYear[0] || "");
+  };
 
   const handleUploadSuccess = async (file: File) => {
     const result = await uploadTimetable(file);
@@ -96,6 +120,7 @@ function TimetablePage() {
             variant="outline"
             size="sm"
             onClick={() => {
+              if (r.academicYear) setYear(r.academicYear);
               setSection(r.section);
               document.getElementById("timetable-view")?.scrollIntoView({ behavior: "smooth" });
             }}
@@ -183,7 +208,7 @@ function TimetablePage() {
         <h2 className="text-base font-semibold">Timetable View</h2>
         <div className="flex flex-wrap gap-3">
           <div className="w-full sm:w-48">
-            <Select value={year} onValueChange={setYear}>
+            <Select value={year} onValueChange={handleYearChange}>
               <SelectTrigger aria-label="Select Year">
                 <SelectValue placeholder="Select Year" />
               </SelectTrigger>
@@ -196,17 +221,23 @@ function TimetablePage() {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-full sm:w-40">
-            <Select value={section} onValueChange={setSection}>
+          <div className="w-full sm:w-48">
+            <Select value={section} onValueChange={setSection} disabled={availableSections.length === 0}>
               <SelectTrigger aria-label="Select Section">
-                <SelectValue placeholder="Select Section" />
+                <SelectValue placeholder={availableSections.length === 0 ? "No uploaded sections" : "Select Section"} />
               </SelectTrigger>
               <SelectContent>
-                {(uploads.data ?? []).map((u) => u.section).concat(["II-A"]).filter((v, i, a) => a.indexOf(v) === i).map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
+                {availableSections.length === 0 ? (
+                  <SelectItem value="none" disabled>
+                    No uploaded sections
                   </SelectItem>
-                ))}
+                ) : (
+                  availableSections.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -217,7 +248,14 @@ function TimetablePage() {
         ) : timetable.error ? (
           <ErrorState message={timetable.error} onRetry={timetable.reload} />
         ) : (timetable.data?.length ?? 0) === 0 ? (
-          <EmptyState title="No timetable available" description="No timetable has been uploaded for this section yet." />
+          <EmptyState
+            title={`No timetable available for ${year}`}
+            description={
+              availableSections.length === 0
+                ? `No timetable workbook has been uploaded for ${year} yet.`
+                : `No timetable data available for section ${section}.`
+            }
+          />
         ) : (
           <div className="space-y-4">
             {days.map((day) => (

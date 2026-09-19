@@ -6,7 +6,8 @@ export async function getTimetableUploads(): Promise<TimetableUpload[]> {
   const sectionMap = new Map<string, { section: string; year: string; updated_at: string; count: number }>();
 
   data.forEach((t) => {
-    const sec = t.section || "II-A";
+    const sec = t.section;
+    if (!sec) return;
     const existing = sectionMap.get(sec);
     if (existing) {
       existing.count += 1;

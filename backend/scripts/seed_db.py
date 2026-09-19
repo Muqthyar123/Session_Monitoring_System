@@ -48,13 +48,14 @@ async def seed():
     else:
         logger.info("Admin user already exists.")
 
-    # 2. CR & LR Users for each section (CSE-A to CSE-J)
-    sections_list = ["CSE-A", "CSE-B", "CSE-C", "CSE-D", "CSE-E", "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"]
+    # 2. CR & LR Users for each section (II-CSE-A to II-CSE-J)
+    sections_list = ["II-CSE-A", "II-CSE-B", "II-CSE-C", "II-CSE-D", "II-CSE-E", "II-CSE-F", "II-CSE-G", "II-CSE-H", "II-CSE-I", "II-CSE-J"]
 
     for sec in sections_list:
-        slug = sec.replace("-", "").lower()
-        cr_email = "cr@example.com" if sec == "CSE-A" else f"cr.{slug}@example.com"
-        lr_email = "lr@example.com" if sec == "CSE-A" else f"lr.{slug}@example.com"
+        clean_name = sec.replace("II-", "")
+        slug = clean_name.replace("-", "").lower()
+        cr_email = "cr@example.com" if sec == "II-CSE-A" else f"cr.{slug}@example.com"
+        lr_email = "lr@example.com" if sec == "II-CSE-A" else f"lr.{slug}@example.com"
         sec_letter = sec.split("-")[-1]
 
         # CR User

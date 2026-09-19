@@ -51,13 +51,6 @@ async def get_timetable_by_section(
         cursor = db.timetables.find({"section": {"$regex": norm_regex}}).sort([("day", 1), ("period", 1)])
         results = [TimetablePeriodResponse(**_format_doc(doc)) async for doc in cursor]
 
-    if not results:
-        # Final fallback: if only 1 section exists in DB, return that section's timetable
-        distinct_secs = await db.timetables.distinct("section")
-        if len(distinct_secs) == 1:
-            cursor = db.timetables.find({"section": distinct_secs[0]}).sort([("day", 1), ("period", 1)])
-            results = [TimetablePeriodResponse(**_format_doc(doc)) async for doc in cursor]
-
     return results
 
 

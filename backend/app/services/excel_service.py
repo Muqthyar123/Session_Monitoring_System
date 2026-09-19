@@ -361,8 +361,14 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
             mapping = {"I": "1st Year", "II": "2nd Year", "III": "3rd Year", "IV": "4th Year"}
             detected_year = mapping.get(roman, f"{roman} Year")
 
-    if not detected_section:
-        detected_section = sheet_name.strip().upper() if "-" in sheet_name or len(sheet_name) <= 10 else "CSE-A"
+    roman_prefix_map = {"1st Year": "I", "2nd Year": "II", "3rd Year": "III", "4th Year": "IV"}
+    prefix = roman_prefix_map.get(detected_year, "II")
+
+    if detected_section:
+        clean_sec = re.sub(r"^(I|II|III|IV)-", "", detected_section)
+        detected_section = f"{prefix}-{clean_sec}"
+    else:
+        detected_section = f"{prefix}-CSE-A"
 
     # 2. Locate header row with DAY and Period numbers
     header_row_idx = None
@@ -571,6 +577,8 @@ async def parse_and_import_timetable_excel(
 
             year = get_cell("year") or "Standard"
             section = get_cell("section").upper() or default_section
+            if section and not re.match(r"^(I|II|III|IV)-", section):
+                section = f"II-{section}"
             day = get_cell("day").capitalize()
             period_raw = get_cell("period")
             start_time_raw = get_cell("start time") or get_cell("starttime") or get_cell("start_time")

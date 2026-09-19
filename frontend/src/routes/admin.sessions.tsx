@@ -64,8 +64,12 @@ function SessionsPage() {
   const [statusFilter, setStatusFilter] = useState(ALL);
 
   const availableSections = useMemo(() => {
+    const defaultSecs = [
+      "II-CSE-A", "II-CSE-B", "II-CSE-C", "II-CSE-D", "II-CSE-E",
+      "II-CSE-F", "II-CSE-G", "II-CSE-H", "II-CSE-I", "II-CSE-J"
+    ];
     const fromData = (data ?? []).map((s) => s.section).filter(Boolean);
-    return Array.from(new Set(fromData)).sort();
+    return Array.from(new Set([...defaultSecs, ...fromData])).sort();
   }, [data]);
 
   const rows = useMemo(

@@ -70,12 +70,12 @@ async def test_matrix_grid_timetable_import():
 
     db = get_database()
     # Check auto-upsert in db.sections
-    sec_doc = await db.sections.find_one({"section_name": "CSE-A"})
+    sec_doc = await db.sections.find_one({"section_name": "II-CSE-A"})
     assert sec_doc is not None
     assert sec_doc["year"] == "2nd Year"
 
     # Check inserted Tuesday records
-    records = await db.timetables.find({"section": "CSE-A", "day": "Tuesday"}).sort("period", 1).to_list(100)
+    records = await db.timetables.find({"section": "II-CSE-A", "day": "Tuesday"}).sort("period", 1).to_list(100)
     assert len(records) == 7
 
     # Tuesday Period 1: DMGT by V.Radha in 2103
@@ -94,7 +94,7 @@ async def test_matrix_grid_timetable_import():
     assert p5["end_time"] == "02:20"
 
     # Check Thursday merged Python Lab records (Periods 1 & 2)
-    thu_records = await db.timetables.find({"section": "CSE-A", "day": "Thursday"}).sort("period", 1).to_list(100)
+    thu_records = await db.timetables.find({"section": "II-CSE-A", "day": "Thursday"}).sort("period", 1).to_list(100)
     p1_thu = next(r for r in thu_records if r["period"] == 1)
     p2_thu = next(r for r in thu_records if r["period"] == 2)
 
