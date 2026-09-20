@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 import zoneinfo
 from app.core.config import settings
 from app.db.mongodb import get_database
@@ -59,7 +60,103 @@ async def get_admin_dashboard_analytics() -> dict:
             {"name": "Faculty Absent", "value": absent_count},
             {"name": "Substitute Reported", "value": substitute_count},
         ],
+        "facultyAnalytics": await get_faculty_analytics(None),
     }
+
+
+async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
+    """Generates per-faculty attendance analytics including total assigned hours, attended, absent, substitute, and percentage."""
+    db = get_database()
+    query = {}
+    if section_name:
+        sec_clean = section_name.strip().upper()
+        if sec_clean and sec_clean != "ALL":
+            query["section"] = sec_clean
+
+    tt_cursor = db.timetables.find(query)
+    tt_docs = await tt_cursor.to_list(length=5000)
+
+    sess_cursor = db.sessions.find(query)
+    sess_docs = await sess_cursor.to_list(length=5000)
+
+    faculty_map = {}  # key: (faculty_name.upper(), section.upper())
+
+    for tt in tt_docs:
+        fac = (tt.get("faculty") or "").strip()
+        subj = (tt.get("subject") or "").strip()
+        sec = (tt.get("section") or "").strip()
+        if not fac or fac.upper() in ["TBD", "NONE", "UNASSIGNED"]:
+            continue
+        key = (fac.upper(), sec.upper())
+        if key not in faculty_map:
+            faculty_map[key] = {
+                "facultyName": fac,
+                "section": sec,
+                "subjects": set(),
+                "ttHours": 0,
+                "attendedHours": 0,
+                "absentHours": 0,
+                "substitutedHours": 0,
+            }
+        if subj:
+            faculty_map[key]["subjects"].add(subj)
+        faculty_map[key]["ttHours"] += 1
+
+    for s in sess_docs:
+        fac = (s.get("faculty") or "").strip()
+        subj = (s.get("subject") or "").strip()
+        sec = (s.get("section") or "").strip()
+        if not fac or fac.upper() in ["TBD", "NONE", "UNASSIGNED"]:
+            continue
+        key = (fac.upper(), sec.upper())
+        if key not in faculty_map:
+            faculty_map[key] = {
+                "facultyName": fac,
+                "section": sec,
+                "subjects": set(),
+                "ttHours": 0,
+                "attendedHours": 0,
+                "absentHours": 0,
+                "substitutedHours": 0,
+            }
+        if subj:
+            faculty_map[key]["subjects"].add(subj)
+
+        hrs = len(s.get("periods_included") or [1])
+        resp = s.get("faculty_response")
+        if resp == FacultyResponseStatus.PRESENT.value:
+            faculty_map[key]["attendedHours"] += hrs
+        elif resp == FacultyResponseStatus.ABSENT.value:
+            faculty_map[key]["absentHours"] += hrs
+        elif resp == FacultyResponseStatus.SUBSTITUTE.value:
+            faculty_map[key]["substitutedHours"] += hrs
+
+    result = []
+    for key, item in faculty_map.items():
+        att = item["attendedHours"]
+        ab = item["absentHours"]
+        sub = item["substitutedHours"]
+        evaluated = att + ab + sub
+        tot = max(item["ttHours"], evaluated)
+        pct = round((att / evaluated * 100), 1) if evaluated > 0 else (100.0 if tot > 0 else 0.0)
+
+        result.append({
+            "facultyName": item["facultyName"],
+            "subject": ", ".join(sorted(list(item["subjects"]))),
+            "section": item["section"],
+            "totalClasses": tot,
+            "attendedClasses": att,
+            "absentClasses": ab,
+            "substitutedClasses": sub,
+            "totalHours": tot,
+            "attendedHours": att,
+            "absentHours": ab,
+            "substitutedHours": sub,
+            "attendancePercentage": pct,
+        })
+
+    result.sort(key=lambda x: x["facultyName"])
+    return result
 
 
 async def get_crlr_dashboard_analytics(section_name: str) -> dict:
@@ -105,4 +202,5 @@ async def get_crlr_dashboard_analytics(section_name: str) -> dict:
             {"name": "Pending", "value": pending},
             {"name": "Expired", "value": expired},
         ],
+        "facultyAnalytics": await get_faculty_analytics(sec_clean),
     }

@@ -91,18 +91,33 @@ function CRLRTimetablePage() {
       />
 
       <div className="flex flex-wrap gap-2 pb-2">
-        {DAYS.map((d) => (
-          <Button
-            key={d}
-            variant={selectedDay === d ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedDay(d)}
-            className="capitalize"
-          >
-            {d}
-            {d === defaultDay ? <Badge variant="secondary" className="ml-1 text-[10px]">Today</Badge> : null}
-          </Button>
-        ))}
+        {DAYS.map((d) => {
+          const isToday = d === defaultDay;
+          const isSelected = selectedDay === d;
+          return (
+            <Button
+              key={d}
+              variant={isSelected ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedDay(d)}
+              className="capitalize flex items-center gap-1.5"
+            >
+              <span>{d}</span>
+              {isToday ? (
+                <span
+                  className={cn(
+                    "rounded-md px-1.5 py-0.5 text-[11px] leading-none transition-colors",
+                    isSelected
+                      ? "bg-white text-primary font-semibold shadow-xs"
+                      : "bg-secondary text-secondary-foreground font-medium"
+                  )}
+                >
+                  Today
+                </span>
+              ) : null}
+            </Button>
+          );
+        })}
       </div>
 
       <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3.5 text-xs text-blue-900 dark:border-blue-950 dark:bg-blue-950/30 dark:text-blue-200 flex items-start gap-2.5">

@@ -5,6 +5,7 @@ from app.schemas.user import UserRole
 from app.services.analytics_service import (
     get_admin_dashboard_analytics,
     get_crlr_dashboard_analytics,
+    get_faculty_analytics,
 )
 
 router = APIRouter(tags=["Analytics & Dashboards"])
@@ -31,4 +32,13 @@ async def get_crlr_analytics_api(
         )
 
     data = await get_crlr_dashboard_analytics(user_sec)
+    return ApiResponse(success=True, data=data)
+
+
+@router.get("/analytics/faculty", response_model=ApiResponse[list])
+async def get_faculty_analytics_api(
+    section: str = Query(None, description="Section name or ALL"),
+    current_user: dict = Depends(get_current_user),
+):
+    data = await get_faculty_analytics(section)
     return ApiResponse(success=True, data=data)

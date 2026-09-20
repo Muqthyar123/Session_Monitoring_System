@@ -207,10 +207,7 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
         # Already responded
         response_window_expired = False
         remaining_seconds = None
-        if now_ts >= end_dt.timestamp():
-            status = SessionStatus.COMPLETED.value
-        else:
-            status = SessionStatus.ACTIVE.value
+        status = SessionStatus.COMPLETED.value
     else:
         # Pending response
         if now_ts < start_dt.timestamp():
@@ -292,6 +289,7 @@ async def get_sessions(
                 computed = calculate_session_dynamic_state(mock_doc, now_local)
                 results.append(ClassSessionResponse(**computed))
 
+    results.sort(key=lambda s: min(s.periods_included) if s.periods_included else 99)
     return results
 
 
