@@ -13,8 +13,8 @@ async def get_admin_dashboard_analytics() -> dict:
     now_local = datetime.now(tz_kolkata)
     date_str = now_local.strftime("%Y-%m-%d")
 
-    active_sec_names = set(await db.sections.distinct("section_name", {"is_active": True})) | set(await db.timetables.distinct("section"))
-    total_sections = len(active_sec_names)
+    timetable_sections = set(await db.timetables.distinct("section"))
+    total_sections = len(timetable_sections)
     total_crs = await db.users.count_documents({"role": UserRole.CR.value, "is_active": True})
     total_lrs = await db.users.count_documents({"role": UserRole.LR.value, "is_active": True})
 
@@ -30,7 +30,7 @@ async def get_admin_dashboard_analytics() -> dict:
     presence_pct = round((present_count / responded_total * 100), 1) if responded_total > 0 else 100.0
 
     # Section-wise breakdown
-    sorted_sections = sorted(list(active_sec_names))
+    sorted_sections = sorted(list(timetable_sections))
     section_wise = []
     for s_name in sorted_sections:
         sec_sessions = [s for s in sessions_today if s["section"] == s_name]

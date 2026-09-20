@@ -87,18 +87,22 @@ async def generate_and_sync_sessions_for_date(target_date: Optional[datetime] = 
     date_str = now_local.strftime("%Y-%m-%d")
     day_name = now_local.strftime("%A")  # Monday..Sunday
 
-    sections_cursor = db.sections.find({"is_active": True})
-    active_sections = await sections_cursor.to_list(length=1000)
-    existing_sec_names = {s["section_name"] for s in active_sections if "section_name" in s}
-
-    # Also collect distinct sections from db.timetables if not already in active_sections
     distinct_tt_sections = await db.timetables.distinct("section")
+    active_sections = []
     for tt_sec in distinct_tt_sections:
-        if tt_sec and tt_sec not in existing_sec_names:
-            sample = await db.timetables.find_one({"section": tt_sec})
-            yr = sample.get("year", "2nd Year") if sample else "2nd Year"
-            active_sections.append({"section_name": tt_sec, "year": yr, "is_active": True})
-            existing_sec_names.add(tt_sec)
+        if not tt_sec:
+            continue
+        sec_doc = await db.sections.find_one({"section_name": tt_sec})
+        yr = sec_doc.get("year", "2nd Year") if sec_doc else "2nd Year"
+        cr_id = sec_doc.get("assigned_cr_id") if sec_doc else None
+        lr_id = sec_doc.get("assigned_lr_id") if sec_doc else None
+        active_sections.append({
+            "section_name": tt_sec,
+            "year": yr,
+            "assigned_cr_id": cr_id,
+            "assigned_lr_id": lr_id,
+            "is_active": True,
+        })
 
     generated_sessions = []
 
@@ -129,11 +133,15 @@ async def generate_and_sync_sessions_for_date(target_date: Optional[datetime] = 
                 }
             )
 
+            fac_val = cs.get("faculty", "")
+            subj_val = cs["subject"]
+
             if not existing:
                 session_doc = {
                     "section": sec_name,
                     "year": cs.get("year", sec.get("year", "")),
-                    "subject": cs["subject"],
+                    "subject": subj_val,
+                    "faculty": fac_val,
                     "period": cs["period_display"],
                     "periods_included": cs["periods_included"],
                     "start_time": cs["start_time"],
@@ -156,6 +164,13 @@ async def generate_and_sync_sessions_for_date(target_date: Optional[datetime] = 
                 session_doc["_id"] = str(res.inserted_id)
                 generated_sessions.append(session_doc)
             else:
+                if existing.get("subject") != subj_val or existing.get("faculty") != fac_val:
+                    await db.sessions.update_one(
+                        {"_id": existing["_id"]},
+                        {"$set": {"subject": subj_val, "faculty": fac_val, "updated_at": datetime.now(timezone.utc)}}
+                    )
+                    existing["subject"] = subj_val
+                    existing["faculty"] = fac_val
                 existing["_id"] = str(existing["_id"])
                 generated_sessions.append(existing)
 
@@ -243,12 +258,46 @@ async def get_sessions(
         s["_id"] = str(s["_id"])
         computed = calculate_session_dynamic_state(s, now_local)
         results.append(ClassSessionResponse(**computed))
+
+    # If no sessions exist for date (e.g. weekend or non-class day), fallback to timetable periods for section
+    if not results and section:
+        sec_clean = section.strip().upper()
+        sample = await db.timetables.find_one({"section": sec_clean})
+        if sample:
+            target_day = sample.get("day", "Monday")
+            periods_cursor = db.timetables.find({"section": sec_clean, "day": target_day})
+            periods = await periods_cursor.to_list(length=100)
+            combined = combine_continuous_periods(periods)
+            for idx, cs in enumerate(combined):
+                mock_doc = {
+                    "_id": f"tt-session-{sec_clean}-{idx+1}",
+                    "section": sec_clean,
+                    "year": cs.get("year", "2nd Year"),
+                    "subject": cs.get("subject", ""),
+                    "faculty": cs.get("faculty", ""),
+                    "period": cs.get("period_display", f"Period {idx+1}"),
+                    "periods_included": cs.get("periods_included", [idx+1]),
+                    "start_time": cs.get("start_time", "09:10"),
+                    "end_time": cs.get("end_time", "10:00"),
+                    "date": date_str,
+                    "crlr_name": "Unassigned",
+                    "crlr_role": "CR",
+                    "session_status": SessionStatus.UPCOMING.value,
+                    "faculty_response": FacultyResponseStatus.PENDING.value,
+                    "response_time": None,
+                    "substitute_name": None,
+                    "response_window_seconds_remaining": None,
+                    "response_window_expired": False,
+                }
+                computed = calculate_session_dynamic_state(mock_doc, now_local)
+                results.append(ClassSessionResponse(**computed))
+
     return results
 
 
 async def get_active_sessions_for_section(section: str) -> List[ClassSessionResponse]:
     all_sessions = await get_sessions(section=section)
-    return [s for s in all_sessions if s.session_status in [SessionStatus.UPCOMING, SessionStatus.ACTIVE, SessionStatus.EXPIRED]]
+    return all_sessions
 
 
 async def get_session_by_id(session_id: str) -> Optional[ClassSessionResponse]:

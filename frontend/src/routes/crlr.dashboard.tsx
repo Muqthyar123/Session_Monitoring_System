@@ -74,11 +74,14 @@ function CRLRDashboardPage() {
                   <Card key={s.id}>
                     <CardContent className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{s.subject}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {s.subject} {s.faculty ? `— ${s.faculty}` : ""}
+                        </p>
                         <p className="truncate text-xs text-muted-foreground">
                           {s.period} · {s.startTime} - {s.endTime}
+                          {s.faculty ? ` · Faculty: ${s.faculty}` : ""}
                           {s.responseTime ? ` · responded ${s.responseTime}` : ""}
-                          {s.substituteName ? ` · ${s.substituteName}` : ""}
+                          {s.substituteName ? ` · Substitute: ${s.substituteName}` : ""}
                         </p>
                       </div>
                       <StatusBadge status={s.facultyResponse} />

@@ -463,13 +463,20 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
                 if not cell_raw or cell_raw.upper() in ["BREAK", "LUNCH", "FREE", "NONE"]:
                     continue
 
-                cell_clean = re.sub(r"[\r\n]+", " ", cell_raw).strip()
                 room = None
-                subject = cell_clean
-                m_room = re.search(r"^(.*?)\s*\(([^)]+)\)$", cell_clean)
+                cell_no_room = cell_raw
+                m_room = re.search(r"\(([^)]+)\)", cell_raw)
                 if m_room:
-                    subject = m_room.group(1).strip()
-                    room = m_room.group(2).strip()
+                    room = m_room.group(1).strip()
+                    cell_no_room = re.sub(r"\(([^)]+)\)", "", cell_raw).strip()
+
+                faculty_in_cell = None
+                lines = [l.strip() for l in re.split(r"[\r\n]+", cell_no_room) if l.strip()]
+                subject = lines[0] if lines else cell_no_room
+                if len(lines) >= 2:
+                    possible_fac = " ".join(lines[1:]).strip()
+                    if possible_fac and not re.match(r"^[\d\s\-_/]+$", possible_fac):
+                        faculty_in_cell = possible_fac
 
                 records.append({
                     "year": detected_year,
@@ -479,25 +486,42 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
                     "start_time": start_t,
                     "end_time": end_t,
                     "subject": subject,
-                    "faculty": None,
+                    "faculty": faculty_in_cell,
                     "room": room,
                     "updated_at": datetime.now(timezone.utc),
                 })
 
-    # 4. Parse Faculty Legend Table below last day row
+    # 4. Parse Faculty Legend Table below last day row (and adjacent cells)
     faculty_legend: Dict[str, str] = {}
     for r in range(last_day_row_idx + 1, ws.max_row + 1):
         for c in range(1, ws.max_column + 1):
             cell_val = str(_get_cell_value(ws, r, c) or "").strip()
-            if ":" in cell_val:
-                parts = cell_val.split(":", 1)
-                subj_code = parts[0].replace("\n", " ").replace("\r", " ").strip().upper()
-                fac_name = parts[1].replace("\n", " ").replace("\r", " ").strip()
-                if subj_code and fac_name:
+            if not cell_val:
+                continue
+
+            # Case A: Separator in single cell (e.g. "DMGT : Dr. Ramesh", "PYTHON LAB - Prof. Sharma")
+            m_sep = re.split(r"\s*[:\-\u2013\u2014]\s*", cell_val, maxsplit=1)
+            if len(m_sep) == 2 and m_sep[0].strip() and m_sep[1].strip():
+                subj_code = m_sep[0].replace("\n", " ").strip().upper()
+                fac_name = m_sep[1].replace("\n", " ").strip()
+                if len(fac_name) > 2 and subj_code not in faculty_legend:
                     faculty_legend[subj_code] = fac_name
+                continue
+
+            # Case B: Two adjacent cells in a row (Column A = "DMGT", Column B = "Dr. Ramesh")
+            if c < ws.max_column:
+                adj_val = str(_get_cell_value(ws, r, c + 1) or "").strip()
+                if cell_val and adj_val:
+                    code_norm = cell_val.replace("\n", " ").strip().upper()
+                    name_norm = adj_val.replace("\n", " ").strip()
+                    if len(code_norm) <= 25 and len(name_norm) > 2 and code_norm not in faculty_legend:
+                        if code_norm not in ["SUBJECT", "COURSE", "SL.NO", "CODE", "PERIOD"]:
+                            faculty_legend[code_norm] = name_norm
 
     # Assign faculty names to matching subject records
     for rec in records:
+        if rec["faculty"]:
+            continue
         subj_upper = rec["subject"].upper()
         if subj_upper in faculty_legend:
             rec["faculty"] = faculty_legend[subj_upper]

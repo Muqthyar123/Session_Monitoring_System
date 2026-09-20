@@ -23,6 +23,7 @@ class ClassSessionResponse(BaseModel):
     section: str
     year: Optional[str] = None
     subject: str
+    faculty: Optional[str] = None
     period: str
     periods_included: List[int]
     start_time: str = Field(..., alias="startTime")

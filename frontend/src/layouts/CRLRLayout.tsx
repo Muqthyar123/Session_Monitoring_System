@@ -1,6 +1,16 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, Calendar, ClipboardCheck, BarChart3, Bell, LogOut, GraduationCap } from "lucide-react";
+import {
+  LayoutDashboard,
+  Calendar,
+  ClipboardCheck,
+  BarChart3,
+  Bell,
+  LogOut,
+  Menu,
+  GraduationCap,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/common/RoleGuard";
@@ -16,6 +26,7 @@ const NAV_ITEMS = [
 ] as const;
 
 export function CRLRLayout({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -25,44 +36,109 @@ export function CRLRLayout({ children }: { children: ReactNode }) {
     navigate({ to: "/auth/login", replace: true });
   };
 
+  const nav = (
+    <nav className="flex flex-1 flex-col gap-1 p-3">
+      {NAV_ITEMS.map((item) => (
+        <Link
+          key={item.to}
+          to={item.to}
+          onClick={() => setOpen(false)}
+          className={cn(
+            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            pathname === item.to && "bg-sidebar-accent text-sidebar-accent-foreground font-semibold",
+          )}
+        >
+          <item.icon className="size-4 shrink-0" />
+          <span className="truncate">{item.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+
   return (
     <RoleGuard allow={["CR", "LR"]} redirectTo="/auth/login">
-      <div className="flex min-h-screen flex-col bg-background">
-        <header className="sticky top-0 z-30 border-b border-border bg-card">
-          <div className="mx-auto grid w-full max-w-4xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <GraduationCap className="size-5 shrink-0 text-primary" />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{user?.name}</p>
-                <p className="truncate text-xs text-muted-foreground">
+      <div className="flex min-h-screen w-full bg-background">
+        {/* Desktop Sidebar */}
+        <aside className="hidden w-64 shrink-0 flex-col bg-sidebar lg:flex">
+          <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
+            <GraduationCap className="size-6 text-sidebar-primary" />
+            <span className="text-sm font-semibold text-sidebar-foreground">
+              Faculty Attendance Monitor
+            </span>
+          </div>
+          {nav}
+          <div className="border-t border-sidebar-border p-3">
+            <button
+              onClick={handleSignOut}
+              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <LogOut className="size-4" /> Logout
+            </button>
+          </div>
+        </aside>
+
+        {/* Mobile Drawer */}
+        {open ? (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div
+              className="absolute inset-0 bg-foreground/40"
+              onClick={() => setOpen(false)}
+              aria-hidden
+            />
+            <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar">
+              <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
+                <span className="text-sm font-semibold text-sidebar-foreground">CR / LR Menu</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close menu"
+                  className="text-sidebar-foreground hover:bg-sidebar-accent"
+                >
+                  <X className="size-5" />
+                </Button>
+              </div>
+              {nav}
+              <div className="border-t border-sidebar-border p-3">
+                <button
+                  onClick={handleSignOut}
+                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                >
+                  <LogOut className="size-4" /> Logout
+                </button>
+              </div>
+            </aside>
+          </div>
+        ) : null}
+
+        {/* Main Content Area */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-14 items-center gap-3 border-b border-border bg-card px-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="size-5" />
+            </Button>
+            <span className="truncate text-sm font-semibold">CR / LR Portal</span>
+            <div className="ml-auto flex min-w-0 items-center gap-3">
+              <NotificationBell />
+              <div className="hidden min-w-0 text-right sm:block">
+                <p className="truncate text-xs font-semibold">{user?.name}</p>
+                <p className="truncate text-[10px] text-muted-foreground">
                   {user?.role} · {user?.year} · Section {user?.section}
                 </p>
               </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <NotificationBell />
-              <Button variant="ghost" size="icon" onClick={handleSignOut} aria-label="Logout">
-                <LogOut className="size-5" />
+              <Button variant="outline" size="sm" onClick={handleSignOut}>
+                <LogOut className="size-4" /> Logout
               </Button>
             </div>
-          </div>
-          <nav className="mx-auto flex w-full max-w-4xl gap-1 overflow-x-auto px-2 pb-2">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary",
-                  pathname === item.to && "bg-secondary text-foreground",
-                )}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </header>
-        <main className="mx-auto w-full max-w-4xl flex-1 space-y-6 p-4">{children}</main>
+          </header>
+          <main className="min-w-0 flex-1 space-y-6 p-4 sm:p-6">{children}</main>
+        </div>
       </div>
     </RoleGuard>
   );

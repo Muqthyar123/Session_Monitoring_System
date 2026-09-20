@@ -49,6 +49,7 @@ export interface ClassSession {
   id: string;
   section: string;
   subject: string;
+  faculty?: string;
   period: string;
   startTime: string;
   endTime: string;

@@ -33,6 +33,7 @@ const ALL = "all";
 const columns: Column<ClassSession>[] = [
   { key: "section", header: "Section", cell: (r) => r.section },
   { key: "subject", header: "Subject", cell: (r) => r.subject },
+  { key: "faculty", header: "Assigned Faculty", cell: (r) => r.faculty || "—" },
   { key: "period", header: "Period", cell: (r) => r.period },
   { key: "start", header: "Start", cell: (r) => r.startTime },
   { key: "end", header: "End", cell: (r) => r.endTime },

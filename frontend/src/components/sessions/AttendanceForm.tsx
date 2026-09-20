@@ -48,7 +48,9 @@ export function AttendanceForm({
           <dt className="text-muted-foreground">Section</dt>
           <dd className="truncate">{session.section}</dd>
           <dt className="text-muted-foreground">Subject</dt>
-          <dd className="truncate">{session.subject}</dd>
+          <dd className="truncate font-medium">{session.subject}</dd>
+          <dt className="text-muted-foreground">Assigned Faculty</dt>
+          <dd className="truncate font-semibold text-primary">{session.faculty || "Not Specified"}</dd>
           <dt className="text-muted-foreground">Time</dt>
           <dd>
             {session.startTime} - {session.endTime}
@@ -91,7 +93,13 @@ export function AttendanceForm({
           </div>
         ) : step === "confirm-present" ? (
           <div className="space-y-3 rounded-md border border-border p-3">
-            <p className="text-sm">Confirm that the assigned faculty is present for this session?</p>
+            <p className="text-sm">
+              Confirm that assigned faculty{" "}
+              <span className="font-semibold text-foreground">
+                {session.faculty ? `${session.faculty} (${session.subject})` : session.subject}
+              </span>{" "}
+              is present for this session?
+            </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 onClick={() => run(() => submitFacultyAttendance(session.id, true))}
@@ -106,7 +114,12 @@ export function AttendanceForm({
           </div>
         ) : step === "substitute-question" ? (
           <div className="space-y-3 rounded-md border border-border p-3">
-            <p className="text-sm font-medium">Was a substitute faculty present?</p>
+            <p className="text-sm font-medium">
+              Was a substitute faculty present instead of{" "}
+              <span className="font-semibold text-foreground">
+                {session.faculty || session.subject}
+              </span>?
+            </p>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => setStep("substitute-name")} disabled={submitting}>
                 Yes
