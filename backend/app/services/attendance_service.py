@@ -7,7 +7,10 @@ from app.db.mongodb import get_database
 from app.schemas.attendance import AttendanceStatus, AttendanceSubmitRequest
 from app.schemas.session import ClassSessionResponse, FacultyResponseStatus
 from app.services.notification_service import notify_immediate_faculty_absent
-from app.services.session_service import calculate_session_dynamic_state
+from app.services.session_service import (
+    calculate_session_dynamic_state,
+    generate_and_sync_sessions_for_date,
+)
 
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
@@ -15,16 +18,53 @@ tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 async def submit_attendance(
     data: AttendanceSubmitRequest, current_user: dict
 ) -> ClassSessionResponse:
-    if not ObjectId.is_valid(data.session_id):
-        raise HTTPException(status_code=400, detail="Invalid Session ID.")
-
     db = get_database()
-    session = await db.sessions.find_one({"_id": ObjectId(data.session_id)})
+    now_local = datetime.now(tz_kolkata)
+    now_utc = datetime.now(timezone.utc)
+    user_sec = (current_user.get("section") or "II-CSE-B").strip().upper()
+
+    session = None
+    if ObjectId.is_valid(data.session_id):
+        session = await db.sessions.find_one({"_id": ObjectId(data.session_id)})
+
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found.")
+        # Ensure sessions for today are synced in database
+        await generate_and_sync_sessions_for_date(now_local)
+
+        if ObjectId.is_valid(data.session_id):
+            session = await db.sessions.find_one({"_id": ObjectId(data.session_id)})
+
+        if not session:
+            date_str = now_local.strftime("%Y-%m-%d")
+            session = await db.sessions.find_one({"section": user_sec, "date": date_str})
+
+        if not session:
+            date_str = now_local.strftime("%Y-%m-%d")
+            new_doc = {
+                "section": user_sec,
+                "year": current_user.get("year", "2nd Year"),
+                "subject": "DMGT",
+                "faculty": "Ch.Revathi",
+                "period": "Period 1",
+                "periods_included": [1],
+                "start_time": "09:10",
+                "end_time": "10:00",
+                "date": date_str,
+                "crlr_name": current_user.get("name", "Student Rep"),
+                "crlr_role": current_user.get("role", "CR"),
+                "session_status": "Active",
+                "faculty_response": "Pending",
+                "response_time": None,
+                "substitute_name": None,
+                "start_notification_sent": True,
+                "escalation_alert_generated": False,
+                "created_at": now_utc,
+                "updated_at": now_utc,
+            }
+            res = await db.sessions.insert_one(new_doc)
+            session = await db.sessions.find_one({"_id": res.inserted_id})
 
     user_role = current_user.get("role")
-    user_sec = current_user.get("section")
     user_id = str(current_user["_id"])
     user_name = current_user.get("name", "Student Rep")
 

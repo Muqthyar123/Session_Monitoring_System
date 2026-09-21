@@ -213,18 +213,15 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
         if now_ts < start_dt.timestamp():
             status = SessionStatus.UPCOMING.value
             remaining_seconds = int(window_end_dt - now_ts)
-        elif now_ts <= window_end_dt:
+        elif now_ts < end_dt.timestamp():
             status = SessionStatus.ACTIVE.value
             remaining_seconds = max(0, int(window_end_dt - now_ts))
-            response_window_expired = False
+            response_window_expired = now_ts > window_end_dt
         else:
-            # 10 minutes passed without response
+            # Class period ended without response
             remaining_seconds = 0
             response_window_expired = True
-            if now_ts >= end_dt.timestamp():
-                status = SessionStatus.COMPLETED.value
-            else:
-                status = SessionStatus.EXPIRED.value
+            status = SessionStatus.EXPIRED.value
 
     session_copy = dict(session)
     session_copy["session_status"] = status

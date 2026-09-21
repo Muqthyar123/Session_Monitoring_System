@@ -54,9 +54,9 @@ function getPeriodTimeStatus(
   const startMin = parseMinutes(startTimeStr);
   const endMin = parseMinutes(endTimeStr);
 
-  if (currentMinutes >= startMin && currentMinutes <= endMin + 15) {
+  if (currentMinutes >= startMin && currentMinutes <= endMin) {
     return "active";
-  } else if (currentMinutes > endMin + 15) {
+  } else if (currentMinutes > endMin) {
     return "completed";
   } else {
     return "upcoming";
