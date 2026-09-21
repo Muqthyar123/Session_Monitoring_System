@@ -23,10 +23,15 @@ export async function submitFacultyAttendance(
   sessionId: string,
   present: boolean
 ): Promise<ClassSession> {
+  const sid = (sessionId || "").trim();
+  if (!sid) {
+    throw new Error("Invalid Session ID. Please refresh the page and try again.");
+  }
   return request<ClassSession>("/attendance", {
     method: "POST",
     body: JSON.stringify({
-      session_id: sessionId,
+      session_id: sid,
+      sessionId: sid,
       status: present ? "PRESENT" : "ABSENT",
     }),
   });
@@ -36,12 +41,18 @@ export async function submitSubstitute(
   sessionId: string,
   substituteName: string
 ): Promise<ClassSession> {
+  const sid = (sessionId || "").trim();
+  if (!sid) {
+    throw new Error("Invalid Session ID. Please refresh the page and try again.");
+  }
   return request<ClassSession>("/attendance", {
     method: "POST",
     body: JSON.stringify({
-      session_id: sessionId,
+      session_id: sid,
+      sessionId: sid,
       status: "SUBSTITUTE",
       substitute_name: substituteName,
+      substituteName: substituteName,
     }),
   });
 }

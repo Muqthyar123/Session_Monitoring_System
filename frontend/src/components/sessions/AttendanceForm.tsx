@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CheckCircle2, Clock, Lock, UserCheck, UserX } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, Clock, UserCheck, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,16 +31,43 @@ export function AttendanceForm({
   const [substituteName, setSubstituteName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   const answered = session.facultyResponse !== "Pending";
 
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const startMin = parseMinutes(session.startTime);
-  const endMin = parseMinutes(session.endTime);
+  useEffect(() => {
+    if (answered) {
+      setSecondsLeft(null);
+      return;
+    }
 
-  const isPastPeriod = currentMinutes > endMin || session.sessionStatus === "Completed";
-  const isUpcoming = currentMinutes < startMin && session.sessionStatus === "Upcoming";
+    const calculateRemaining = () => {
+      const now = new Date();
+      const parts = (session.startTime || "09:00").split(":");
+      let sh = parseInt(parts[0] || "9", 10);
+      const sm = parseInt(parts[1] || "0", 10);
+      if (sh < 8) sh += 12;
+      const startMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm, 0).getTime();
+      const windowEndMs = startMs + 600000; // 10 minutes (600 seconds)
+      const diffSec = Math.floor((windowEndMs - Date.now()) / 1000);
+      return diffSec;
+    };
+
+    setSecondsLeft(calculateRemaining());
+    const interval = setInterval(() => {
+      setSecondsLeft(calculateRemaining());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [session.startTime, answered]);
+
+  const formatTimer = (sec: number) => {
+    if (sec <= 0) return "00:00 (10 Min Expired)";
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   const run = async (action: () => Promise<ClassSession>) => {
     setSubmitting(true);
@@ -49,6 +76,7 @@ export function AttendanceForm({
       toast.success("Attendance response submitted successfully");
       onSubmitted(updated);
       setStep("choose");
+      setIsEditing(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not submit your response.");
     } finally {
@@ -56,9 +84,11 @@ export function AttendanceForm({
     }
   };
 
+  const sessionId = session.id || (session as any)._id || "";
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden dark:border-slate-800 dark:bg-slate-900 transition-all">
-      {/* Top Header Bar (Image 1 Header Layout) */}
+      {/* Top Header Bar */}
       <div className="bg-slate-100/90 px-5 py-3.5 border-b border-slate-200 dark:bg-slate-800/80 dark:border-slate-800 flex items-center justify-between">
         <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
           {session.period} — {session.subject}
@@ -67,14 +97,12 @@ export function AttendanceForm({
           status={
             answered
               ? session.facultyResponse
-              : isPastPeriod
-              ? "Completed"
               : session.sessionStatus
           }
         />
       </div>
 
-      {/* Card Details Body (Matching Image 1 Key-Value Layout) */}
+      {/* Card Details Body */}
       <div className="p-5 space-y-4">
         <div className="grid grid-cols-[160px_1fr] gap-y-2.5 text-sm">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Subject:</span>
@@ -92,11 +120,24 @@ export function AttendanceForm({
           <span className="text-slate-900 dark:text-white font-semibold">{session.endTime}</span>
         </div>
 
-        {/* Card Footer Actions (Matching Image 1 Footer & Strict Lock Rule) */}
+        {/* 10-Minute Live Countdown Timer Banner */}
+        {(!answered || isEditing) ? (
+          <div className="rounded-lg bg-amber-50/90 border border-amber-200/80 dark:bg-amber-950/40 dark:border-amber-900/60 p-3 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-center justify-between shadow-xs">
+            <span className="flex items-center gap-2">
+              <Clock className="size-4 text-amber-600 dark:text-amber-400 animate-pulse" />
+              10-Minute Attendance Marking Window
+            </span>
+            <span className="font-mono text-sm font-bold bg-amber-200/70 dark:bg-amber-900/80 text-amber-950 dark:text-amber-100 px-2.5 py-1 rounded-md border border-amber-300 dark:border-amber-700">
+              {secondsLeft !== null ? formatTimer(secondsLeft) : "10:00"}
+            </span>
+          </div>
+        ) : null}
+
+        {/* Card Footer Actions - Fully accessible for testing */}
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-          {answered ? (
-            /* Completed & Marked Period -> Read-Only Badge (NO REMARKING!) */
-            <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+          {answered && !isEditing ? (
+            /* Completed & Marked Period -> Read-Only Badge + Re-mark Option */
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
               {session.facultyResponse === "Present" ? (
                 <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                   <CheckCircle2 className="size-4" /> Attended (Faculty Present)
@@ -110,30 +151,19 @@ export function AttendanceForm({
                   <UserCheck className="size-4" /> Substitute: {session.substituteName || "Assigned"}
                 </span>
               )}
-              {session.responseTime ? (
-                <span className="text-xs text-slate-400 ml-auto">Responded: {session.responseTime}</span>
-              ) : null}
-            </div>
-          ) : isPastPeriod ? (
-            /* Period Ended Without Response -> Locked / Read-Only (NO REMARKING ALLOWED!) */
-            <div className="flex items-center gap-3">
-              <Button disabled size="sm" variant="outline" className="opacity-50 cursor-not-allowed">
-                Period Ended
-              </Button>
-              <span className="text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
-                <Lock className="size-3.5" /> Class period finished — attendance remarking closed
-              </span>
-            </div>
-          ) : isUpcoming ? (
-            /* Upcoming Period -> Disabled Button + Opens at <startTime> (Image 1 Style) */
-            <div className="flex items-center gap-3">
-              <Button disabled size="sm" variant="outline" className="opacity-60 cursor-not-allowed">
-                Mark Attendance
-              </Button>
-              <span className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-medium">
-                <Clock className="size-3.5 text-slate-400" />
-                Opens at {session.startTime}
-              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                {session.responseTime ? (
+                  <span className="text-xs text-slate-400">Responded: {session.responseTime}</span>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
+                  onClick={() => setIsEditing(true)}
+                >
+                  Change Response
+                </Button>
+              </div>
             </div>
           ) : step === "choose" ? (
             /* Active Class Period -> Interactive Present / Not Present Buttons */
@@ -168,7 +198,7 @@ export function AttendanceForm({
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
-                  onClick={() => run(() => submitFacultyAttendance(session.id, true))}
+                  onClick={() => run(() => submitFacultyAttendance(sessionId, true))}
                   disabled={submitting}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
@@ -194,7 +224,7 @@ export function AttendanceForm({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => run(() => submitFacultyAttendance(session.id, false))}
+                  onClick={() => run(() => submitFacultyAttendance(sessionId, false))}
                   disabled={submitting}
                 >
                   No
@@ -214,7 +244,7 @@ export function AttendanceForm({
                   return;
                 }
                 setNameError(null);
-                void run(() => submitSubstitute(session.id, substituteName.trim()));
+                void run(() => submitSubstitute(sessionId, substituteName.trim()));
               }}
               noValidate
             >

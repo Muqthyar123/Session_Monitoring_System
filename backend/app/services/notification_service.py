@@ -115,15 +115,34 @@ async def notify_session_start(session_doc: dict):
     )
 
 
-async def notify_immediate_faculty_absent(session_doc: dict, reporter_name: str, reporter_role: str):
-    """Creates immediate admin alert when faculty is reported absent."""
+async def notify_immediate_faculty_absent(
+    session_doc: dict,
+    reporter_name: str,
+    reporter_role: str,
+    status: str = "ABSENT",
+    substitute_name: Optional[str] = None,
+):
+    """Creates immediate admin alert when faculty is reported absent or substitute."""
     db = get_database()
-    sec_name = session_doc["section"]
-    subj = session_doc["subject"]
-    time_str = f"{session_doc['start_time']} - {session_doc['end_time']}"
+    sec_name = session_doc.get("section", "")
+    subj = session_doc.get("subject", "")
+    assigned_fac = session_doc.get("faculty") or "Assigned Faculty"
+    time_str = f"{session_doc.get('start_time', '')} - {session_doc.get('end_time', '')}"
+    period_str = session_doc.get("period", "Class Session")
+
+    now = datetime.now(timezone.utc)
+
+    if status == "SUBSTITUTE":
+        sub_title = f"Alert: Substitute Faculty ({sec_name})"
+        sub_name_str = substitute_name or "Substitute"
+        msg = f"Substitute faculty '{sub_name_str}' assigned in place of '{assigned_fac}' for {subj} ({period_str}, {sec_name}, {time_str}) reported by {reporter_role} {reporter_name}."
+        reason_str = f"Faculty not available — Substitute: {sub_name_str} (Replaced {assigned_fac})"
+    else:
+        sub_title = f"Alert: Faculty Absent ({sec_name})"
+        msg = f"Faculty '{assigned_fac}' reported ABSENT for {subj} ({period_str}, {sec_name}, {time_str}) by {reporter_role} {reporter_name}."
+        reason_str = f"Faculty not available ({assigned_fac})"
 
     # Insert Admin Alert record
-    now = datetime.now(timezone.utc)
     alert_doc = {
         "section": sec_name,
         "subject": subj,
@@ -131,7 +150,7 @@ async def notify_immediate_faculty_absent(session_doc: dict, reporter_name: str,
         "session_id": str(session_doc["_id"]),
         "time": now.strftime("%H:%M"),
         "reported_by": reporter_role,
-        "reason": "Faculty not available",
+        "reason": reason_str,
         "status": "New",
         "created_at": now,
     }
@@ -141,14 +160,11 @@ async def notify_immediate_faculty_absent(session_doc: dict, reporter_name: str,
     admins = await db.users.find({"role": UserRole.ADMIN.value, "is_active": True}).to_list(length=100)
     admin_ids = [str(a["_id"]) for a in admins]
 
-    title = f"Alert: Faculty Absent ({sec_name})"
-    msg = f"Faculty reported absent for {subj} ({sec_name}, {time_str}) by {reporter_role} {reporter_name}."
-
     for a_id in admin_ids:
         await create_in_app_notification(
             recipient_user_id=a_id,
             notification_type=NotificationType.FACULTY_ABSENT_ALERT,
-            title=title,
+            title=sub_title,
             message=msg,
             section=sec_name,
             subject=subj,
@@ -158,9 +174,9 @@ async def notify_immediate_faculty_absent(session_doc: dict, reporter_name: str,
 
     await send_push_notification_to_users(
         user_ids=admin_ids,
-        title=title,
+        title=sub_title,
         body=msg,
-        data={"session_id": str(session_doc["_id"]), "type": "ABSENT_ALERT"},
+        data={"session_id": str(session_doc["_id"]), "type": status},
     )
 
 

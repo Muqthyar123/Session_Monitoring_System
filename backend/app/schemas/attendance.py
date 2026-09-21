@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, Optional
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AttendanceStatus(str, Enum):
@@ -11,9 +11,21 @@ class AttendanceStatus(str, Enum):
 
 
 class AttendanceSubmitRequest(BaseModel):
-    session_id: str
+    session_id: str = Field(..., alias="sessionId")
     status: AttendanceStatus
-    substitute_name: Optional[str] = None
+    substitute_name: Optional[str] = Field(None, alias="substituteName")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            v_upper = v.strip().upper()
+            if v_upper in ["NOT PRESENT", "NOT_PRESENT"]:
+                return AttendanceStatus.ABSENT
+            return v_upper
+        return v
 
 
 class AttendanceRecordResponse(BaseModel):

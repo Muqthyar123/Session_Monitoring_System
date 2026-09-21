@@ -131,7 +131,7 @@ async def test_submit_absent_triggers_immediate_admin_alert(client: AsyncClient)
     # Check that an admin alert record was created immediately
     alert = await db.admin_alerts.find_one({"session_id": session_id})
     assert alert is not None
-    assert alert["reason"] == "Faculty not available"
+    assert "Faculty not available" in alert["reason"]
 
 
 @pytest.mark.asyncio

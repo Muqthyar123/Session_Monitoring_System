@@ -27,7 +27,8 @@ function AttendancePage() {
   const section = user?.section ?? "";
   const { data, loading, error, reload } = useAsyncData(
     () => getActiveSessions(section),
-    [section]
+    [section],
+    3000
   );
   const [overrides, setOverrides] = useState<Record<string, ClassSession>>({});
 
@@ -41,7 +42,10 @@ function AttendancePage() {
 
   // Sort all sessions for today strictly in Period-wise order (Period 1, Period 2, ...)
   const sessions = (data ?? [])
-    .map((s) => overrides[s.id] ?? s)
+    .map((s) => {
+      const sid = s.id || (s as any)._id;
+      return (sid ? overrides[sid] : null) ?? s;
+    })
     .sort((a, b) => getMinPeriod(a) - getMinPeriod(b));
 
   return (
@@ -63,15 +67,21 @@ function AttendancePage() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {sessions.map((session) => (
-            <AttendanceForm
-              key={session.id}
-              session={session}
-              onSubmitted={(updated) =>
-                setOverrides((prev) => ({ ...prev, [updated.id]: updated }))
-              }
-            />
-          ))}
+          {sessions.map((session) => {
+            const sid = session.id || (session as any)._id || session.period;
+            return (
+              <AttendanceForm
+                key={sid}
+                session={session}
+                onSubmitted={(updated) => {
+                  const updatedId = updated.id || (updated as any)._id;
+                  if (updatedId) {
+                    setOverrides((prev) => ({ ...prev, [updatedId]: updated }));
+                  }
+                }}
+              />
+            );
+          })}
         </div>
       )}
     </CRLRLayout>

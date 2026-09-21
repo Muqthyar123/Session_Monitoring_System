@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, List, Optional
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class SessionStatus(str, Enum):
@@ -19,7 +19,8 @@ class FacultyResponseStatus(str, Enum):
 
 
 class ClassSessionResponse(BaseModel):
-    id: str = Field(..., alias="_id")
+    id: str
+    _id: Optional[str] = None
     section: str
     year: Optional[str] = None
     subject: str
@@ -45,3 +46,14 @@ class ClassSessionResponse(BaseModel):
     response_window_expired: bool = Field(False, alias="responseWindowExpired")
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_id_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            val = data.get("id") or data.get("_id")
+            if val is not None:
+                str_val = str(val)
+                data["id"] = str_val
+                data["_id"] = str_val
+        return data

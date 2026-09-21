@@ -26,6 +26,8 @@ async def submit_attendance(
     session = None
     if ObjectId.is_valid(data.session_id):
         session = await db.sessions.find_one({"_id": ObjectId(data.session_id)})
+    else:
+        session = await db.sessions.find_one({"_id": data.session_id})
 
     if not session:
         # Ensure sessions for today are synced in database
@@ -33,10 +35,22 @@ async def submit_attendance(
 
         if ObjectId.is_valid(data.session_id):
             session = await db.sessions.find_one({"_id": ObjectId(data.session_id)})
+        else:
+            session = await db.sessions.find_one({"_id": data.session_id})
 
         if not session:
             date_str = now_local.strftime("%Y-%m-%d")
-            session = await db.sessions.find_one({"section": user_sec, "date": date_str})
+            # If session_id is a mock string like "tt-session-II-CSE-B-1", extract period number
+            if "tt-session-" in data.session_id:
+                parts = data.session_id.split("-")
+                if parts and parts[-1].isdigit():
+                    p_num = parts[-1]
+                    session = await db.sessions.find_one(
+                        {"section": user_sec, "date": date_str, "period": {"$regex": f"Period {p_num}"}}
+                    )
+
+            if not session:
+                session = await db.sessions.find_one({"section": user_sec, "date": date_str})
 
         if not session:
             date_str = now_local.strftime("%Y-%m-%d")
@@ -127,7 +141,11 @@ async def submit_attendance(
     # Trigger immediate admin alert if absent or substitute
     if data.status in [AttendanceStatus.ABSENT, AttendanceStatus.SUBSTITUTE]:
         await notify_immediate_faculty_absent(
-            session_doc=session, reporter_name=user_name, reporter_role=user_role
+            session_doc=session,
+            reporter_name=user_name,
+            reporter_role=user_role,
+            status=data.status.value,
+            substitute_name=sub_name,
         )
 
     # Log audit entry

@@ -26,7 +26,7 @@ export const Route = createFileRoute("/crlr/dashboard")({
 function CRLRDashboardPage() {
   const { user } = useAuth();
   const section = user?.section ?? "";
-  const { data, loading, error, reload } = useAsyncData(() => getSessions(section), [section]);
+  const { data, loading, error, reload } = useAsyncData(() => getSessions(section), [section], 3000);
 
   const sessions = data ?? [];
   const pending = sessions.filter((s) => s.facultyResponse === "Pending").length;
