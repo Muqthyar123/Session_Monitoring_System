@@ -106,6 +106,25 @@ async def submit_attendance(
     now_utc = datetime.now(timezone.utc)
     response_time_str = now_local.strftime("%H:%M")
 
+    arr_time = data.arrival_time.strip() if data.arrival_time else None
+    arr_comment = data.arrival_comment.strip() if data.arrival_comment else None
+    is_late = False
+
+    # Check late arrival: if status is PRESENT and arrival_time is specified
+    if data.status == AttendanceStatus.PRESENT and arr_time:
+        try:
+            start_str = session.get("start_time", "09:00")
+            start_m = int(start_str.split(":")[0]) * 60 + int(start_str.split(":")[1])
+            arr_parts = arr_time.replace("AM", "").replace("PM", "").strip().split(":")
+            arr_h = int(arr_parts[0])
+            if arr_h < 8:
+                arr_h += 12
+            arr_m = arr_h * 60 + int(arr_parts[1])
+            if arr_m > start_m + 5: # arrived > 5 minutes after start time
+                is_late = True
+        except Exception:
+            is_late = bool(arr_time)
+
     # Record audit entry in attendance_records collection
     rec_doc = {
         "session_id": str(session["_id"]),
@@ -115,6 +134,9 @@ async def submit_attendance(
         "section": session["section"],
         "status": data.status.value,
         "substitute_name": data.substitute_name.strip() if data.substitute_name else None,
+        "arrival_time": arr_time,
+        "arrival_comment": arr_comment,
+        "is_late": is_late,
         "created_at": now_utc,
     }
     await db.attendance_records.insert_one(rec_doc)
@@ -133,6 +155,9 @@ async def submit_attendance(
     update_data = {
         "faculty_response": fac_resp,
         "substitute_name": sub_name,
+        "arrival_time": arr_time,
+        "arrival_comment": arr_comment,
+        "is_late": is_late,
         "response_time": response_time_str,
         "updated_at": now_utc,
     }

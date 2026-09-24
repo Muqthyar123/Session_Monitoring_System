@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
 
 
 class UserRole(str, Enum):
@@ -24,7 +24,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6)
+    password: Optional[str] = Field(None, min_length=6)
 
 
 class UserUpdate(BaseModel):
@@ -47,3 +47,8 @@ class UserResponse(UserBase):
     updated_at: datetime
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @computed_field(alias="id")
+    @property
+    def id_prop(self) -> str:
+        return self.id

@@ -74,6 +74,16 @@ async def delete_all_timetables_api(
     )
 
 
+@router.post("/reset", response_model=ApiResponse[dict])
+async def reset_all_timetables_api(
+    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+):
+    count = await delete_all_timetables()
+    return ApiResponse(
+        success=True, message=f"Reset successful: Deleted all {count} timetable records from database."
+    )
+
+
 @router.delete("/{section}", response_model=ApiResponse[dict])
 async def delete_section_timetable_api(
     section: str,

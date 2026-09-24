@@ -68,3 +68,9 @@ export async function deleteAllTimetables(): Promise<void> {
     method: "DELETE",
   });
 }
+
+export async function resetAllTimetables(): Promise<void> {
+  await request("/admin/timetable/reset", {
+    method: "POST",
+  });
+}

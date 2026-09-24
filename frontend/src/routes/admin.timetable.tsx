@@ -31,8 +31,10 @@ import {
   downloadTimetableTemplate,
   getTimetable,
   getTimetableUploads,
+  resetAllTimetables,
   uploadTimetable,
 } from "@/services/timetableService";
+import { toast } from "sonner";
 import { MOCK_SECTIONS, MOCK_YEARS, type TimetableUpload } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/admin/timetable")({
@@ -154,9 +156,28 @@ function TimetablePage() {
         title="Timetable Management"
         description="Upload the college timetable workbook. Parsing is performed by the backend."
         actions={
-          <Button variant="outline" onClick={downloadTimetableTemplate}>
-            <Download className="size-4" /> Download Timetable Template
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={downloadTimetableTemplate}>
+              <Download className="size-4 mr-1.5" /> Download Timetable Template
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (confirm("Reset Timetables: Are you sure you want to delete all timetables from MongoDB database?")) {
+                  try {
+                    await resetAllTimetables();
+                    toast.success("Timetables reset successfully: Deleted from database.");
+                    uploads.reload();
+                    timetable.reload();
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to reset timetables.");
+                  }
+                }
+              }}
+            >
+              <Trash2 className="size-4 mr-1.5" /> Reset Timetables
+            </Button>
+          </div>
         }
       />
 

@@ -21,7 +21,9 @@ export async function getSession(id: string): Promise<ClassSession | null> {
 
 export async function submitFacultyAttendance(
   sessionId: string,
-  present: boolean
+  present: boolean,
+  arrivalTime?: string,
+  arrivalComment?: string
 ): Promise<ClassSession> {
   const sid = (sessionId || "").trim();
   if (!sid) {
@@ -33,6 +35,10 @@ export async function submitFacultyAttendance(
       session_id: sid,
       sessionId: sid,
       status: present ? "PRESENT" : "ABSENT",
+      arrival_time: arrivalTime,
+      arrivalTime: arrivalTime,
+      arrival_comment: arrivalComment,
+      arrivalComment: arrivalComment,
     }),
   });
 }

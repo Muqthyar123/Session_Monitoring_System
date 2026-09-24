@@ -34,6 +34,9 @@ export function AttendanceForm({
   const [isEditing, setIsEditing] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
+  const [arrivalTime, setArrivalTime] = useState("");
+  const [arrivalComment, setArrivalComment] = useState("");
+
   const answered = session.facultyResponse !== "Pending";
 
   useEffect(() => {
@@ -195,10 +198,32 @@ export function AttendanceForm({
                 </span>{" "}
                 is present for this period?
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
+                <div>
+                  <Label htmlFor="arrivalTime" className="text-xs font-medium">Arrival Time (Optional, e.g. 09:15 AM)</Label>
+                  <Input
+                    id="arrivalTime"
+                    value={arrivalTime}
+                    onChange={(e) => setArrivalTime(e.target.value)}
+                    placeholder={`Class start time: ${session.startTime}`}
+                    className="h-8 text-xs bg-white dark:bg-slate-900 mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="arrivalComment" className="text-xs font-medium">Arrival Comment / Remarks (Optional)</Label>
+                  <Input
+                    id="arrivalComment"
+                    value={arrivalComment}
+                    onChange={(e) => setArrivalComment(e.target.value)}
+                    placeholder="Write arrival comments or notes"
+                    className="h-8 text-xs bg-white dark:bg-slate-900 mt-1"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
                 <Button
                   size="sm"
-                  onClick={() => run(() => submitFacultyAttendance(sessionId, true))}
+                  onClick={() => run(() => submitFacultyAttendance(sessionId, true, arrivalTime, arrivalComment))}
                   disabled={submitting}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >

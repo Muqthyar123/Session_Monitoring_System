@@ -122,7 +122,7 @@ function CRLRManagementPage() {
 
   const openEdit = (user: CRLRUser) => {
     setEditing(user);
-    const { id: _id, ...rest } = user;
+    const { id, _id, ...rest } = user as any;
     setForm(rest);
     setFormErrors({});
     setDialogOpen(true);
@@ -142,7 +142,8 @@ function CRLRManagementPage() {
     setSaving(true);
     try {
       if (editing) {
-        await updateCRLRUser(editing.id, form);
+        const userId = editing.id || (editing as any)._id;
+        await updateCRLRUser(userId, form);
         toast.success("Record updated");
       } else {
         await createCRLRUser(form);
@@ -160,7 +161,8 @@ function CRLRManagementPage() {
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     try {
-      await deleteCRLRUser(pendingDelete.id);
+      const userId = pendingDelete.id || (pendingDelete as any)._id;
+      await deleteCRLRUser(userId);
       toast.success("Record deleted");
       reload();
     } catch (err) {
@@ -292,7 +294,7 @@ function CRLRManagementPage() {
             }
           />
         ) : (
-          <DataTable columns={columns} rows={rows} getRowId={(r) => r.id} />
+          <DataTable columns={columns} rows={rows} getRowId={(r) => r.id || (r as any)._id} />
         )}
       </section>
 

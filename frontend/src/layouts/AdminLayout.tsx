@@ -6,6 +6,7 @@ import {
   Users,
   MonitorCheck,
   BellRing,
+  BarChart3,
   LogOut,
   Menu,
   GraduationCap,
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/admin/analytics", label: "Faculty Analytics", icon: BarChart3 },
   { to: "/admin/timetable", label: "Timetable Management", icon: CalendarDays },
   { to: "/admin/cr-lr", label: "CR/LR Management", icon: Users },
   { to: "/admin/sessions", label: "Sessions / Monitoring", icon: MonitorCheck },
@@ -36,7 +38,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   };
 
   const nav = (
-    <nav className="flex flex-1 flex-col gap-1 p-3">
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
       {NAV_ITEMS.map((item) => (
         <Link
           key={item.to}
@@ -44,7 +46,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           onClick={() => setOpen(false)}
           className={cn(
             "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            pathname === item.to && "bg-sidebar-accent text-sidebar-accent-foreground",
+            pathname === item.to && "bg-sidebar-accent text-sidebar-accent-foreground font-semibold",
           )}
         >
           <item.icon className="size-4 shrink-0" />
@@ -56,16 +58,17 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <RoleGuard allow={["ADMIN"]} redirectTo="/admin/login">
-      <div className="flex min-h-screen w-full bg-background">
-        <aside className="hidden w-64 shrink-0 flex-col bg-sidebar lg:flex">
-          <div className="flex items-center gap-2 border-b border-sidebar-border px-4 py-4">
+      <div className="flex h-screen w-full overflow-hidden bg-background">
+        {/* Sticky Left Navigation Sidebar */}
+        <aside className="hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex sticky top-0">
+          <div className="flex shrink-0 items-center gap-2 border-b border-sidebar-border px-4 py-4">
             <GraduationCap className="size-6 text-sidebar-primary" />
             <span className="text-sm font-semibold text-sidebar-foreground">
               Faculty Attendance Monitor
             </span>
           </div>
           {nav}
-          <div className="border-t border-sidebar-border p-3">
+          <div className="shrink-0 border-t border-sidebar-border p-3">
             <button
               onClick={handleSignOut}
               className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -75,6 +78,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           </div>
         </aside>
 
+        {/* Mobile Drawer */}
         {open ? (
           <div className="fixed inset-0 z-40 lg:hidden">
             <div
@@ -83,7 +87,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               aria-hidden
             />
             <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar">
-              <div className="flex items-center justify-between border-b border-sidebar-border px-4 py-4">
+              <div className="flex shrink-0 items-center justify-between border-b border-sidebar-border px-4 py-4">
                 <span className="text-sm font-semibold text-sidebar-foreground">Admin Menu</span>
                 <Button
                   variant="ghost"
@@ -96,7 +100,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 </Button>
               </div>
               {nav}
-              <div className="border-t border-sidebar-border p-3">
+              <div className="shrink-0 border-t border-sidebar-border p-3">
                 <button
                   onClick={handleSignOut}
                   className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent"
@@ -108,8 +112,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           </div>
         ) : null}
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-14 items-center gap-3 border-b border-border bg-card px-4">
+        {/* Main Content Area - Scrolls Independently */}
+        <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
+          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
             <Button
               variant="ghost"
               size="icon"
@@ -129,7 +134,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               </Button>
             </div>
           </header>
-          <main className="min-w-0 flex-1 space-y-6 p-4 sm:p-6">{children}</main>
+          <main className="min-w-0 flex-1 overflow-y-auto space-y-6 p-4 sm:p-6">{children}</main>
         </div>
       </div>
     </RoleGuard>

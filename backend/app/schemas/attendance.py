@@ -14,6 +14,8 @@ class AttendanceSubmitRequest(BaseModel):
     session_id: str = Field(..., alias="sessionId")
     status: AttendanceStatus
     substitute_name: Optional[str] = Field(None, alias="substituteName")
+    arrival_time: Optional[str] = Field(None, alias="arrivalTime")
+    arrival_comment: Optional[str] = Field(None, alias="arrivalComment")
 
     model_config = ConfigDict(populate_by_name=True)
 

@@ -30,7 +30,8 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
         roll_clean = None
 
     now = datetime.now(timezone.utc)
-    hashed_pwd = hash_password(data.password)
+    raw_pwd = data.password or data.roll_number or "crlr1234"
+    hashed_pwd = hash_password(raw_pwd)
 
     user_doc = {
         "name": data.name.strip(),
