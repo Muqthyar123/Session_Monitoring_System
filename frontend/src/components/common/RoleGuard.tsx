@@ -24,7 +24,12 @@ export function RoleGuard({
       if (!user) {
         navigate({ to: redirectTo, replace: true });
       } else if (!allow.includes(user.role)) {
-        const fallback = user.role === "ADMIN" ? "/admin/dashboard" : "/crlr/dashboard";
+        const fallback =
+          user.role === "ADMIN"
+            ? "/admin/dashboard"
+            : user.role === "MENTOR"
+            ? "/mentor/absentees"
+            : "/crlr/dashboard";
         navigate({ to: fallback, replace: true });
       }
     }

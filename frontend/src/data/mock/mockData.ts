@@ -4,7 +4,7 @@
  * demonstrate the UI. Delete this file once real APIs are connected.
  */
 
-export type Role = "ADMIN" | "CR" | "LR";
+export type Role = "ADMIN" | "CR" | "LR" | "MENTOR";
 export type SessionStatus = "Upcoming" | "Active" | "Completed";
 export type FacultyResponse = "Pending" | "Present" | "Not Present" | "Substitute";
 
@@ -15,6 +15,7 @@ export interface AuthUser {
   role: Role;
   year?: string;
   section?: string;
+  mentorId?: string;
 }
 
 export interface CRLRUser {

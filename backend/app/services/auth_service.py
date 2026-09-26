@@ -9,13 +9,23 @@ from app.schemas.user import UserRole
 
 async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
     db = get_database()
-    email_clean = login_data.email.strip().lower()
-    user = await db.users.find_one({"email": email_clean})
+    raw_ident = login_data.email.strip()
+    email_clean = raw_ident.lower()
+    
+    # Try finding user by email, mentor_id, or roll_number
+    user = await db.users.find_one({
+        "$or": [
+            {"email": email_clean},
+            {"mentor_id": raw_ident},
+            {"mentor_id": raw_ident.upper()},
+            {"roll_number": raw_ident.upper()}
+        ]
+    })
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
+            detail="Invalid credentials.",
         )
 
     if not user.get("is_active", True):
@@ -27,7 +37,7 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
     if not verify_password(login_data.password, user.get("password_hash", "")):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password.",
+            detail="Invalid credentials.",
         )
 
     role = user.get("role")
@@ -36,10 +46,15 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account is not an administrator account.",
         )
-    if login_data.portal == "CRLR" and role == UserRole.ADMIN.value:
+    if login_data.portal == "CRLR" and role not in [UserRole.CR.value, UserRole.LR.value]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Administrators must use the Admin login page.",
+            detail="This portal is strictly for Class & Lateral Representatives.",
+        )
+    if login_data.portal == "MENTOR" and role != UserRole.MENTOR.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This portal is strictly for Mentors.",
         )
 
     token_data = {

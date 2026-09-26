@@ -5,7 +5,7 @@ import * as authService from "@/services/authService";
 interface AuthContextValue {
   user: AuthUser | null;
   initializing: boolean;
-  signIn: (email: string, password: string, portal: "ADMIN" | "CRLR") => Promise<AuthUser>;
+  signIn: (email: string, password: string, portal: "ADMIN" | "CRLR" | "MENTOR") => Promise<AuthUser>;
   signOut: () => Promise<void>;
 }
 

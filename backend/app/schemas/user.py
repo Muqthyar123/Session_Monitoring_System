@@ -8,6 +8,7 @@ class UserRole(str, Enum):
     ADMIN = "ADMIN"
     CR = "CR"
     LR = "LR"
+    MENTOR = "MENTOR"
 
 
 class UserBase(BaseModel):
@@ -15,6 +16,7 @@ class UserBase(BaseModel):
     email: EmailStr
     role: UserRole
     roll_number: Optional[str] = Field(None, alias="rollNumber")
+    mentor_id: Optional[str] = Field(None, alias="mentorId")
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None
@@ -32,6 +34,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     role: Optional[UserRole] = None
     roll_number: Optional[str] = Field(None, alias="rollNumber")
+    mentor_id: Optional[str] = Field(None, alias="mentorId")
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None

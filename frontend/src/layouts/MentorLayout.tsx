@@ -1,10 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard,
-  Calendar,
-  ClipboardCheck,
-  Bell,
+  UserX,
+  BarChart3,
   LogOut,
   Menu,
   GraduationCap,
@@ -13,18 +11,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/common/RoleGuard";
-import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { to: "/crlr/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/crlr/timetable", label: "Timetable", icon: Calendar },
-  { to: "/crlr/attendance", label: "Faculty Attendance", icon: ClipboardCheck },
-  { to: "/crlr/student-attendance", label: "Provide Student Attendance", icon: GraduationCap },
-  { to: "/crlr/notifications", label: "Alerts", icon: Bell },
+  { to: "/mentor/absentees", label: "Absentee Students", icon: UserX },
+  { to: "/mentor/analytics", label: "Attendance Analytics", icon: BarChart3 },
 ] as const;
 
-export function CRLRLayout({ children }: { children: ReactNode }) {
+export function MentorLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -32,7 +26,7 @@ export function CRLRLayout({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     await signOut();
-    navigate({ to: "/auth/login", replace: true });
+    navigate({ to: "/mentor/login", replace: true });
   };
 
   const nav = (
@@ -55,14 +49,14 @@ export function CRLRLayout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <RoleGuard allow={["CR", "LR"]} redirectTo="/auth/login">
+    <RoleGuard allow={["MENTOR"]} redirectTo="/mentor/login">
       <div className="flex h-screen w-full overflow-hidden bg-background">
-        {/* Sticky Left Navigation Sidebar */}
+        {/* Desktop Sticky Left Navigation Sidebar */}
         <aside className="hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex sticky top-0">
           <div className="flex shrink-0 items-center gap-2 border-b border-sidebar-border px-4 py-4">
             <GraduationCap className="size-6 text-sidebar-primary" />
             <span className="text-sm font-semibold text-sidebar-foreground">
-              Faculty Attendance Monitor
+              Mentor Portal
             </span>
           </div>
           {nav}
@@ -86,7 +80,7 @@ export function CRLRLayout({ children }: { children: ReactNode }) {
             />
             <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-sidebar">
               <div className="flex shrink-0 items-center justify-between border-b border-sidebar-border px-4 py-4">
-                <span className="text-sm font-semibold text-sidebar-foreground">CR / LR Menu</span>
+                <span className="text-sm font-semibold text-sidebar-foreground">Mentor Menu</span>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -110,7 +104,7 @@ export function CRLRLayout({ children }: { children: ReactNode }) {
           </div>
         ) : null}
 
-        {/* Main Content Area - Scrolls Independently */}
+        {/* Main Content Area */}
         <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
           <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
             <Button
@@ -122,13 +116,12 @@ export function CRLRLayout({ children }: { children: ReactNode }) {
             >
               <Menu className="size-5" />
             </Button>
-            <span className="truncate text-sm font-semibold">CR / LR Portal</span>
+            <span className="truncate text-sm font-semibold">Mentor Portal</span>
             <div className="ml-auto flex min-w-0 items-center gap-3">
-              <NotificationBell />
               <div className="hidden min-w-0 text-right sm:block">
                 <p className="truncate text-xs font-semibold">{user?.name}</p>
                 <p className="truncate text-[10px] text-muted-foreground">
-                  {user?.role} · {user?.year} · Section {user?.section}
+                  Mentor ID: {user?.mentorId || user?.email}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleSignOut}>

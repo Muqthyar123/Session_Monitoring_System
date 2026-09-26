@@ -20,6 +20,9 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { to: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/analytics", label: "Faculty Analytics", icon: BarChart3 },
+  { to: "/admin/student-analytics", label: "Student Analytics", icon: BarChart3 },
+  { to: "/admin/mentors", label: "Manage Mentors", icon: Users },
+  { to: "/admin/students", label: "Manage Students", icon: GraduationCap },
   { to: "/admin/timetable", label: "Timetable Management", icon: CalendarDays },
   { to: "/admin/cr-lr", label: "CR/LR Management", icon: Users },
   { to: "/admin/sessions", label: "Sessions / Monitoring", icon: MonitorCheck },

@@ -8,10 +8,13 @@ from app.api import (
     analytics,
     attendance,
     auth,
+    mentors,
     notifications,
     push,
     sections,
     sessions,
+    student_attendance,
+    students,
     timetable,
     users,
 )
@@ -131,10 +134,13 @@ api_router_prefix = settings.API_V1_STR
 
 app.include_router(auth.router, prefix=api_router_prefix)
 app.include_router(users.router, prefix=api_router_prefix)
+app.include_router(mentors.router, prefix=api_router_prefix)
+app.include_router(students.router, prefix=api_router_prefix)
 app.include_router(sections.router, prefix=api_router_prefix)
 app.include_router(timetable.router, prefix=api_router_prefix)
 app.include_router(sessions.router, prefix=api_router_prefix)
 app.include_router(attendance.router, prefix=api_router_prefix)
+app.include_router(student_attendance.router, prefix=api_router_prefix)
 app.include_router(notifications.router, prefix=api_router_prefix)
 app.include_router(push.router, prefix=api_router_prefix)
 app.include_router(analytics.router, prefix=api_router_prefix)

@@ -720,3 +720,331 @@ async def parse_and_import_timetable_excel(
         "failed": failed_rows,
         "errors": errors,
     }
+
+
+# ----------------------------------------------------
+# MENTOR EXCEL PROCESSING
+# ----------------------------------------------------
+
+def generate_mentor_excel_template() -> bytes:
+    """Generate a clean .xlsx template for Mentor bulk import."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Mentor_Import_Template"
+
+    headers = ["Mentor ID", "Mentor Name", "Password", "Phone Number"]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    samples = [
+        ["M101", "Dr. A. Ramesh", "mentor1234", "9876543210"],
+        ["M102", "Prof. S. Sunita", "mentor1234", "9876543211"],
+    ]
+    for row in samples:
+        ws.append(row)
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 16)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+async def parse_and_import_mentor_excel(
+    file_bytes: bytes, filename: str, actor_id: str
+) -> Dict[str, Any]:
+    """Parse Mentor Excel workbook and safely import mentors into users collection."""
+    if not filename.lower().endswith(".xlsx"):
+        raise ValueError("Invalid file format. Only .xlsx Excel workbooks are supported.")
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as e:
+        raise ValueError(f"Failed to read Excel file: {str(e)}")
+
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise ValueError("Excel file is empty.")
+
+    header_row = [str(cell).strip().lower() if cell is not None else "" for cell in rows[0]]
+    col_map = {}
+    for idx, h in enumerate(header_row):
+        if "mentor id" in h or h == "id":
+            col_map["mentor_id"] = idx
+        elif "name" in h:
+            col_map["name"] = idx
+        elif "password" in h:
+            col_map["password"] = idx
+        elif "phone" in h:
+            col_map["phone"] = idx
+
+    missing_cols = [c for c in ["mentor_id", "name"] if c not in col_map]
+    if missing_cols:
+        raise ValueError(f"Missing required columns in Excel: {', '.join(missing_cols)}")
+
+    db = get_database()
+    existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=5000)
+    existing_mentors = {u["mentor_id"].upper(): str(u["_id"]) for u in existing_users if u.get("mentor_id")}
+
+    seen_ids_in_file = set()
+    total_rows = 0
+    created_count = 0
+    updated_count = 0
+    failed_count = 0
+    errors = []
+
+    for row_idx, row_values in enumerate(rows[1:], start=2):
+        if not any(row_values):
+            continue
+
+        total_rows += 1
+
+        def get_val(col_name: str) -> str:
+            idx = col_map.get(col_name)
+            if idx is not None and idx < len(row_values) and row_values[idx] is not None:
+                return str(row_values[idx]).strip()
+            return ""
+
+        mentor_id = get_val("mentor_id").upper()
+        name = get_val("name")
+        password = get_val("password") or "mentor1234"
+        phone = get_val("phone")
+
+        row_errors = []
+        if not mentor_id:
+            row_errors.append("Mentor ID is required.")
+        if not name:
+            row_errors.append("Mentor Name is required.")
+
+        if mentor_id in seen_ids_in_file:
+            row_errors.append(f"Duplicate Mentor ID '{mentor_id}' within Excel file.")
+        else:
+            if mentor_id:
+                seen_ids_in_file.add(mentor_id)
+
+        if row_errors:
+            failed_count += 1
+            errors.append({"row": row_idx, "mentor_id": mentor_id or "N/A", "errors": row_errors})
+            continue
+
+        now = datetime.now(timezone.utc)
+        email = f"{mentor_id.lower()}@fams.edu"
+
+        if mentor_id in existing_mentors:
+            u_id = existing_mentors[mentor_id]
+            update_data = {"name": name, "updated_at": now}
+            if phone:
+                update_data["phone"] = phone
+            if password:
+                update_data["password_hash"] = hash_password(password)
+            await db.users.update_one({"_id": ObjectId(u_id)}, {"$set": update_data})
+            updated_count += 1
+        else:
+            new_doc = {
+                "name": name,
+                "email": email,
+                "mentor_id": mentor_id,
+                "password_hash": hash_password(password),
+                "role": UserRole.MENTOR.value,
+                "phone": phone if phone else None,
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+            }
+            res = await db.users.insert_one(new_doc)
+            existing_mentors[mentor_id] = str(res.inserted_id)
+            created_count += 1
+
+    await db.audit_logs.insert_one({
+        "actor_id": actor_id,
+        "action": "IMPORT_MENTORS_EXCEL",
+        "metadata": {"total_rows": total_rows, "created": created_count, "updated": updated_count, "failed": failed_count},
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    return {
+        "total_rows": total_rows,
+        "created": created_count,
+        "updated": updated_count,
+        "failed": failed_count,
+        "errors": errors,
+    }
+
+
+# ----------------------------------------------------
+# STUDENT EXCEL PROCESSING
+# ----------------------------------------------------
+
+def generate_student_excel_template() -> bytes:
+    """Generate a clean .xlsx template for Student bulk import."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Student_Import_Template"
+
+    headers = ["Year", "Name", "Roll Number", "Section", "Student Phone Number", "Parent Phone Number"]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    samples = [
+        ["2nd Year", "Rahul Kumar", "23CS001", "CSE-A", "9876543210", "9876543299"],
+        ["2nd Year", "Sneha Sharma", "23CS002", "CSE-A", "9876543211", "9876543298"],
+        ["3rd Year", "Vikram Singh", "22CS010", "CSE-B", "9876543212", "9876543297"],
+    ]
+    for row in samples:
+        ws.append(row)
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 18)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+async def parse_and_import_student_excel(
+    file_bytes: bytes, filename: str, actor_id: str
+) -> Dict[str, Any]:
+    """Parse Student Excel workbook and safely import students into students collection."""
+    if not filename.lower().endswith(".xlsx"):
+        raise ValueError("Invalid file format. Only .xlsx Excel workbooks are supported.")
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as e:
+        raise ValueError(f"Failed to read Excel file: {str(e)}")
+
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        raise ValueError("Excel file is empty.")
+
+    header_row = [str(cell).strip().lower() if cell is not None else "" for cell in rows[0]]
+    col_map = {}
+    for idx, h in enumerate(header_row):
+        if "year" in h:
+            col_map["year"] = idx
+        elif "roll" in h:
+            col_map["roll_number"] = idx
+        elif "section" in h:
+            col_map["section"] = idx
+        elif "parent" in h:
+            col_map["parent_phone"] = idx
+        elif "student phone" in h or (("phone" in h) and "parent" not in h):
+            col_map["student_phone"] = idx
+        elif "name" in h:
+            col_map["name"] = idx
+
+    missing_cols = [c for c in ["year", "name", "roll_number", "section"] if c not in col_map]
+    if missing_cols:
+        raise ValueError(f"Missing required columns in Excel: {', '.join(missing_cols)}")
+
+    db = get_database()
+    existing_students = await db.students.find({}, {"roll_number": 1}).to_list(length=10000)
+    existing_rolls = {s["roll_number"].upper(): str(s["_id"]) for s in existing_students if s.get("roll_number")}
+
+    seen_rolls_in_file = set()
+    total_rows = 0
+    created_count = 0
+    updated_count = 0
+    failed_count = 0
+    errors = []
+
+    for row_idx, row_values in enumerate(rows[1:], start=2):
+        if not any(row_values):
+            continue
+
+        total_rows += 1
+
+        def get_val(col_name: str) -> str:
+            idx = col_map.get(col_name)
+            if idx is not None and idx < len(row_values) and row_values[idx] is not None:
+                return str(row_values[idx]).strip()
+            return ""
+
+        year = get_val("year")
+        name = get_val("name")
+        roll = get_val("roll_number").upper()
+        section = get_val("section").upper()
+        student_phone = get_val("student_phone")
+        parent_phone = get_val("parent_phone")
+
+        row_errors = []
+        if not year:
+            row_errors.append("Year is required.")
+        if not name:
+            row_errors.append("Student Name is required.")
+        if not roll:
+            row_errors.append("Roll Number is required.")
+        if not section:
+            row_errors.append("Section is required.")
+
+        if roll in seen_rolls_in_file:
+            row_errors.append(f"Duplicate roll number '{roll}' within Excel file.")
+        else:
+            if roll:
+                seen_rolls_in_file.add(roll)
+
+        if row_errors:
+            failed_count += 1
+            errors.append({"row": row_idx, "roll_number": roll or "N/A", "errors": row_errors})
+            continue
+
+        now = datetime.now(timezone.utc)
+        student_doc = {
+            "year": year,
+            "name": name,
+            "roll_number": roll,
+            "section": section,
+            "student_phone": student_phone if student_phone else None,
+            "parent_phone": parent_phone if parent_phone else None,
+            "updated_at": now,
+        }
+
+        if roll in existing_rolls:
+            s_id = existing_rolls[roll]
+            await db.students.update_one({"_id": ObjectId(s_id)}, {"$set": student_doc})
+            updated_count += 1
+        else:
+            student_doc["created_at"] = now
+            res = await db.students.insert_one(student_doc)
+            existing_rolls[roll] = str(res.inserted_id)
+            created_count += 1
+
+    await db.audit_logs.insert_one({
+        "actor_id": actor_id,
+        "action": "IMPORT_STUDENTS_EXCEL",
+        "metadata": {"total_rows": total_rows, "created": created_count, "updated": updated_count, "failed": failed_count},
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    return {
+        "total_rows": total_rows,
+        "created": created_count,
+        "updated": updated_count,
+        "failed": failed_count,
+        "errors": errors,
+    }

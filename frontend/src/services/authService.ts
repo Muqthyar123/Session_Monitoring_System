@@ -25,7 +25,7 @@ export interface LoginResponsePayload {
 export async function login(
   email: string,
   password: string,
-  portal: "ADMIN" | "CRLR"
+  portal: "ADMIN" | "CRLR" | "MENTOR"
 ): Promise<AuthUser> {
   const data = await request<LoginResponsePayload>("/auth/login", {
     method: "POST",
@@ -73,5 +73,7 @@ export async function logout(): Promise<void> {
 }
 
 export function homeRouteForRole(role: Role): string {
-  return role === "ADMIN" ? "/admin/dashboard" : "/crlr/dashboard";
+  if (role === "ADMIN") return "/admin/dashboard";
+  if (role === "MENTOR") return "/mentor/absentees";
+  return "/crlr/dashboard";
 }
