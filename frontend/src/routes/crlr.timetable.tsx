@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Calendar, Clock, MapPin, User, Info, ClipboardCheck } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { Calendar, Info } from "lucide-react";
 import { CRLRLayout } from "@/layouts/CRLRLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
@@ -24,54 +24,18 @@ export const Route = createFileRoute("/crlr/timetable")({
   component: CRLRTimetablePage,
 });
 
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-function getPeriodTimeStatus(
-  selectedDay: string,
-  defaultDay: string,
-  startTimeStr: string,
-  endTimeStr: string
-): "active" | "completed" | "upcoming" {
-  const selIdx = DAYS.indexOf(selectedDay);
-  const defIdx = DAYS.indexOf(defaultDay);
-
-  if (selIdx < defIdx) return "completed";
-  if (selIdx > defIdx) return "upcoming";
-
-  // Same day: Compare current time with start and end times
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  const parseMinutes = (tStr: string) => {
-    if (!tStr) return 0;
-    const parts = tStr.split(":");
-    let h = parseInt(parts[0] || "0", 10);
-    const m = parseInt(parts[1] || "0", 10);
-    if (h < 8) h += 12; // Convert afternoon 12-hour format
-    return h * 60 + m;
-  };
-
-  const startMin = parseMinutes(startTimeStr);
-  const endMin = parseMinutes(endTimeStr);
-
-  if (currentMinutes >= startMin && currentMinutes <= endMin) {
-    return "active";
-  } else if (currentMinutes > endMin) {
-    return "completed";
-  } else {
-    return "upcoming";
-  }
-}
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function CRLRTimetablePage() {
   const { user } = useAuth();
   const year = user?.year ?? "";
   const section = user?.section ?? "";
 
-  // Get current day of week (0 = Sunday, 1 = Monday, ...)
+  // Get current real-time day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
   const currentDayIndex = new Date().getDay();
-  const defaultDay = currentDayIndex >= 1 && currentDayIndex <= 6 ? DAYS[currentDayIndex - 1] : "Monday";
-  const [selectedDay, setSelectedDay] = useState<string>(defaultDay!);
+  const todayName = DAY_NAMES[currentDayIndex];
+  const [selectedDay, setSelectedDay] = useState<string>(todayName || "Monday");
 
   const { data, loading, error, reload } = useAsyncData(
     () => getTimetable(year, section),
@@ -83,6 +47,8 @@ function CRLRTimetablePage() {
     .filter((p) => p && p.day && p.day.toLowerCase() === selectedDay.toLowerCase())
     .sort((a, b) => (a.period || 0) - (b.period || 0));
 
+  const isSelectedSunday = selectedDay === "Sunday";
+
   return (
     <CRLRLayout>
       <PageHeader
@@ -90,9 +56,10 @@ function CRLRTimetablePage() {
         description={`Section ${section} — day-wise class schedule and assigned faculty`}
       />
 
+      {/* Real-time Day Navigation Tabs with "Today" Badge */}
       <div className="flex flex-wrap gap-2 pb-2">
         {DAYS.map((d) => {
-          const isToday = d === defaultDay;
+          const isToday = d === todayName;
           const isSelected = selectedDay === d;
           return (
             <Button
@@ -108,8 +75,8 @@ function CRLRTimetablePage() {
                   className={cn(
                     "rounded-md px-1.5 py-0.5 text-[11px] leading-none transition-colors",
                     isSelected
-                      ? "bg-white text-primary font-semibold shadow-xs"
-                      : "bg-secondary text-secondary-foreground font-medium"
+                      ? "bg-white text-primary font-bold shadow-xs"
+                      : "bg-primary text-primary-foreground font-medium"
                   )}
                 >
                   Today
@@ -134,6 +101,16 @@ function CRLRTimetablePage() {
         <LoadingState rows={4} label="Loading timetable..." />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
+      ) : isSelectedSunday && dayPeriods.length === 0 ? (
+        <Card className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 p-8 text-center my-4">
+          <div className="flex flex-col items-center justify-center gap-3">
+            <Calendar className="size-10 text-amber-600 dark:text-amber-400" />
+            <h3 className="text-xl font-bold">No class are Available Due to Sunday</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Sunday is an official weekly holiday. Regular classes resume on Monday.
+            </p>
+          </div>
+        </Card>
       ) : dayPeriods.length === 0 ? (
         <EmptyState
           title={`No classes scheduled for ${selectedDay}`}
@@ -151,81 +128,30 @@ function CRLRTimetablePage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {dayPeriods.map((p) => {
-              const timeStatus = getPeriodTimeStatus(selectedDay, defaultDay!, p.startTime, p.endTime);
-              const isActive = timeStatus === "active";
-              const isCompleted = timeStatus === "completed";
-
-              return (
-                <div
-                  key={p.period}
-                  className={cn(
-                    "grid grid-cols-1 md:grid-cols-[100px_minmax(0,1fr)_auto] gap-3 items-center rounded-lg border p-3.5 transition-colors",
-                    isActive
-                      ? "border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20 dark:border-emerald-800 ring-1 ring-emerald-500/30"
-                      : isCompleted
-                      ? "border-border bg-muted/20 opacity-80"
-                      : "border-border bg-card hover:bg-secondary/40"
-                  )}
-                >
-                  <div className="flex items-center gap-2 text-xs font-semibold text-primary">
-                    <Clock className="size-3.5" />
-                    <span>Period {p.period}</span>
-                  </div>
-
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-foreground truncate">{p.subject}</p>
-                      {isActive ? (
-                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px]">
-                          Active Class Hour
-                        </Badge>
-                      ) : isCompleted ? (
-                        <Badge variant="outline" className="text-[10px] text-muted-foreground border-border">
-                          Class Completed
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px]">
-                          Upcoming
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock className="size-3" /> {p.startTime} - {p.endTime}
-                      </span>
-                      {p.faculty ? (
-                        <span className="flex items-center gap-1 font-medium text-foreground/80">
-                          <User className="size-3" /> {p.faculty}
-                        </span>
-                      ) : null}
-                      {p.room ? (
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <MapPin className="size-3" /> Room: {p.room}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
-                      {p.startTime} - {p.endTime}
+            {dayPeriods.map((period) => (
+              <div
+                key={`${period.day}-${period.period}`}
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-lg border bg-card hover:bg-muted/40 transition-colors gap-3"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="font-mono text-xs">
+                      Period {period.period}
                     </Badge>
-                    {isActive ? (
-                      <Button asChild size="sm" variant="default" className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white">
-                        <Link to="/crlr/attendance">
-                          <ClipboardCheck className="size-3.5 mr-1" /> Mark Attendance
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="outline" disabled className="shrink-0 text-xs text-muted-foreground">
-                        {isCompleted ? "Period Ended" : "Not Active Yet"}
-                      </Button>
-                    )}
+                    <span className="font-bold text-sm">{period.subject}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-0.5">
+                    <span>Faculty: <strong className="text-foreground">{period.faculty || "TBD"}</strong></span>
+                    <span>Room: <strong className="text-foreground">{period.room || "TBD"}</strong></span>
                   </div>
                 </div>
-              );
-            })}
+                <div className="text-right shrink-0">
+                  <span className="font-mono text-xs font-semibold text-primary">
+                    {period.startTime} - {period.endTime}
+                  </span>
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

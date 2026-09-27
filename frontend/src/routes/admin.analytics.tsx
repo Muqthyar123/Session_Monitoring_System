@@ -84,6 +84,61 @@ interface FacultyAnalyticsItem {
   attendancePercentage: number;
 }
 
+function formatSectionCode(sec: string, year?: string): string {
+  if (!sec) return "";
+  let clean = sec.trim().toUpperCase();
+  clean = clean.replace(/^(1ST|2ND|3RD|4TH)\s*YEAR\s*[-·]?\s*/i, "").trim();
+
+  if (/^(I|II|III|IV)-/.test(clean)) {
+    return clean;
+  }
+
+  let roman = "II";
+  const yr = (year || "").toLowerCase();
+  if (yr.includes("1") || yr.includes("1st") || yr.startsWith("i ")) roman = "I";
+  else if (yr.includes("3") || yr.includes("3rd") || yr.includes("iii")) roman = "III";
+  else if (yr.includes("4") || yr.includes("4th") || yr.includes("iv")) roman = "IV";
+  else if (yr.includes("2") || yr.includes("2nd") || yr.includes("ii")) roman = "II";
+
+  if (!clean.startsWith("CSE-") && !clean.startsWith("CSE")) {
+    clean = `CSE-${clean}`;
+  }
+  return `${roman}-${clean}`;
+}
+
+function matchesYear(facYear?: string, facSec?: string, selectedYear?: string): boolean {
+  if (!selectedYear) return true;
+
+  const yTarget = selectedYear.toLowerCase();
+  const is2nd = yTarget.includes("2") || yTarget.includes("ii");
+  const is3rd = yTarget.includes("3") || yTarget.includes("iii");
+  const is4th = yTarget.includes("4") || yTarget.includes("iv");
+  const is1st = yTarget.includes("1") || yTarget.includes("i");
+
+  const secUpper = (facSec || "").toUpperCase();
+  if (secUpper.startsWith("II-")) return is2nd;
+  if (secUpper.startsWith("III-")) return is3rd;
+  if (secUpper.startsWith("IV-")) return is4th;
+  if (secUpper.startsWith("I-")) return is1st;
+
+  const yrUpper = (facYear || "").toLowerCase();
+  if (is2nd && (yrUpper.includes("2") || yrUpper.includes("ii"))) return true;
+  if (is3rd && (yrUpper.includes("3") || yrUpper.includes("iii"))) return true;
+  if (is4th && (yrUpper.includes("4") || yrUpper.includes("iv"))) return true;
+  if (is1st && (yrUpper.includes("1") || yrUpper.includes("i"))) return true;
+
+  return false;
+}
+
+function renderSectionBadge(sec: string, year?: string) {
+  const secCode = formatSectionCode(sec, year);
+  return (
+    <span className="inline-flex items-center rounded-lg bg-slate-100/90 px-2.5 py-1 text-xs font-bold whitespace-nowrap text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+      {secCode}
+    </span>
+  );
+}
+
 function AdminAnalyticsPage() {
   const navigate = useNavigate();
   const { data, loading, error, reload } = useAsyncData(() => getAdminDashboard(), [], 3000);
@@ -167,18 +222,11 @@ function AdminAnalyticsPage() {
         (f) => f.section.toUpperCase() === selectedSection.toUpperCase()
       );
     } else if (selectedYear) {
-      const validSecs = new Set(
-        (activeYearObj?.sections ?? []).map((s) => s.section.toUpperCase())
-      );
-      result = result.filter(
-        (f) =>
-          (f.year && f.year === selectedYear) ||
-          (f.section && validSecs.has(f.section.toUpperCase()))
-      );
+      result = result.filter((f) => matchesYear(f.year, f.section, selectedYear));
     }
 
     return result;
-  }, [facultyList, selectedSection, selectedYear, activeYearObj, activeSearch]);
+  }, [facultyList, selectedSection, selectedYear, activeSearch]);
 
   // Calculate cumulative stats for active selection/search
   const cumulativeSummary = useMemo(() => {
@@ -537,22 +585,26 @@ function AdminAnalyticsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     {filteredFaculty.map((fac, idx) => {
-                      const pct = fac.attendancePercentage;
+                      const totalCls = fac.totalClasses || fac.totalHours;
+                      const attCls = fac.attendedClasses || fac.attendedHours;
+                      const absCls = fac.absentClasses || fac.absentHours;
+                      const lateCls = fac.lateClasses || fac.lateHours || 0;
+                      const subCls = fac.substitutedClasses || fac.substitutedHours;
+
+                      const evaluated = attCls + absCls + subCls;
+                      const pct = evaluated > 0 ? Math.round((attCls / evaluated) * 100) : 0;
+
                       const badgeColor =
-                        pct >= 85
+                        evaluated === 0
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                          : pct >= 85
                           ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
                           : pct >= 70
                           ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
                           : "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400";
 
                       const barColor =
-                        pct >= 85 ? "bg-emerald-500" : pct >= 70 ? "bg-amber-500" : "bg-rose-500";
-
-                      const totalCls = fac.totalClasses || fac.totalHours;
-                      const attCls = fac.attendedClasses || fac.attendedHours;
-                      const absCls = fac.absentClasses || fac.absentHours;
-                      const lateCls = fac.lateClasses || fac.lateHours || 0;
-                      const subCls = fac.substitutedClasses || fac.substitutedHours;
+                        evaluated === 0 ? "bg-emerald-500" : pct >= 85 ? "bg-emerald-500" : pct >= 70 ? "bg-amber-500" : "bg-rose-500";
 
                       return (
                         <tr
@@ -574,9 +626,7 @@ function AdminAnalyticsPage() {
                             </div>
                           </td>
                           <td className="px-4 py-3.5">
-                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                              {fac.year ? `${fac.year} · ` : ""}{fac.section}
-                            </span>
+                            {renderSectionBadge(fac.section, fac.year)}
                           </td>
                           <td className="px-4 py-3.5 text-center font-semibold text-slate-900 dark:text-white">
                             <div className="inline-flex items-center gap-1">

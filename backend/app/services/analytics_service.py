@@ -190,7 +190,7 @@ async def get_year_cards_summary() -> list:
                 tot_classes = max(sample_count, 0)
 
             evaluated = p_count + a_count + sub_count
-            pct = round((p_count / evaluated * 100), 1) if evaluated > 0 else 100.0
+            pct = round((p_count / evaluated * 100), 1) if evaluated > 0 else 0.0
 
             sec_card = {
                 "section": sec_raw,
@@ -212,7 +212,7 @@ async def get_year_cards_summary() -> list:
             year_late += late_count
 
         year_evaluated = year_present + year_absent + year_substitute
-        year_pct = round((year_present / year_evaluated * 100), 1) if year_evaluated > 0 else 100.0
+        year_pct = round((year_present / year_evaluated * 100), 1) if year_evaluated > 0 else 0.0
 
         year_cards.append({
             "year": yr,
@@ -237,6 +237,29 @@ async def get_sections_cards_summary() -> list:
     for yc in year_cards:
         flat_cards.extend(yc.get("sections", []))
     return flat_cards
+
+
+def format_display_section(raw_sec: str, year: str) -> str:
+    s = (raw_sec or "").strip().upper()
+    if not s:
+        return ""
+    for prefix in ["I-", "II-", "III-", "IV-"]:
+        if s.startswith(prefix):
+            return s
+    yr_lower = (year or "").lower()
+    if "1" in yr_lower or "1st" in yr_lower or yr_lower.startswith("i "):
+        roman = "I"
+    elif "3" in yr_lower or "3rd" in yr_lower or "iii" in yr_lower:
+        roman = "III"
+    elif "4" in yr_lower or "4th" in yr_lower or "iv" in yr_lower:
+        roman = "IV"
+    else:
+        roman = "II"
+
+    norm = s.replace("SECTION", "").strip()
+    if not norm.startswith("CSE-") and not norm.startswith("CSE"):
+        norm = f"CSE-{norm}"
+    return f"{roman}-{norm}"
 
 
 async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
@@ -276,7 +299,7 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
 
         key = (norm_f, norm_s)
         if key not in faculty_map:
-            display_sec = f"II-{norm_s}" if not raw_sec.startswith("II-") and "CSE-" in norm_s else raw_sec
+            display_sec = format_display_section(raw_sec, yr)
             faculty_map[key] = {
                 "facultyName": raw_fac,
                 "section": display_sec,
@@ -308,7 +331,7 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
 
         key = (norm_f, norm_s)
         if key not in faculty_map:
-            display_sec = f"II-{norm_s}" if not raw_sec.startswith("II-") and "CSE-" in norm_s else raw_sec
+            display_sec = format_display_section(raw_sec, yr)
             faculty_map[key] = {
                 "facultyName": raw_fac,
                 "section": display_sec,
@@ -384,7 +407,7 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
         sub = item["substitutedHours"]
         evaluated = att + ab + sub
         tot = max(item["ttHours"], evaluated)
-        pct = round((att / evaluated * 100), 1) if evaluated > 0 else (100.0 if tot > 0 else 0.0)
+        pct = round((att / evaluated * 100), 1) if evaluated > 0 else 0.0
 
         result.append({
             "facultyName": item["facultyName"],

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarClock, Clock, Repeat2, UserCheck, UserX } from "lucide-react";
+import { CalendarClock, Clock, Repeat2, UserCheck, UserX, Calendar } from "lucide-react";
 import { CRLRLayout } from "@/layouts/CRLRLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
@@ -26,6 +26,8 @@ export const Route = createFileRoute("/crlr/dashboard")({
 function CRLRDashboardPage() {
   const { user } = useAuth();
   const section = user?.section ?? "";
+  const isSunday = new Date().getDay() === 0;
+
   const { data, loading, error, reload } = useAsyncData(() => getSessions(section), [section], 3000);
 
   const sessions = data ?? [];
@@ -46,6 +48,18 @@ function CRLRDashboardPage() {
           </Button>
         }
       />
+
+      {isSunday && sessions.length === 0 ? (
+        <Card className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 p-4 mb-4">
+          <div className="flex items-center gap-3">
+            <Calendar className="size-6 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <h3 className="text-sm font-bold">No class are Available Due to Sunday</h3>
+              <p className="text-xs text-muted-foreground">Today is Sunday. Official weekly holiday.</p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {loading ? (
         <LoadingState rows={4} label="Loading your sessions..." />

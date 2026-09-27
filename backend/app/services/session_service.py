@@ -253,39 +253,6 @@ async def get_sessions(
         computed = calculate_session_dynamic_state(s, now_local)
         results.append(ClassSessionResponse(**computed))
 
-    # If no sessions exist for date (e.g. weekend or non-class day), fallback to timetable periods for section
-    if not results and section:
-        sec_clean = section.strip().upper()
-        sample = await db.timetables.find_one({"section": sec_clean})
-        if sample:
-            target_day = sample.get("day", "Monday")
-            periods_cursor = db.timetables.find({"section": sec_clean, "day": target_day})
-            periods = await periods_cursor.to_list(length=100)
-            combined = combine_continuous_periods(periods)
-            for idx, cs in enumerate(combined):
-                mock_doc = {
-                    "_id": f"tt-session-{sec_clean}-{idx+1}",
-                    "section": sec_clean,
-                    "year": cs.get("year", "2nd Year"),
-                    "subject": cs.get("subject", ""),
-                    "faculty": cs.get("faculty", ""),
-                    "period": cs.get("period_display", f"Period {idx+1}"),
-                    "periods_included": cs.get("periods_included", [idx+1]),
-                    "start_time": cs.get("start_time", "09:10"),
-                    "end_time": cs.get("end_time", "10:00"),
-                    "date": date_str,
-                    "crlr_name": "Unassigned",
-                    "crlr_role": "CR",
-                    "session_status": SessionStatus.UPCOMING.value,
-                    "faculty_response": FacultyResponseStatus.PENDING.value,
-                    "response_time": None,
-                    "substitute_name": None,
-                    "response_window_seconds_remaining": None,
-                    "response_window_expired": False,
-                }
-                computed = calculate_session_dynamic_state(mock_doc, now_local)
-                results.append(ClassSessionResponse(**computed))
-
     results.sort(key=lambda s: min(s.periods_included) if s.periods_included else 99)
     return results
 

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Calendar } from "lucide-react";
 import { CRLRLayout } from "@/layouts/CRLRLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
 import { AttendanceForm } from "@/components/sessions/AttendanceForm";
+import { Card } from "@/components/ui/card";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { getActiveSessions } from "@/services/sessionService";
 import { useAuth } from "@/context/AuthContext";
@@ -25,6 +26,9 @@ export const Route = createFileRoute("/crlr/attendance")({
 function AttendancePage() {
   const { user } = useAuth();
   const section = user?.section ?? "";
+
+  const isSunday = new Date().getDay() === 0;
+
   const { data, loading, error, reload } = useAsyncData(
     () => getActiveSessions(section),
     [section],
@@ -40,7 +44,7 @@ function AttendancePage() {
     return match ? parseInt(match[0], 10) : 99;
   };
 
-  // Sort all sessions for today strictly in Period-wise order (Period 1, Period 2, ...)
+  // Sort all sessions for today strictly in Period-wise order
   const sessions = (data ?? [])
     .map((s) => {
       const sid = s.id || (s as any)._id;
@@ -59,6 +63,16 @@ function AttendancePage() {
         <LoadingState rows={3} label="Loading class schedule..." />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
+      ) : isSunday && sessions.length === 0 ? (
+        <Card className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 p-8 text-center my-4">
+          <div className="flex flex-col items-center justify-center gap-3">
+            <Calendar className="size-10 text-amber-600 dark:text-amber-400" />
+            <h3 className="text-xl font-bold">No class are Available Due to Sunday</h3>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              Today is Sunday. Faculty attendance marking is disabled as no classes are scheduled.
+            </p>
+          </div>
+        </Card>
       ) : sessions.length === 0 ? (
         <EmptyState
           title="No sessions scheduled for today"
