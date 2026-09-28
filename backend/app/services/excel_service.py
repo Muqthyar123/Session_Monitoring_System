@@ -3,6 +3,7 @@ import io
 import re
 from datetime import datetime, time, timezone
 from typing import Any, Dict, List, Tuple
+from bson import ObjectId
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -767,43 +768,90 @@ def generate_mentor_excel_template() -> bytes:
 def extract_raw_rows_from_file(file_bytes: bytes, filename: str) -> List[List[str]]:
     """
     Extracts raw string rows from any uploaded workbook or text file (.xlsx, .xls, .csv, .tsv, or HTML tables formatted as .xls).
-    Tries multiple decoders and Excel parsers to ensure robust compatibility.
+    Tries xlrd, openpyxl, pandas, html parsing, and csv readers across all sheets to ensure 100% compatibility.
     """
     raw_rows: List[List[str]] = []
+    if not file_bytes:
+        return raw_rows
+
     is_zip = file_bytes.startswith(b"PK")
     is_ole = file_bytes.startswith(b"\xd0\xcf\x11\xe0")
     fn_lower = filename.lower()
 
-    # 1. Try binary Excel parsers first for .xlsx / .xls or binary magic signatures
-    if is_zip or is_ole or fn_lower.endswith((".xlsx", ".xls")):
+    # 1. Try xlrd for BIFF8 binary .xls files first if OLE header or .xls extension
+    if is_ole or fn_lower.endswith(".xls"):
+        try:
+            import xlrd
+            wb = xlrd.open_workbook(file_contents=file_bytes)
+            all_sheets_rows = []
+            for sheet in wb.sheets():
+                for r in range(sheet.nrows):
+                    row_vals = sheet.row_values(r)
+                    clean_r = []
+                    for c in row_vals:
+                        if isinstance(c, float) and c.is_integer():
+                            clean_r.append(str(int(c)))
+                        elif c is not None:
+                            s = str(c).strip()
+                            if s.endswith(".0"):
+                                s = s[:-2]
+                            clean_r.append(s)
+                        else:
+                            clean_r.append("")
+                    if any(clean_r):
+                        all_sheets_rows.append(clean_r)
+            if all_sheets_rows:
+                return all_sheets_rows
+        except Exception:
+            pass
+
+    # 2. Try openpyxl for OpenXML .xlsx files
+    if is_zip or fn_lower.endswith(".xlsx"):
         try:
             wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            all_sheets_rows = []
             for ws_name in wb.sheetnames:
                 ws = wb[ws_name]
-                sheet_rows = []
                 for row in ws.iter_rows(values_only=True):
-                    clean_r = [str(cell).strip() if cell is not None else "" for cell in row]
+                    clean_r = []
+                    for cell in row:
+                        if isinstance(cell, float) and cell.is_integer():
+                            clean_r.append(str(int(cell)))
+                        elif cell is not None:
+                            s = str(cell).strip()
+                            if s.endswith(".0"):
+                                s = s[:-2]
+                            clean_r.append(s)
+                        else:
+                            clean_r.append("")
                     if any(clean_r):
-                        sheet_rows.append(clean_r)
-                if sheet_rows:
-                    return sheet_rows
+                        all_sheets_rows.append(clean_r)
+            if all_sheets_rows:
+                return all_sheets_rows
         except Exception:
             pass
 
-        try:
-            import pandas as pd
-            df = pd.read_excel(io.BytesIO(file_bytes), header=None)
+    # 3. Try pandas with all available engines
+    try:
+        import pandas as pd
+        excel_file = pd.ExcelFile(io.BytesIO(file_bytes))
+        all_df_rows = []
+        for sheet_name in excel_file.sheet_names:
+            df = excel_file.parse(sheet_name, header=None)
             df = df.fillna("")
             rows = df.astype(str).values.tolist()
-            clean_rows = [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
-            if clean_rows:
-                return clean_rows
-        except Exception:
-            pass
+            for r in rows:
+                clean_r = [c.strip()[:-2] if c.strip().endswith(".0") else c.strip() for c in r]
+                if any(clean_r):
+                    all_df_rows.append(clean_r)
+        if all_df_rows:
+            return all_df_rows
+    except Exception:
+        pass
 
-    # 2. Check for HTML Table export files
+    # 4. Check for HTML Table export files
     text = ""
-    for encoding in ["utf-8-sig", "utf-8", "latin1", "cp1252"]:
+    for encoding in ["utf-8-sig", "utf-8", "latin1", "cp1252", "utf-16", "iso-8859-1"]:
         try:
             text = file_bytes.decode(encoding)
             break
@@ -815,11 +863,16 @@ def extract_raw_rows_from_file(file_bytes: bytes, filename: str) -> List[List[st
             import pandas as pd
             dfs = pd.read_html(io.StringIO(text), header=None)
             if dfs:
-                df = dfs[0].fillna("")
-                rows = df.astype(str).values.tolist()
-                clean_rows = [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
-                if clean_rows:
-                    return clean_rows
+                all_html_rows = []
+                for df in dfs:
+                    df = df.fillna("")
+                    rows = df.astype(str).values.tolist()
+                    for r in rows:
+                        clean_r = [c.strip()[:-2] if c.strip().endswith(".0") else c.strip() for c in r]
+                        if any(clean_r):
+                            all_html_rows.append(clean_r)
+                if all_html_rows:
+                    return all_html_rows
         except Exception:
             pass
 
@@ -835,15 +888,19 @@ def extract_raw_rows_from_file(file_bytes: bytes, filename: str) -> List[List[st
         except Exception:
             pass
 
-    # 3. CSV / TSV text parsing (ONLY if NOT binary)
-    if text and b"\x00" not in file_bytes[:1000]:
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
+    # 5. CSV / TSV / Delimited text parsing
+    if text:
+        text_clean = text.replace("\x00", "")
+        lines = [l.strip() for l in text_clean.splitlines() if l.strip()]
         if lines:
             delimiter = ","
             if "\t" in lines[0] and lines[0].count("\t") > lines[0].count(","):
                 delimiter = "\t"
+            elif ";" in lines[0] and lines[0].count(";") > lines[0].count(","):
+                delimiter = ";"
+
             try:
-                reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+                reader = csv.reader(io.StringIO(text_clean), delimiter=delimiter)
                 for r in reader:
                     clean_r = [str(c).strip() if c is not None else "" for c in r]
                     if any(clean_r):
@@ -852,18 +909,6 @@ def extract_raw_rows_from_file(file_bytes: bytes, filename: str) -> List[List[st
                     return raw_rows
             except Exception:
                 pass
-
-    # 4. Final pandas read_excel fallback
-    try:
-        import pandas as pd
-        df = pd.read_excel(io.BytesIO(file_bytes), header=None)
-        df = df.fillna("")
-        rows = df.astype(str).values.tolist()
-        clean_rows = [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
-        if clean_rows:
-            return clean_rows
-    except Exception:
-        pass
 
     return raw_rows
 
@@ -883,61 +928,76 @@ async def parse_and_import_mentor_excel(
     header_idx = -1
     col_map = {}
 
-    for idx, row in enumerate(raw_rows[:30]):
-        row_lower = [str(c).strip().lower() for c in row]
-        row_cleaned = [re.sub(r'[^a-z0-9]', '', cell) for cell in row_lower]
+    ID_ALIASES = {"id", "employeeid", "empid", "mentorid", "facid", "facultyid", "empcode", "code", "username", "empno", "idno", "idemployeeid"}
+    NAME_ALIASES = {"name", "fullname", "facultyname", "mentorname", "faculty", "mentor", "teacher"}
+    EMAIL_ALIASES = {"email", "mailid", "mail", "emailid", "emailaddress", "mailidemail"}
+    DESIG_ALIASES = {"designation", "design", "desig", "designdesignation"}
+    DEPT_ALIASES = {"department", "dept", "branch", "stream", "branchdepartment"}
+    PHONE_ALIASES = {"mobileno", "mobile", "phone", "contact", "cell"}
+    PROFILE_ALIASES = {"profile", "role", "roles"}
 
-        has_id = any(
-            c in ["id", "empid", "employeeid", "mentorid", "facid", "facultyid", "empcode", "code", "username", "idno", "empno"]
+    for idx, row in enumerate(raw_rows[:30]):
+        row_cleaned = [re.sub(r'[^a-z0-9]', '', str(cell).lower()) for cell in row]
+
+        has_id_header = any(
+            c in ID_ALIASES
             or "empid" in c
             or "employeeid" in c
             or "mentorid" in c
             or "facultyid" in c
+            or "idemployee" in c
             or c == "id"
             for c in row_cleaned
         )
-        has_name = any(
-            ("name" in c or "faculty" in c or "mentor" in c or "teacher" in c)
-            and "father" not in c
-            and "user" not in c
-            and "id" not in c
-            and "file" not in c
+        has_name_header = any(
+            c in NAME_ALIASES
+            or (("name" in c or "faculty" in c or "mentor" in c) and "father" not in c and "file" not in c)
             for c in row_cleaned
         )
 
-        if has_name or has_id:
-            header_idx = idx
-            for c_idx, c_clean in enumerate(row_cleaned):
+        if has_name_header or has_id_header:
+            temp_map = {}
+            for c_idx, c_norm in enumerate(row_cleaned):
+                if not c_norm or c_norm in ["sno", "slno"]:
+                    continue
+
                 if (
-                    c_clean in ["id", "empid", "employeeid", "mentorid", "facid", "facultyid", "empcode", "username", "code", "idno", "empno"]
-                    or "mentorid" in c_clean
-                    or "employeeid" in c_clean
-                    or "empid" in c_clean
-                    or c_clean == "id"
+                    c_norm in ID_ALIASES
+                    or "employeeid" in c_norm
+                    or "mentorid" in c_norm
+                    or "empid" in c_norm
+                    or "idemployee" in c_norm
+                    or c_norm == "id"
                 ):
-                    if "mentor_id" not in col_map or "employee" in c_clean or "mentor" in c_clean or c_clean == "id":
-                        col_map["mentor_id"] = c_idx
-                elif ("name" in c_clean or "faculty" in c_clean or "mentor" in c_clean or "teacher" in c_clean) and "user" not in c_clean and "father" not in c_clean and "id" not in c_clean and "filename" not in c_clean:
-                    if "name" not in col_map or "name" in c_clean:
-                        col_map["name"] = c_idx
-                elif "email" in c_clean or "mail" in c_clean:
-                    col_map["email"] = c_idx
-                elif "design" in c_clean or "desig" in c_clean or "role" in c_clean:
-                    col_map["designation"] = c_idx
-                elif "branch" in c_clean or "dept" in c_clean or "department" in c_clean or "stream" in c_clean:
-                    col_map["department"] = c_idx
-                elif "mobile" in c_clean or "phone" in c_clean or "contact" in c_clean or "cell" in c_clean or "number" in c_clean:
-                    if "phone" not in col_map or "mobile" in c_clean or "phone" in c_clean:
-                        col_map["phone"] = c_idx
-                elif "profile" in c_clean:
-                    col_map["profile"] = c_idx
-                elif "password" in c_clean:
-                    col_map["password"] = c_idx
-            break
+                    if "mentor_id" not in temp_map or "employee" in c_norm or "mentor" in c_norm or c_norm == "employeeid":
+                        temp_map["mentor_id"] = c_idx
+                elif c_norm in NAME_ALIASES or (("name" in c_norm or "faculty" in c_norm or "mentor" in c_norm) and "father" not in c_norm and "file" not in c_norm and "id" not in c_norm):
+                    if "name" not in temp_map:
+                        temp_map["name"] = c_idx
+                elif c_norm in EMAIL_ALIASES or "mail" in c_norm or "email" in c_norm:
+                    if "email" not in temp_map:
+                        temp_map["email"] = c_idx
+                elif c_norm in DESIG_ALIASES or "design" in c_norm or "desig" in c_norm:
+                    if "designation" not in temp_map:
+                        temp_map["designation"] = c_idx
+                elif c_norm in DEPT_ALIASES or "branch" in c_norm or "dept" in c_norm or "stream" in c_norm:
+                    if "department" not in temp_map:
+                        temp_map["department"] = c_idx
+                elif c_norm in PHONE_ALIASES or "mobile" in c_norm or "phone" in c_norm or "contact" in c_norm:
+                    if "phone" not in temp_map:
+                        temp_map["phone"] = c_idx
+                elif c_norm in PROFILE_ALIASES or "profile" in c_norm:
+                    if "profile" not in temp_map:
+                        temp_map["profile"] = c_idx
+
+            if len(temp_map) >= 2 and ("name" in temp_map or "mentor_id" in temp_map):
+                header_idx = idx
+                col_map = temp_map
+                break
 
     # Smart positional fallback if headers were slightly off or non-standard
     if (header_idx == -1 or "name" not in col_map or "mentor_id" not in col_map) and len(raw_rows) >= 1:
-        for f_idx in range(min(5, len(raw_rows))):
+        for f_idx in range(min(10, len(raw_rows))):
             row_str = [str(c).strip() for c in raw_rows[f_idx]]
             row_clean = [re.sub(r'[^a-z0-9]', '', c.lower()) for c in row_str]
             for c_i, c_val in enumerate(row_clean):
@@ -956,10 +1016,6 @@ async def parse_and_import_mentor_excel(
             col_map["mentor_id"] = 2 if len(raw_rows[0]) > 2 else (0 if col_map.get("name") != 0 else 1)
         if header_idx == -1:
             header_idx = 0
-
-
-
-
 
     db = get_database()
     existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=10000)
@@ -1003,10 +1059,12 @@ async def parse_and_import_mentor_excel(
         profile = get_field("profile")
         password = get_field("password")
 
-        if not mentor_id and not email and (name.upper() in ["TEACHING", "NON-TEACHING", "NAME", "S.NO"] or name.startswith("S.N")):
+        name_upper = name.upper().strip()
+        mentor_id_upper = mentor_id.upper().strip()
+
+        if (not mentor_id or mentor_id_upper in ["ID", "EMPLOYEE ID", "USER NAME", "MENTOR ID", "ID/EMPLOYEE ID"]) and (not name or name_upper in ["NAME", "FULL NAME", "FACULTY NAME", "MENTOR NAME", "TEACHING", "NON-TEACHING", "S.NO", "SL.NO"] or name_upper.startswith("S.N")):
             continue
-        if mentor_id in ["ID", "EMPLOYEE ID", "USER NAME", "MENTOR ID"]:
-            continue
+
 
         total_rows += 1
         row_errors = []
@@ -1017,9 +1075,15 @@ async def parse_and_import_mentor_excel(
             row_errors.append("Mentor ID or Email is required.")
 
         if mentor_id and mentor_id in seen_ids_in_file:
-            row_errors.append(f"Duplicate Mentor ID '{mentor_id}' within file.")
+            target_id = existing_by_id.get(mentor_id) or existing_by_email.get(email)
+            if target_id:
+                query = {"_id": ObjectId(target_id)} if ObjectId.is_valid(target_id) else {"_id": target_id}
+                await db.users.update_one(query, {"$set": update_fields})
+                updated_count += 1
+            continue
         elif mentor_id:
             seen_ids_in_file.add(mentor_id)
+
 
         if row_errors:
             failed_count += 1
@@ -1054,7 +1118,8 @@ async def parse_and_import_mentor_excel(
             update_fields["password_hash"] = hash_password(password)
 
         if target_id:
-            await db.users.update_one({"_id": ObjectId(target_id)}, {"$set": update_fields})
+            query = {"_id": ObjectId(target_id)} if ObjectId.is_valid(target_id) else {"_id": target_id}
+            await db.users.update_one(query, {"$set": update_fields})
             updated_count += 1
         else:
             new_doc = {
