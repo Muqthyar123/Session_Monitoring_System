@@ -146,7 +146,6 @@ function AdminAnalyticsPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeSearch, setActiveSearch] = useState("");
 
   const rawYearCards: YearCardItem[] = data?.yearCards ?? [];
   const rawSectionCards: SectionCardItem[] = data?.sectionsCards ?? [];
@@ -195,27 +194,17 @@ function AdminAnalyticsPage() {
     return yearCards.find((y) => y.year === selectedYear) || null;
   }, [selectedYear, yearCards]);
 
-  // Execute Search
-  const handleSearchSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setActiveSearch(searchQuery.trim());
-  };
-
-  const handleClearSearch = () => {
-    setSearchQuery("");
-    setActiveSearch("");
-  };
-
-  // Filter faculty based on selected section, selected year, or global search query
+  // Filter faculty based on selected section, selected year, or global live search query
   const filteredFaculty = useMemo(() => {
     let result = [...facultyList];
 
-    if (activeSearch) {
-      const queryLower = activeSearch.toLowerCase();
+    const queryLower = searchQuery.trim().toLowerCase();
+    if (queryLower) {
       result = result.filter(
         (f) =>
           f.facultyName.toLowerCase().includes(queryLower) ||
-          f.subject.toLowerCase().includes(queryLower)
+          f.subject.toLowerCase().includes(queryLower) ||
+          f.section.toLowerCase().includes(queryLower)
       );
     } else if (selectedSection) {
       result = result.filter(
@@ -226,7 +215,7 @@ function AdminAnalyticsPage() {
     }
 
     return result;
-  }, [facultyList, selectedSection, selectedYear, activeSearch]);
+  }, [facultyList, selectedSection, selectedYear, searchQuery]);
 
   // Calculate cumulative stats for active selection/search
   const cumulativeSummary = useMemo(() => {
@@ -267,39 +256,38 @@ function AdminAnalyticsPage() {
         <ErrorState message={error} onRetry={reload} />
       ) : (
         <div className="space-y-6">
-          {/* Global Faculty Search Bar */}
+          {/* Global Faculty Live Search Bar */}
           <Card id="faculty-search" className="border-indigo-100 bg-slate-50/80 dark:border-indigo-950 dark:bg-slate-900/50">
             <CardContent className="p-4 sm:p-5">
-              <form onSubmit={handleSearchSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    type="text"
-                    placeholder="Search faculty name (e.g. Ch.Revathi or Dr. Ramesh) across all sections & years..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-5">
-                    <Search className="size-4 mr-1.5" /> Search Faculty
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Type faculty name (e.g. Ch.Revathi or Dr. Ramesh) or subject to search live..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-20 bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800"
+                />
+                {searchQuery ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 h-7 px-2 text-xs text-slate-500"
+                  >
+                    Clear
                   </Button>
-                  {(activeSearch || searchQuery) ? (
-                    <Button type="button" variant="outline" onClick={handleClearSearch}>
-                      Clear
-                    </Button>
-                  ) : null}
-                </div>
-              </form>
+                ) : null}
+              </div>
 
-              {activeSearch ? (
+              {searchQuery ? (
                 <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
                   <Filter className="size-3.5" />
                   <span>
-                    Showing cumulative summary across all sections & years for faculty matching: &quot;{activeSearch}&quot;
+                    Showing live search results for faculty matching: &quot;{searchQuery}&quot;
                   </span>
-                  <Badge variant="outline" className="ml-auto cursor-pointer" onClick={handleClearSearch}>
+                  <Badge variant="outline" className="ml-auto cursor-pointer" onClick={() => setSearchQuery("")}>
                     Reset Search
                   </Badge>
                 </div>
@@ -308,7 +296,7 @@ function AdminAnalyticsPage() {
           </Card>
 
           {/* Cards Display Section (Year Cards -> Section Cards Hierarchy) */}
-          {!activeSearch ? (
+          {!searchQuery ? (
             <section className="space-y-4">
               {yearCards.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-800">
@@ -528,8 +516,8 @@ function AdminAnalyticsPage() {
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <GraduationCap className="size-5 text-indigo-600 dark:text-indigo-400" />
-                  {activeSearch
-                    ? `Faculty Cumulative Summary: "${activeSearch}"`
+                  {searchQuery
+                    ? `Faculty Summary for Search: "${searchQuery}"`
                     : selectedSection
                     ? `Faculty Summary for Section ${selectedSection} Only`
                     : selectedYear
@@ -537,7 +525,7 @@ function AdminAnalyticsPage() {
                     : "All Faculty Attendance Summaries"}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {activeSearch
+                  {searchQuery
                     ? "Cumulative summary across all sections & years for matching faculty."
                     : selectedSection
                     ? `Showing faculty summary for section ${selectedSection} only.`
@@ -547,14 +535,14 @@ function AdminAnalyticsPage() {
                 </p>
               </div>
 
-              {(selectedSection || selectedYear || activeSearch) ? (
+              {(selectedSection || selectedYear || searchQuery) ? (
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
                     setSelectedYear(null);
                     setSelectedSection(null);
-                    handleClearSearch();
+                    setSearchQuery("");
                   }}
                   className="text-xs"
                 >

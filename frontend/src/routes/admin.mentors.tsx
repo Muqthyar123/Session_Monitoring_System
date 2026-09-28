@@ -111,7 +111,8 @@ function AdminMentorsPage() {
   };
 
   const openEditDialog = (mentor: MentorItem) => {
-    setEditing(mentor);
+    const mentorIdStr = mentor.id || (mentor as any)._id || mentor.mentorId;
+    setEditing({ ...mentor, id: mentorIdStr });
     setForm({
       name: mentor.name,
       mentorId: mentor.mentorId,
@@ -145,7 +146,8 @@ function AdminMentorsPage() {
     setSaving(true);
     try {
       if (editing) {
-        await updateMentor(editing.id, {
+        const mentorIdStr = editing.id || (editing as any)._id || editing.mentorId;
+        await updateMentor(mentorIdStr, {
           name: form.name.trim(),
           mentorId: form.mentorId.trim(),
           email: form.email.trim(),
@@ -180,8 +182,9 @@ function AdminMentorsPage() {
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
+    const mentorIdStr = pendingDelete.id || (pendingDelete as any)._id || pendingDelete.mentorId;
     try {
-      await deleteMentor(pendingDelete.id);
+      await deleteMentor(mentorIdStr);
       toast.success(`Mentor "${pendingDelete.name}" deleted.`);
       setPendingDelete(null);
       reload();
@@ -347,7 +350,7 @@ function AdminMentorsPage() {
                 }
               />
             ) : (
-              <DataTable columns={columns} rows={rows} getRowId={(r) => r.id} />
+              <DataTable columns={columns} rows={rows} getRowId={(r) => r.id || (r as any)._id || r.mentorId} />
             )}
           </CardContent>
         </Card>

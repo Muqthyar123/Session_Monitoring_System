@@ -73,13 +73,24 @@ async def get_students(
     return students
 
 
+def _build_student_query(student_id: str) -> dict:
+    student_id_clean = student_id.strip()
+    clauses = [{"_id": student_id_clean}, {"roll_number": student_id_clean.upper()}]
+    if ObjectId.is_valid(student_id_clean):
+        clauses.append({"_id": ObjectId(student_id_clean)})
+    return {"$or": clauses}
+
+
 async def update_student(student_id: str, data: StudentUpdate, actor_id: Optional[str] = None) -> StudentResponse:
-    if not ObjectId.is_valid(student_id):
-        raise HTTPException(status_code=400, detail="Invalid Student ID.")
+    if not student_id or not student_id.strip():
+        raise HTTPException(status_code=400, detail="Student ID is required.")
+
     db = get_database()
-    s = await db.students.find_one({"_id": ObjectId(student_id)})
+    s = await db.students.find_one(_build_student_query(student_id))
     if not s:
         raise HTTPException(status_code=404, detail="Student not found.")
+
+    doc_id = s["_id"]
 
     updates = {}
     if data.name is not None:
@@ -95,22 +106,22 @@ async def update_student(student_id: str, data: StudentUpdate, actor_id: Optiona
 
     if data.roll_number is not None:
         roll_clean = data.roll_number.strip().upper()
-        existing = await db.students.find_one({"roll_number": roll_clean, "_id": {"$ne": ObjectId(student_id)}})
+        existing = await db.students.find_one({"roll_number": roll_clean, "_id": {"$ne": doc_id}})
         if existing:
             raise HTTPException(status_code=400, detail=f"Roll number '{roll_clean}' is already in use.")
         updates["roll_number"] = roll_clean
 
     updates["updated_at"] = datetime.now(timezone.utc)
 
-    await db.students.update_one({"_id": ObjectId(student_id)}, {"$set": updates})
-    updated_doc = await db.students.find_one({"_id": ObjectId(student_id)})
+    await db.students.update_one({"_id": doc_id}, {"$set": updates})
+    updated_doc = await db.students.find_one({"_id": doc_id})
     updated_doc["_id"] = str(updated_doc["_id"])
 
     if actor_id:
         await db.audit_logs.insert_one({
             "actor_id": actor_id,
             "action": "UPDATE_STUDENT",
-            "target_student_id": student_id,
+            "target_student_id": str(doc_id),
             "created_at": datetime.now(timezone.utc),
         })
 
@@ -118,20 +129,22 @@ async def update_student(student_id: str, data: StudentUpdate, actor_id: Optiona
 
 
 async def delete_student(student_id: str, actor_id: Optional[str] = None):
-    if not ObjectId.is_valid(student_id):
-        raise HTTPException(status_code=400, detail="Invalid Student ID.")
+    if not student_id or not student_id.strip():
+        raise HTTPException(status_code=400, detail="Student ID is required.")
+
     db = get_database()
-    s = await db.students.find_one({"_id": ObjectId(student_id)})
+    s = await db.students.find_one(_build_student_query(student_id))
     if not s:
         raise HTTPException(status_code=404, detail="Student not found.")
 
-    await db.students.delete_one({"_id": ObjectId(student_id)})
+    doc_id = s["_id"]
+    await db.students.delete_one({"_id": doc_id})
 
     if actor_id:
         await db.audit_logs.insert_one({
             "actor_id": actor_id,
             "action": "DELETE_STUDENT",
-            "target_student_id": student_id,
+            "target_student_id": str(doc_id),
             "created_at": datetime.now(timezone.utc),
         })
 

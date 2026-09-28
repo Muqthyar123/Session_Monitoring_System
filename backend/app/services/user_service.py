@@ -132,11 +132,23 @@ async def get_users(
     return users
 
 
+def _build_user_query(user_id: str) -> dict:
+    user_id_clean = user_id.strip()
+    clauses = [
+        {"_id": user_id_clean},
+        {"mentor_id": user_id_clean.upper()},
+        {"roll_number": user_id_clean.upper()},
+    ]
+    if ObjectId.is_valid(user_id_clean):
+        clauses.append({"_id": ObjectId(user_id_clean)})
+    return {"$or": clauses}
+
+
 async def get_user_by_id(user_id: str) -> UserResponse:
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="Invalid User ID.")
+    if not user_id or not user_id.strip():
+        raise HTTPException(status_code=400, detail="User ID is required.")
     db = get_database()
-    u = await db.users.find_one({"_id": ObjectId(user_id)})
+    u = await db.users.find_one(_build_user_query(user_id))
     if not u:
         raise HTTPException(status_code=404, detail="User not found.")
     u["_id"] = str(u["_id"])
@@ -146,12 +158,14 @@ async def get_user_by_id(user_id: str) -> UserResponse:
 async def update_user(
     user_id: str, data: UserUpdate, actor_id: Optional[str] = None
 ) -> UserResponse:
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="Invalid User ID.")
+    if not user_id or not user_id.strip():
+        raise HTTPException(status_code=400, detail="User ID is required.")
     db = get_database()
-    u = await db.users.find_one({"_id": ObjectId(user_id)})
+    u = await db.users.find_one(_build_user_query(user_id))
     if not u:
         raise HTTPException(status_code=404, detail="User not found.")
+
+    doc_id = u["_id"]
 
     updates = {}
     if data.name is not None:
@@ -159,7 +173,7 @@ async def update_user(
     if data.email is not None:
         email_clean = data.email.strip().lower()
         existing = await db.users.find_one(
-            {"email": email_clean, "_id": {"$ne": ObjectId(user_id)}}
+            {"email": email_clean, "_id": {"$ne": doc_id}}
         )
         if existing:
             raise HTTPException(status_code=400, detail="Email already in use.")
@@ -173,7 +187,7 @@ async def update_user(
         roll_clean = data.roll_number.strip().upper() if data.roll_number else None
         if roll_clean:
             existing_roll = await db.users.find_one(
-                {"roll_number": roll_clean, "_id": {"$ne": ObjectId(user_id)}}
+                {"roll_number": roll_clean, "_id": {"$ne": doc_id}}
             )
             if existing_roll:
                 raise HTTPException(
@@ -201,22 +215,22 @@ async def update_user(
 
     updates["updated_at"] = datetime.now(timezone.utc)
 
-    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
-    updated_doc = await db.users.find_one({"_id": ObjectId(user_id)})
+    await db.users.update_one({"_id": doc_id}, {"$set": updates})
+    updated_doc = await db.users.find_one({"_id": doc_id})
     updated_doc["_id"] = str(updated_doc["_id"])
 
     # Sync section link if role or section updated
     current_role = updated_doc.get("role")
     current_sec = updated_doc.get("section")
     if current_sec and current_role in [UserRole.CR.value, UserRole.LR.value]:
-        await _sync_user_to_section(user_id, current_role, current_sec)
+        await _sync_user_to_section(str(doc_id), current_role, current_sec)
 
     if actor_id:
         await db.audit_logs.insert_one(
             {
                 "actor_id": actor_id,
                 "action": "UPDATE_USER",
-                "target_user_id": user_id,
+                "target_user_id": str(doc_id),
                 "metadata": updates,
                 "created_at": datetime.now(timezone.utc),
             }
@@ -226,21 +240,22 @@ async def update_user(
 
 
 async def delete_user(user_id: str, actor_id: Optional[str] = None):
-    if not ObjectId.is_valid(user_id):
-        raise HTTPException(status_code=400, detail="Invalid User ID.")
+    if not user_id or not user_id.strip():
+        raise HTTPException(status_code=400, detail="User ID is required.")
     db = get_database()
-    u = await db.users.find_one({"_id": ObjectId(user_id)})
+    u = await db.users.find_one(_build_user_query(user_id))
     if not u:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    await db.users.delete_one({"_id": ObjectId(user_id)})
+    doc_id = u["_id"]
+    await db.users.delete_one({"_id": doc_id})
 
     if actor_id:
         await db.audit_logs.insert_one(
             {
                 "actor_id": actor_id,
                 "action": "DELETE_USER",
-                "target_user_id": user_id,
+                "target_user_id": str(doc_id),
                 "created_at": datetime.now(timezone.utc),
             }
         )

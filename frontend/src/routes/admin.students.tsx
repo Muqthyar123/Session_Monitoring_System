@@ -125,7 +125,8 @@ function AdminStudentsPage() {
   };
 
   const openEditDialog = (student: StudentItem) => {
-    setEditing(student);
+    const studentId = student.id || (student as any)._id || student.rollNumber;
+    setEditing({ ...student, id: studentId });
     setForm({
       name: student.name,
       rollNumber: student.rollNumber,
@@ -154,7 +155,8 @@ function AdminStudentsPage() {
     setSaving(true);
     try {
       if (editing) {
-        await updateStudent(editing.id, {
+        const studentId = editing.id || (editing as any)._id || editing.rollNumber;
+        await updateStudent(studentId, {
           name: form.name.trim(),
           rollNumber: form.rollNumber.trim(),
           year: form.year,
@@ -185,8 +187,9 @@ function AdminStudentsPage() {
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
+    const studentId = pendingDelete.id || (pendingDelete as any)._id || pendingDelete.rollNumber;
     try {
-      await deleteStudent(pendingDelete.id);
+      await deleteStudent(studentId);
       toast.success(`Student "${pendingDelete.name}" deleted.`);
       setPendingDelete(null);
       reload();
@@ -376,7 +379,7 @@ function AdminStudentsPage() {
                 }
               />
             ) : (
-              <DataTable columns={columns} data={filteredStudents} getRowId={(r) => r.id} />
+              <DataTable columns={columns} data={filteredStudents} getRowId={(r) => r.id || (r as any)._id || r.rollNumber} />
             )}
           </CardContent>
         </Card>
