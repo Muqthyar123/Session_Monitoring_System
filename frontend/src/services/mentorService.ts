@@ -67,6 +67,12 @@ export async function deleteMentor(id: string): Promise<void> {
   });
 }
 
+export async function resetMentors(): Promise<{ message: string; deleted_count?: number }> {
+  return request<{ message: string; deleted_count?: number }>("/admin/mentors/reset", {
+    method: "DELETE",
+  });
+}
+
 export async function uploadMentorExcel(file: File): Promise<{ message: string; created?: number; failed?: number }> {
   const formData = new FormData();
   formData.append("file", file);

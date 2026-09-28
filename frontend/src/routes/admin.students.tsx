@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Plus, Search, Pencil, Trash2, Filter } from "lucide-react";
+import { Download, Plus, Search, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -42,6 +42,7 @@ import {
   deleteStudent,
   downloadStudentTemplate,
   getStudents,
+  resetStudents,
   updateStudent,
   uploadStudentExcel,
   type StudentItem,
@@ -51,8 +52,8 @@ import { MOCK_YEARS } from "@/data/mock/mockData";
 export const Route = createFileRoute("/admin/students")({
   head: () => ({
     meta: [
-      { title: "Student Management — Admin Portal" },
-      { name: "description", content: "Manage student records, register students, or upload Excel rosters." },
+      { title: "Manage Students — Admin Portal" },
+      { name: "description", content: "Upload and view uploaded student roster." },
     ],
   }),
   component: AdminStudentsPage,
@@ -88,9 +89,23 @@ function AdminStudentsPage() {
   const [search, setSearch] = useState("");
 
   const { data, loading, error, reload } = useAsyncData(
-    () => getStudents(yearFilter, sectionFilter, search),
-    [yearFilter, sectionFilter, search]
+    () => getStudents(yearFilter, sectionFilter),
+    [yearFilter, sectionFilter]
   );
+
+  const filteredStudents = useMemo(() => {
+    if (!data) return [];
+    const term = search.trim().toLowerCase();
+    if (!term) return data;
+    return data.filter(
+      (s) =>
+        s.name.toLowerCase().includes(term) ||
+        s.rollNumber.toLowerCase().includes(term) ||
+        (s.studentPhone && s.studentPhone.toLowerCase().includes(term)) ||
+        (s.parentPhone && s.parentPhone.toLowerCase().includes(term))
+    );
+  }, [data, search]);
+
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<StudentItem | null>(null);
@@ -98,6 +113,8 @@ function AdminStudentsPage() {
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof StudentFormState, string>>>({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<StudentItem | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const openCreateDialog = () => {
@@ -178,6 +195,20 @@ function AdminStudentsPage() {
     }
   };
 
+  const handleResetStudents = async () => {
+    setResetting(true);
+    try {
+      const res = await resetStudents();
+      toast.success(res.message || "Students reset successfully.");
+      setResetDialogOpen(false);
+      reload();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset students.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleFileUpload = async (file: File) => {
     setUploading(true);
     try {
@@ -239,26 +270,50 @@ function AdminStudentsPage() {
   return (
     <AdminLayout>
       <PageHeader
-        title="Student Management"
-        description="Register students manually or bulk upload class rosters via Excel with phone numbers."
+        title="Manage Students"
+        description="Upload and view uploaded student roster."
         actions={
-          <Button onClick={openCreateDialog}>
-            <Plus className="size-4 mr-2" /> Add Student
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadStudentTemplate}>
+              <Download className="size-4 mr-2" /> Download Template
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setResetDialogOpen(true)}>
+              <RotateCcw className="size-4 mr-2" /> Reset Students
+            </Button>
+          </div>
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="md:col-span-2">
+      <div className="space-y-6">
+        {/* Top Card: Upload Students */}
+        <Card>
           <CardHeader>
-            <CardTitle>Student Roster</CardTitle>
+            <CardTitle>Upload Students</CardTitle>
             <CardDescription>
-              Filter and view enrolled students across all academic years and sections.
+              Upload an Excel file (.xlsx, .xls, .csv) containing student rosters with phone numbers.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
+            <FileUpload
+              accept=".xlsx,.xls,.csv"
+              onFileSelect={handleFileUpload}
+              uploading={uploading}
+              label="Click to browse or drag and drop student roster file (.xlsx, .xls, .csv)"
+            />
+          </CardContent>
+        </Card>
+
+        {/* Bottom Card: Uploaded Students Roster */}
+        <Card>
+          <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>Uploaded Students</CardTitle>
+              <CardDescription>
+                Filter and view enrolled students across all academic years and sections.
+              </CardDescription>
+            </div>
             <div className="flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 min-w-[200px]">
+              <div className="relative min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search student or roll number..."
@@ -299,16 +354,21 @@ function AdminStudentsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
+              <Button onClick={openCreateDialog}>
+                <Plus className="size-4 mr-2" /> Add Student
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
             {loading ? (
               <LoadingState label="Loading students..." />
             ) : error ? (
               <ErrorState title="Failed to load students" description={error.message} retry={reload} />
-            ) : !data || data.length === 0 ? (
+            ) : filteredStudents.length === 0 ? (
               <EmptyState
                 title="No students found"
-                description={search || yearFilter !== ALL || sectionFilter !== ALL ? "No student matches the filters." : "Get started by adding a student or importing an Excel roster."}
+                description={search || yearFilter !== ALL || sectionFilter !== ALL ? "No student matches the filters." : "Get started by uploading an Excel roster or adding a student manually."}
                 action={
                   <Button onClick={openCreateDialog} variant="outline" size="sm">
                     <Plus className="size-4 mr-2" /> Add First Student
@@ -316,34 +376,8 @@ function AdminStudentsPage() {
                 }
               />
             ) : (
-              <DataTable columns={columns} rows={rows} getRowId={(r) => r.id} />
+              <DataTable columns={columns} data={filteredStudents} getRowId={(r) => r.id} />
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Bulk Roster Import</CardTitle>
-            <CardDescription>
-              Upload `.xlsx` roster containing Year, Section, Name, Roll Number, Student Phone, Parent Phone.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={downloadStudentTemplate}
-            >
-              <Download className="size-4 mr-2" /> Download Template
-            </Button>
-
-            <FileUpload
-              accept=".xlsx,.xls"
-              onFileSelect={handleFileUpload}
-              uploading={uploading}
-              label="Click to browse or drop student Excel file"
-            />
           </CardContent>
         </Card>
       </div>
@@ -464,6 +498,24 @@ function AdminStudentsPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete Student
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset Confirmation */}
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Student Roster?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>ALL students</strong> currently in the database. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetStudents} disabled={resetting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {resetting ? "Resetting..." : "Yes, Reset All Students"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Plus, Search, Pencil, Trash2, KeyRound } from "lucide-react";
+import { Download, Plus, Search, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -35,6 +35,7 @@ import {
   deleteMentor,
   downloadMentorTemplate,
   getMentors,
+  resetMentors,
   updateMentor,
   uploadMentorExcel,
   type MentorItem,
@@ -43,8 +44,8 @@ import {
 export const Route = createFileRoute("/admin/mentors")({
   head: () => ({
     meta: [
-      { title: "Mentor Management — Admin Portal" },
-      { name: "description", content: "Manage mentors, add mentors manually, or bulk import via Excel." },
+      { title: "Manage Mentors — Admin Portal" },
+      { name: "description", content: "Upload and view uploaded mentor directory." },
     ],
   }),
   component: AdminMentorsPage,
@@ -82,6 +83,8 @@ function AdminMentorsPage() {
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof MentorFormState, string>>>({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<MentorItem | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const rows = useMemo(() => {
@@ -187,6 +190,20 @@ function AdminMentorsPage() {
     }
   };
 
+  const handleResetMentors = async () => {
+    setResetting(true);
+    try {
+      const res = await resetMentors();
+      toast.success(res.message || "Mentors reset successfully.");
+      setResetDialogOpen(false);
+      reload();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset mentors.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleFileUpload = async (file: File) => {
     setUploading(true);
     try {
@@ -257,34 +274,64 @@ function AdminMentorsPage() {
   return (
     <AdminLayout>
       <PageHeader
-        title="Mentor Management"
-        description="Add, edit, or bulk import mentors using standard format (Name, Employee ID, Email, Designation, Department, Mobile No, Profile)."
+        title="Manage Mentors"
+        description="Upload and view uploaded mentor directory."
         actions={
-          <Button onClick={openCreateDialog}>
-            <Plus className="size-4 mr-2" /> Add Mentor
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadMentorTemplate}>
+              <Download className="size-4 mr-2" /> Download Template
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setResetDialogOpen(true)}>
+              <RotateCcw className="size-4 mr-2" /> Reset Mentors
+            </Button>
+          </div>
         }
       />
 
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="md:col-span-2">
+      <div className="space-y-6">
+        {/* Top Card: Upload Mentors */}
+        <Card>
           <CardHeader>
-            <CardTitle>Mentor Directory</CardTitle>
+            <CardTitle>Upload Mentors</CardTitle>
             <CardDescription>
-              View and manage active mentors across all departments.
+              Upload an Excel/CSV file (.xlsx, .xls, .csv) with mentor details to populate the directory.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, ID, email, designation..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+          <CardContent>
+            <FileUpload
+              accept=".xlsx,.xls,.csv"
+              onFileSelect={handleFileUpload}
+              uploading={uploading}
+              label="Click to browse or drag and drop mentor file (.xlsx, .xls, .csv)"
+            />
+          </CardContent>
+        </Card>
 
+        {/* Bottom Card: Uploaded Mentors Table */}
+        <Card>
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle>Uploaded Mentors</CardTitle>
+              <CardDescription>
+                View and manage active mentors across all departments.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search mentors..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Button onClick={openCreateDialog}>
+                <Plus className="size-4 mr-2" /> Add Mentor
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
             {loading ? (
               <LoadingState label="Loading mentors..." />
             ) : error ? (
@@ -292,7 +339,7 @@ function AdminMentorsPage() {
             ) : rows.length === 0 ? (
               <EmptyState
                 title="No mentors found"
-                description={search ? "No mentor matches your search criteria." : "Get started by adding a mentor or uploading an Excel/CSV sheet."}
+                description={search ? "No mentor matches your search criteria." : "Get started by uploading an Excel/CSV file or adding a mentor manually."}
                 action={
                   <Button onClick={openCreateDialog} variant="outline" size="sm">
                     <Plus className="size-4 mr-2" /> Add First Mentor
@@ -302,32 +349,6 @@ function AdminMentorsPage() {
             ) : (
               <DataTable columns={columns} rows={rows} getRowId={(r) => r.id} />
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Bulk Excel / CSV Import</CardTitle>
-            <CardDescription>
-              Upload an `.xlsx`, `.xls`, or `.csv` file with attributes: Name, Employee ID, Email, Designation, Department, Mobile No, Profile.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full"
-              onClick={downloadMentorTemplate}
-            >
-              <Download className="size-4 mr-2" /> Download Template
-            </Button>
-
-            <FileUpload
-              accept=".xlsx,.xls,.csv"
-              onFileSelect={handleFileUpload}
-              uploading={uploading}
-              label="Click to browse or drop mentor Excel/CSV file"
-            />
           </CardContent>
         </Card>
       </div>
@@ -467,6 +488,24 @@ function AdminMentorsPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete Mentor
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset Confirmation */}
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Mentors Directory?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>ALL mentors</strong> currently in the database. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetMentors} disabled={resetting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {resetting ? "Resetting..." : "Yes, Reset All Mentors"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

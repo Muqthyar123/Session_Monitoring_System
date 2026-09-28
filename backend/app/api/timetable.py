@@ -23,15 +23,33 @@ async def upload_timetable_api(
     file: UploadFile = File(...),
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
+    fn_lower = (file.filename or "").lower()
+    if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls")):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file format. Only .xlsx or .xls Excel workbooks are accepted for Timetable upload.",
+        )
+
     file_bytes = await file.read()
-    summary = await parse_and_import_timetable_excel(
-        file_bytes, filename=file.filename, actor_id=admin["id"]
-    )
+    try:
+        summary = await parse_and_import_timetable_excel(
+            file_bytes, filename=file.filename, actor_id=admin["id"]
+        )
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=f"Failed to process Timetable file: {str(err)}")
+
+    if summary.get("inserted", 0) == 0 and summary.get("failed", 0) > 0:
+        first_err = summary["errors"][0]["errors"][0] if summary.get("errors") else "Invalid timetable matrix or table format."
+        raise HTTPException(status_code=400, detail=f"Timetable upload failed: {first_err}")
+
     return ApiResponse(
         success=True,
         data=summary,
         message=f"Timetable upload processed: {summary['inserted']} periods inserted/updated.",
     )
+
 
 
 @router.get("/template")

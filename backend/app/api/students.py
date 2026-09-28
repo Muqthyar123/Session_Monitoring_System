@@ -10,6 +10,7 @@ from app.services.excel_service import (
 )
 from app.services.student_service import (
     create_student,
+    delete_all_students,
     delete_student,
     get_students,
     update_student,
@@ -55,15 +56,33 @@ async def import_student_excel_api(
     file: UploadFile = File(...),
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
+    fn_lower = (file.filename or "").lower()
+    if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls") or fn_lower.endswith(".csv")):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file format. Only .xlsx, .xls, or .csv files are accepted for Students upload.",
+        )
+
     file_bytes = await file.read()
-    summary = await parse_and_import_student_excel(
-        file_bytes, filename=file.filename, actor_id=admin["id"]
-    )
+    try:
+        summary = await parse_and_import_student_excel(
+            file_bytes, filename=file.filename, actor_id=admin["id"]
+        )
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=f"Failed to process Student file: {str(err)}")
+
+    if summary.get("failed", 0) > 0 and summary.get("created", 0) == 0 and summary.get("updated", 0) == 0:
+        first_err = summary["errors"][0]["errors"][0] if summary.get("errors") else "Invalid student file contents."
+        raise HTTPException(status_code=400, detail=f"Student import failed: {first_err}")
+
     return ApiResponse(
         success=True,
         data=summary,
         message=f"Import complete: {summary['created']} created, {summary['updated']} updated, {summary['failed']} failed.",
     )
+
 
 
 @router.patch("/{student_id}", response_model=ApiResponse[StudentResponse])
@@ -76,6 +95,18 @@ async def update_student_api(
     return ApiResponse(success=True, data=updated, message="Student updated successfully.")
 
 
+@router.delete("/reset", response_model=ApiResponse[dict])
+async def reset_students_api(
+    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+):
+    deleted_count = await delete_all_students(actor_id=admin["id"])
+    return ApiResponse(
+        success=True,
+        data={"deleted_count": deleted_count},
+        message=f"Successfully reset student roster ({deleted_count} students deleted).",
+    )
+
+
 @router.delete("/{student_id}", response_model=ApiResponse[dict])
 async def delete_student_api(
     student_id: str,
@@ -83,3 +114,5 @@ async def delete_student_api(
 ):
     await delete_student(student_id, actor_id=admin["id"])
     return ApiResponse(success=True, message="Student deleted successfully.")
+
+

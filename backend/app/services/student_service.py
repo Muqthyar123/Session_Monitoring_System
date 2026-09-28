@@ -134,3 +134,17 @@ async def delete_student(student_id: str, actor_id: Optional[str] = None):
             "target_student_id": student_id,
             "created_at": datetime.now(timezone.utc),
         })
+
+
+async def delete_all_students(actor_id: Optional[str] = None) -> int:
+    db = get_database()
+    res = await db.students.delete_many({})
+    if actor_id:
+        await db.audit_logs.insert_one({
+            "actor_id": actor_id,
+            "action": "RESET_STUDENTS",
+            "metadata": {"deleted_count": res.deleted_count},
+            "created_at": datetime.now(timezone.utc),
+        })
+    return res.deleted_count
+

@@ -49,6 +49,12 @@ export async function deleteStudent(id: string): Promise<void> {
   });
 }
 
+export async function resetStudents(): Promise<{ message: string; deleted_count?: number }> {
+  return request<{ message: string; deleted_count?: number }>("/admin/students/reset", {
+    method: "DELETE",
+  });
+}
+
 export async function uploadStudentExcel(file: File): Promise<{ message: string; created?: number; failed?: number }> {
   const formData = new FormData();
   formData.append("file", file);

@@ -244,3 +244,19 @@ async def delete_user(user_id: str, actor_id: Optional[str] = None):
                 "created_at": datetime.now(timezone.utc),
             }
         )
+
+
+async def delete_all_mentors(actor_id: Optional[str] = None) -> int:
+    db = get_database()
+    res = await db.users.delete_many({"role": UserRole.MENTOR.value})
+    if actor_id:
+        await db.audit_logs.insert_one(
+            {
+                "actor_id": actor_id,
+                "action": "RESET_MENTORS",
+                "metadata": {"deleted_count": res.deleted_count},
+                "created_at": datetime.now(timezone.utc),
+            }
+        )
+    return res.deleted_count
+

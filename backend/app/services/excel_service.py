@@ -764,6 +764,110 @@ def generate_mentor_excel_template() -> bytes:
     return buffer.getvalue()
 
 
+def extract_raw_rows_from_file(file_bytes: bytes, filename: str) -> List[List[str]]:
+    """
+    Extracts raw string rows from any uploaded workbook or text file (.xlsx, .xls, .csv, .tsv, or HTML tables formatted as .xls).
+    Tries multiple decoders and Excel parsers to ensure robust compatibility.
+    """
+    raw_rows: List[List[str]] = []
+    is_zip = file_bytes.startswith(b"PK")
+    is_ole = file_bytes.startswith(b"\xd0\xcf\x11\xe0")
+    fn_lower = filename.lower()
+
+    # 1. Try binary Excel parsers first for .xlsx / .xls or binary magic signatures
+    if is_zip or is_ole or fn_lower.endswith((".xlsx", ".xls")):
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            for ws_name in wb.sheetnames:
+                ws = wb[ws_name]
+                sheet_rows = []
+                for row in ws.iter_rows(values_only=True):
+                    clean_r = [str(cell).strip() if cell is not None else "" for cell in row]
+                    if any(clean_r):
+                        sheet_rows.append(clean_r)
+                if sheet_rows:
+                    return sheet_rows
+        except Exception:
+            pass
+
+        try:
+            import pandas as pd
+            df = pd.read_excel(io.BytesIO(file_bytes), header=None)
+            df = df.fillna("")
+            rows = df.astype(str).values.tolist()
+            clean_rows = [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
+            if clean_rows:
+                return clean_rows
+        except Exception:
+            pass
+
+    # 2. Check for HTML Table export files
+    text = ""
+    for encoding in ["utf-8-sig", "utf-8", "latin1", "cp1252"]:
+        try:
+            text = file_bytes.decode(encoding)
+            break
+        except Exception:
+            continue
+
+    if text and ("<tr" in text.lower() or "<table" in text.lower()):
+        try:
+            import pandas as pd
+            dfs = pd.read_html(io.StringIO(text), header=None)
+            if dfs:
+                df = dfs[0].fillna("")
+                rows = df.astype(str).values.tolist()
+                clean_rows = [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
+                if clean_rows:
+                    return clean_rows
+        except Exception:
+            pass
+
+        try:
+            soup_rows = re.findall(r'<tr[^>]*>(.*?)</tr>', text, re.IGNORECASE | re.DOTALL)
+            for tr in soup_rows:
+                cells = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.IGNORECASE | re.DOTALL)
+                clean_cells = [re.sub(r'<[^>]+>', '', c).strip() for c in cells]
+                if any(clean_cells):
+                    raw_rows.append(clean_cells)
+            if raw_rows:
+                return raw_rows
+        except Exception:
+            pass
+
+    # 3. CSV / TSV text parsing (ONLY if NOT binary)
+    if text and b"\x00" not in file_bytes[:1000]:
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if lines:
+            delimiter = ","
+            if "\t" in lines[0] and lines[0].count("\t") > lines[0].count(","):
+                delimiter = "\t"
+            try:
+                reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+                for r in reader:
+                    clean_r = [str(c).strip() if c is not None else "" for c in r]
+                    if any(clean_r):
+                        raw_rows.append(clean_r)
+                if raw_rows:
+                    return raw_rows
+            except Exception:
+                pass
+
+    # 4. Final pandas read_excel fallback
+    try:
+        import pandas as pd
+        df = pd.read_excel(io.BytesIO(file_bytes), header=None)
+        df = df.fillna("")
+        rows = df.astype(str).values.tolist()
+        clean_rows = [[c.strip() for c in r] for r in rows if any(c.strip() for c in r)]
+        if clean_rows:
+            return clean_rows
+    except Exception:
+        pass
+
+    return raw_rows
+
+
 async def parse_and_import_mentor_excel(
     file_bytes: bytes, filename: str, actor_id: str
 ) -> Dict[str, Any]:
@@ -772,66 +876,90 @@ async def parse_and_import_mentor_excel(
     if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls") or fn_lower.endswith(".csv")):
         raise ValueError("Invalid file format. Only .xlsx, .xls, or .csv files are supported.")
 
-    raw_rows = []
-    if fn_lower.endswith(".csv"):
-        text = ""
-        for encoding in ["utf-8-sig", "utf-8", "latin1"]:
-            try:
-                text = file_bytes.decode(encoding)
-                break
-            except Exception:
-                continue
-        if not text:
-            text = file_bytes.decode("utf-8", errors="ignore")
-
-        reader = csv.reader(io.StringIO(text))
-        for row in reader:
-            raw_rows.append([str(c).strip() if c is not None else "" for c in row])
-    else:
-        try:
-            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-            ws = wb.active
-            for row in ws.iter_rows(values_only=True):
-                raw_rows.append([str(cell).strip() if cell is not None else "" for cell in row])
-        except Exception as e:
-            raise ValueError(f"Failed to read Excel workbook: {str(e)}")
-
+    raw_rows = extract_raw_rows_from_file(file_bytes, filename)
     if not raw_rows:
-        raise ValueError("File is empty.")
+        raise ValueError("File is empty or could not be read.")
 
     header_idx = -1
     col_map = {}
 
-    for idx, row in enumerate(raw_rows):
+    for idx, row in enumerate(raw_rows[:30]):
         row_lower = [str(c).strip().lower() for c in row]
-        has_id = any("id" in cell or "employee" in cell or "user name" in cell for cell in row_lower)
-        has_name = any("name" in cell for cell in row_lower)
+        row_cleaned = [re.sub(r'[^a-z0-9]', '', cell) for cell in row_lower]
 
-        if has_name and has_id:
+        has_id = any(
+            c in ["id", "empid", "employeeid", "mentorid", "facid", "facultyid", "empcode", "code", "username", "idno", "empno"]
+            or "empid" in c
+            or "employeeid" in c
+            or "mentorid" in c
+            or "facultyid" in c
+            or c == "id"
+            for c in row_cleaned
+        )
+        has_name = any(
+            ("name" in c or "faculty" in c or "mentor" in c or "teacher" in c)
+            and "father" not in c
+            and "user" not in c
+            and "id" not in c
+            and "file" not in c
+            for c in row_cleaned
+        )
+
+        if has_name or has_id:
             header_idx = idx
-            for c_idx, cell_str in enumerate(row_lower):
-                c_clean = cell_str.replace("_", " ").replace(".", "")
-                if "mentor id" in c_clean or "employee id" in c_clean or "emp id" in c_clean or c_clean == "id" or "user name" in c_clean:
+            for c_idx, c_clean in enumerate(row_cleaned):
+                if (
+                    c_clean in ["id", "empid", "employeeid", "mentorid", "facid", "facultyid", "empcode", "username", "code", "idno", "empno"]
+                    or "mentorid" in c_clean
+                    or "employeeid" in c_clean
+                    or "empid" in c_clean
+                    or c_clean == "id"
+                ):
                     if "mentor_id" not in col_map or "employee" in c_clean or "mentor" in c_clean or c_clean == "id":
                         col_map["mentor_id"] = c_idx
-                elif "name" in c_clean and "user" not in c_clean:
-                    col_map["name"] = c_idx
+                elif ("name" in c_clean or "faculty" in c_clean or "mentor" in c_clean or "teacher" in c_clean) and "user" not in c_clean and "father" not in c_clean and "id" not in c_clean and "filename" not in c_clean:
+                    if "name" not in col_map or "name" in c_clean:
+                        col_map["name"] = c_idx
                 elif "email" in c_clean or "mail" in c_clean:
                     col_map["email"] = c_idx
-                elif "design" in c_clean:
+                elif "design" in c_clean or "desig" in c_clean or "role" in c_clean:
                     col_map["designation"] = c_idx
-                elif "branch" in c_clean or "dept" in c_clean or "department" in c_clean:
+                elif "branch" in c_clean or "dept" in c_clean or "department" in c_clean or "stream" in c_clean:
                     col_map["department"] = c_idx
-                elif "mobile" in c_clean or "phone" in c_clean:
-                    col_map["phone"] = c_idx
+                elif "mobile" in c_clean or "phone" in c_clean or "contact" in c_clean or "cell" in c_clean or "number" in c_clean:
+                    if "phone" not in col_map or "mobile" in c_clean or "phone" in c_clean:
+                        col_map["phone"] = c_idx
                 elif "profile" in c_clean:
                     col_map["profile"] = c_idx
                 elif "password" in c_clean:
                     col_map["password"] = c_idx
             break
 
-    if header_idx == -1 or "name" not in col_map or "mentor_id" not in col_map:
-        raise ValueError("Could not locate valid column headers (Name and Employee ID / Mentor ID) in file.")
+    # Smart positional fallback if headers were slightly off or non-standard
+    if (header_idx == -1 or "name" not in col_map or "mentor_id" not in col_map) and len(raw_rows) >= 1:
+        for f_idx in range(min(5, len(raw_rows))):
+            row_str = [str(c).strip() for c in raw_rows[f_idx]]
+            row_clean = [re.sub(r'[^a-z0-9]', '', c.lower()) for c in row_str]
+            for c_i, c_val in enumerate(row_clean):
+                if ("id" in c_val or "emp" in c_val or "code" in c_val) and "mentor_id" not in col_map:
+                    col_map["mentor_id"] = c_i
+                elif ("name" in c_val or "faculty" in c_val or "mentor" in c_val) and "name" not in col_map:
+                    col_map["name"] = c_i
+
+            if "name" in col_map or "mentor_id" in col_map:
+                header_idx = f_idx
+                break
+
+        if "name" not in col_map and len(raw_rows[0]) > 1:
+            col_map["name"] = 1 if len(raw_rows[0]) > 1 else 0
+        if "mentor_id" not in col_map:
+            col_map["mentor_id"] = 2 if len(raw_rows[0]) > 2 else (0 if col_map.get("name") != 0 else 1)
+        if header_idx == -1:
+            header_idx = 0
+
+
+
+
 
     db = get_database()
     existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=10000)
@@ -1010,39 +1138,71 @@ def generate_student_excel_template() -> bytes:
 async def parse_and_import_student_excel(
     file_bytes: bytes, filename: str, actor_id: str
 ) -> Dict[str, Any]:
-    """Parse Student Excel workbook and safely import students into students collection."""
-    if not filename.lower().endswith(".xlsx"):
-        raise ValueError("Invalid file format. Only .xlsx Excel workbooks are supported.")
+    """Parse Student Excel workbook or CSV file and safely import students into students collection."""
+    fn_lower = filename.lower()
+    if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls") or fn_lower.endswith(".csv")):
+        raise ValueError("Invalid file format. Only .xlsx, .xls, or .csv files are supported.")
 
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    except Exception as e:
-        raise ValueError(f"Failed to read Excel file: {str(e)}")
+    raw_rows = extract_raw_rows_from_file(file_bytes, filename)
+    if not raw_rows:
+        raise ValueError("File is empty or could not be read.")
 
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise ValueError("Excel file is empty.")
-
-    header_row = [str(cell).strip().lower() if cell is not None else "" for cell in rows[0]]
+    header_idx = -1
     col_map = {}
-    for idx, h in enumerate(header_row):
-        if "year" in h:
-            col_map["year"] = idx
-        elif "roll" in h:
-            col_map["roll_number"] = idx
-        elif "section" in h:
-            col_map["section"] = idx
-        elif "parent" in h:
-            col_map["parent_phone"] = idx
-        elif "student phone" in h or (("phone" in h) and "parent" not in h):
-            col_map["student_phone"] = idx
-        elif "name" in h:
-            col_map["name"] = idx
 
-    missing_cols = [c for c in ["year", "name", "roll_number", "section"] if c not in col_map]
-    if missing_cols:
-        raise ValueError(f"Missing required columns in Excel: {', '.join(missing_cols)}")
+    for idx, row in enumerate(raw_rows):
+        row_lower = [str(c).strip().lower() for c in row]
+        has_roll = any("roll" in cell or "pin" in cell or "htno" in cell or "reg" in cell or "s.no" in cell for cell in row_lower)
+        has_name = any("name" in cell for cell in row_lower)
+
+        if has_name or has_roll:
+            # Check if this row looks like column header
+            matched_headers = 0
+            for c_idx, cell_str in enumerate(row_lower):
+                c_clean = cell_str.replace("_", " ").replace(".", "")
+                if "year" in c_clean:
+                    col_map["year"] = c_idx
+                    matched_headers += 1
+                elif "roll" in c_clean or "pin" in c_clean or "htno" in c_clean or "reg" in c_clean:
+                    col_map["roll_number"] = c_idx
+                    matched_headers += 1
+                elif "section" in c_clean or "sec" in c_clean:
+                    col_map["section"] = c_idx
+                    matched_headers += 1
+                elif "parent" in c_clean or "father" in c_clean or "guardian" in c_clean:
+                    col_map["parent_phone"] = c_idx
+                elif "student" in c_clean or ("phone" in c_clean and "parent" not in c_clean) or "mobile" in c_clean:
+                    col_map["student_phone"] = c_idx
+                elif "name" in c_clean and "father" not in c_clean:
+                    col_map["name"] = c_idx
+                    matched_headers += 1
+
+            if matched_headers >= 2:
+                header_idx = idx
+                break
+
+    if header_idx == -1:
+        # Fallback to row 0 if no headers matched
+        header_idx = 0
+        col_map = {"year": 0, "name": 1, "roll_number": 2, "section": 3, "student_phone": 4, "parent_phone": 5}
+
+    if "name" not in col_map and "roll_number" not in col_map:
+        raise ValueError("Invalid Student Roster file format! The uploaded file does not contain required Student headers (Roll Number and Student Name). Please upload a valid Student Roster Excel/CSV file.")
+
+
+    # Infer year & section from filename if missing from columns
+    inferred_year = "2nd Year"
+    if "3" in fn_lower or "iii" in fn_lower:
+        inferred_year = "3rd Year"
+    elif "4" in fn_lower or "iv" in fn_lower:
+        inferred_year = "4th Year"
+    elif "1" in fn_lower or "i" in fn_lower:
+        inferred_year = "1st Year"
+
+    inferred_section = "II-CSE-A"
+    sec_match = re.search(r'([i|v|x]+-cse-[a-z]+|cse-[a-z]+)', fn_lower)
+    if sec_match:
+        inferred_section = sec_match.group(1).upper()
 
     db = get_database()
     existing_students = await db.students.find({}, {"roll_number": 1}).to_list(length=10000)
@@ -1055,40 +1215,49 @@ async def parse_and_import_student_excel(
     failed_count = 0
     errors = []
 
-    for row_idx, row_values in enumerate(rows[1:], start=2):
+    def clean_val(val: Any) -> str:
+        if val is None:
+            return ""
+        s = str(val).strip()
+        if s.endswith(".0"):
+            s = s[:-2]
+        s = re.sub(r'^[âÂ\xa0\s]+', '', s).strip()
+        return s
+
+    for row_idx, row_values in enumerate(raw_rows[header_idx + 1:], start=header_idx + 2):
         if not any(row_values):
             continue
 
-        total_rows += 1
-
-        def get_val(col_name: str) -> str:
-            idx = col_map.get(col_name)
-            if idx is not None and idx < len(row_values) and row_values[idx] is not None:
-                return str(row_values[idx]).strip()
+        def get_field(col_key: str) -> str:
+            c_i = col_map.get(col_key)
+            if c_i is not None and c_i < len(row_values):
+                return clean_val(row_values[c_i])
             return ""
 
-        year = get_val("year")
-        name = get_val("name")
-        roll = get_val("roll_number").upper()
-        section = get_val("section").upper()
-        student_phone = get_val("student_phone")
-        parent_phone = get_val("parent_phone")
+        year = get_field("year") or inferred_year
+        name = get_field("name")
+        roll = get_field("roll_number").upper()
+        section = get_field("section").upper() or inferred_section
+        student_phone = get_field("student_phone")
+        parent_phone = get_field("parent_phone")
 
+        if not roll and not name:
+            continue
+        if roll in ["ROLL NUMBER", "ROLL NO", "PIN", "HT NO", "S.NO"]:
+            continue
+
+        total_rows += 1
         row_errors = []
-        if not year:
-            row_errors.append("Year is required.")
+
         if not name:
             row_errors.append("Student Name is required.")
         if not roll:
             row_errors.append("Roll Number is required.")
-        if not section:
-            row_errors.append("Section is required.")
 
-        if roll in seen_rolls_in_file:
-            row_errors.append(f"Duplicate roll number '{roll}' within Excel file.")
-        else:
-            if roll:
-                seen_rolls_in_file.add(roll)
+        if roll and roll in seen_rolls_in_file:
+            row_errors.append(f"Duplicate roll number '{roll}' within file.")
+        elif roll:
+            seen_rolls_in_file.add(roll)
 
         if row_errors:
             failed_count += 1
@@ -1130,3 +1299,4 @@ async def parse_and_import_student_excel(
         "failed": failed_count,
         "errors": errors,
     }
+

@@ -36,6 +36,7 @@ async def create_db_indexes():
                 pass
 
         await db.users.create_index([("role", ASCENDING)])
+        await db.users.create_index([("role", ASCENDING), ("created_at", DESCENDING)])
         await db.users.create_index([("section", ASCENDING)])
 
         # students collection
@@ -46,7 +47,8 @@ async def create_db_indexes():
             )
         except Exception:
             pass
-        await db.students.create_index([("year", ASCENDING), ("section", ASCENDING)])
+        await db.students.create_index([("year", ASCENDING), ("section", ASCENDING), ("roll_number", ASCENDING)])
+
 
         # student_attendance collection
         try:
