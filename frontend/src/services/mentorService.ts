@@ -6,6 +6,9 @@ export interface MentorItem {
   mentorId: string;
   email: string;
   phone?: string;
+  designation?: string;
+  department?: string;
+  profile?: string;
   role: "MENTOR";
   createdAt?: string;
 }
@@ -16,6 +19,9 @@ export interface MentorCreatePayload {
   email?: string;
   password?: string;
   phone?: string;
+  designation?: string;
+  department?: string;
+  profile?: string;
 }
 
 export interface MentorUpdatePayload {
@@ -24,6 +30,9 @@ export interface MentorUpdatePayload {
   email?: string;
   password?: string;
   phone?: string;
+  designation?: string;
+  department?: string;
+  profile?: string;
 }
 
 export async function getMentors(search?: string): Promise<MentorItem[]> {

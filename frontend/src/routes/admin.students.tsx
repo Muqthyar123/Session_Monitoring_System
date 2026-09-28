@@ -316,7 +316,7 @@ function AdminStudentsPage() {
                 }
               />
             ) : (
-              <DataTable columns={columns} data={data} keyExtractor={(r) => r.id} />
+              <DataTable columns={columns} rows={rows} getRowId={(r) => r.id} />
             )}
           </CardContent>
         </Card>

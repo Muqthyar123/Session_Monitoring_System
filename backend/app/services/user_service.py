@@ -39,9 +39,13 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
         "password_hash": hashed_pwd,
         "role": data.role.value,
         "roll_number": roll_clean,
+        "mentor_id": data.mentor_id.strip().upper() if data.mentor_id else None,
         "phone": data.phone.strip() if data.phone else None,
         "year": data.year.strip() if data.year else None,
         "section": data.section.strip() if data.section else None,
+        "designation": data.designation.strip() if data.designation else None,
+        "department": data.department.strip() if data.department else None,
+        "profile": data.profile.strip() if data.profile else None,
         "is_active": data.is_active,
         "created_at": now,
         "updated_at": now,
@@ -115,6 +119,9 @@ async def get_users(
             {"name": {"$regex": search, "$options": "i"}},
             {"email": {"$regex": search, "$options": "i"}},
             {"roll_number": {"$regex": search, "$options": "i"}},
+            {"mentor_id": {"$regex": search, "$options": "i"}},
+            {"designation": {"$regex": search, "$options": "i"}},
+            {"department": {"$regex": search, "$options": "i"}},
         ]
 
     cursor = db.users.find(query).skip(skip).limit(limit).sort("created_at", -1)
@@ -160,6 +167,8 @@ async def update_user(
 
     if data.role is not None:
         updates["role"] = data.role.value
+    if data.mentor_id is not None:
+        updates["mentor_id"] = data.mentor_id.strip().upper() if data.mentor_id else None
     if data.roll_number is not None:
         roll_clean = data.roll_number.strip().upper() if data.roll_number else None
         if roll_clean:
@@ -178,6 +187,12 @@ async def update_user(
         updates["year"] = data.year.strip() if data.year else None
     if data.section is not None:
         updates["section"] = data.section.strip() if data.section else None
+    if data.designation is not None:
+        updates["designation"] = data.designation.strip() if data.designation else None
+    if data.department is not None:
+        updates["department"] = data.department.strip() if data.department else None
+    if data.profile is not None:
+        updates["profile"] = data.profile.strip() if data.profile else None
     if data.is_active is not None:
         updates["is_active"] = data.is_active
 

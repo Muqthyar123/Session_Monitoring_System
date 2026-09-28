@@ -20,6 +20,9 @@ class UserBase(BaseModel):
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    profile: Optional[str] = None
     is_active: bool = True
 
     model_config = ConfigDict(populate_by_name=True)
@@ -38,6 +41,9 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None
+    designation: Optional[str] = None
+    department: Optional[str] = None
+    profile: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=6)
 

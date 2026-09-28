@@ -1,3 +1,4 @@
+import csv
 import io
 import re
 from datetime import datetime, time, timezone
@@ -727,12 +728,12 @@ async def parse_and_import_timetable_excel(
 # ----------------------------------------------------
 
 def generate_mentor_excel_template() -> bytes:
-    """Generate a clean .xlsx template for Mentor bulk import."""
+    """Generate a clean .xlsx template for Mentor bulk import matching standard college faculty attributes."""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Mentor_Import_Template"
 
-    headers = ["Mentor ID", "Mentor Name", "Password", "Phone Number"]
+    headers = ["S.No", "Name", "Employee ID", "Email", "Designation", "Department", "Mobile No", "Profile"]
     ws.append(headers)
 
     header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
@@ -745,8 +746,9 @@ def generate_mentor_excel_template() -> bytes:
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     samples = [
-        ["M101", "Dr. A. Ramesh", "mentor1234", "9876543210"],
-        ["M102", "Prof. S. Sunita", "mentor1234", "9876543211"],
+        ["1", "SIVA NAGESWARA RAO SIVARATRI", "605101", "drssnr@nrtec.in", "PROFESSOR", "CSE", "8977987777", "Administrator"],
+        ["2", "MOTURI SIREESHA", "905101", "moturisireesha@gmail.com", "ASSOCIATE PROFESSOR", "CSE", "9492468445", "Faculty"],
+        ["3", "NAGESWARA RAO KUKKAMUDI", "705201", "knag1999@nrtec.in", "COM.OPERATOR", "CSE", "9705672051", "Course Coordinator"],
     ]
     for row in samples:
         ws.append(row)
@@ -765,39 +767,76 @@ def generate_mentor_excel_template() -> bytes:
 async def parse_and_import_mentor_excel(
     file_bytes: bytes, filename: str, actor_id: str
 ) -> Dict[str, Any]:
-    """Parse Mentor Excel workbook and safely import mentors into users collection."""
-    if not filename.lower().endswith(".xlsx"):
-        raise ValueError("Invalid file format. Only .xlsx Excel workbooks are supported.")
+    """Parse Mentor Excel (.xlsx, .xls) or CSV (.csv) file and safely import mentors into users collection."""
+    fn_lower = filename.lower()
+    if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls") or fn_lower.endswith(".csv")):
+        raise ValueError("Invalid file format. Only .xlsx, .xls, or .csv files are supported.")
 
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    except Exception as e:
-        raise ValueError(f"Failed to read Excel file: {str(e)}")
+    raw_rows = []
+    if fn_lower.endswith(".csv"):
+        text = ""
+        for encoding in ["utf-8-sig", "utf-8", "latin1"]:
+            try:
+                text = file_bytes.decode(encoding)
+                break
+            except Exception:
+                continue
+        if not text:
+            text = file_bytes.decode("utf-8", errors="ignore")
 
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise ValueError("Excel file is empty.")
+        reader = csv.reader(io.StringIO(text))
+        for row in reader:
+            raw_rows.append([str(c).strip() if c is not None else "" for c in row])
+    else:
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(values_only=True):
+                raw_rows.append([str(cell).strip() if cell is not None else "" for cell in row])
+        except Exception as e:
+            raise ValueError(f"Failed to read Excel workbook: {str(e)}")
 
-    header_row = [str(cell).strip().lower() if cell is not None else "" for cell in rows[0]]
+    if not raw_rows:
+        raise ValueError("File is empty.")
+
+    header_idx = -1
     col_map = {}
-    for idx, h in enumerate(header_row):
-        if "mentor id" in h or h == "id":
-            col_map["mentor_id"] = idx
-        elif "name" in h:
-            col_map["name"] = idx
-        elif "password" in h:
-            col_map["password"] = idx
-        elif "phone" in h:
-            col_map["phone"] = idx
 
-    missing_cols = [c for c in ["mentor_id", "name"] if c not in col_map]
-    if missing_cols:
-        raise ValueError(f"Missing required columns in Excel: {', '.join(missing_cols)}")
+    for idx, row in enumerate(raw_rows):
+        row_lower = [str(c).strip().lower() for c in row]
+        has_id = any("id" in cell or "employee" in cell or "user name" in cell for cell in row_lower)
+        has_name = any("name" in cell for cell in row_lower)
+
+        if has_name and has_id:
+            header_idx = idx
+            for c_idx, cell_str in enumerate(row_lower):
+                c_clean = cell_str.replace("_", " ").replace(".", "")
+                if "mentor id" in c_clean or "employee id" in c_clean or "emp id" in c_clean or c_clean == "id" or "user name" in c_clean:
+                    if "mentor_id" not in col_map or "employee" in c_clean or "mentor" in c_clean or c_clean == "id":
+                        col_map["mentor_id"] = c_idx
+                elif "name" in c_clean and "user" not in c_clean:
+                    col_map["name"] = c_idx
+                elif "email" in c_clean or "mail" in c_clean:
+                    col_map["email"] = c_idx
+                elif "design" in c_clean:
+                    col_map["designation"] = c_idx
+                elif "branch" in c_clean or "dept" in c_clean or "department" in c_clean:
+                    col_map["department"] = c_idx
+                elif "mobile" in c_clean or "phone" in c_clean:
+                    col_map["phone"] = c_idx
+                elif "profile" in c_clean:
+                    col_map["profile"] = c_idx
+                elif "password" in c_clean:
+                    col_map["password"] = c_idx
+            break
+
+    if header_idx == -1 or "name" not in col_map or "mentor_id" not in col_map:
+        raise ValueError("Could not locate valid column headers (Name and Employee ID / Mentor ID) in file.")
 
     db = get_database()
-    existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=5000)
-    existing_mentors = {u["mentor_id"].upper(): str(u["_id"]) for u in existing_users if u.get("mentor_id")}
+    existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=10000)
+    existing_by_id = {str(u.get("mentor_id") or u.get("roll_number") or "").upper(): str(u["_id"]) for u in existing_users if u.get("mentor_id") or u.get("roll_number")}
+    existing_by_email = {str(u["email"]).lower(): str(u["_id"]) for u in existing_users if u.get("email")}
 
     seen_ids_in_file = set()
     total_rows = 0
@@ -806,66 +845,109 @@ async def parse_and_import_mentor_excel(
     failed_count = 0
     errors = []
 
-    for row_idx, row_values in enumerate(rows[1:], start=2):
+    def clean_val(val: Any) -> str:
+        if val is None:
+            return ""
+        s = str(val).strip()
+        if s.endswith(".0"):
+            s = s[:-2]
+        s = re.sub(r'^[âÂ\xa0\s]+', '', s).strip()
+        return s
+
+    default_pwd_hash = hash_password("mentor1234")
+
+    for row_idx, row_values in enumerate(raw_rows[header_idx + 1:], start=header_idx + 2):
         if not any(row_values):
             continue
 
-        total_rows += 1
-
-        def get_val(col_name: str) -> str:
-            idx = col_map.get(col_name)
-            if idx is not None and idx < len(row_values) and row_values[idx] is not None:
-                return str(row_values[idx]).strip()
+        def get_field(col_key: str) -> str:
+            c_i = col_map.get(col_key)
+            if c_i is not None and c_i < len(row_values):
+                return clean_val(row_values[c_i])
             return ""
 
-        mentor_id = get_val("mentor_id").upper()
-        name = get_val("name")
-        password = get_val("password") or "mentor1234"
-        phone = get_val("phone")
+        mentor_id = get_field("mentor_id").upper()
+        name = get_field("name")
+        email = get_field("email").lower()
+        designation = get_field("designation")
+        department = get_field("department")
+        phone = get_field("phone")
+        profile = get_field("profile")
+        password = get_field("password")
 
+        if not mentor_id and not email and (name.upper() in ["TEACHING", "NON-TEACHING", "NAME", "S.NO"] or name.startswith("S.N")):
+            continue
+        if mentor_id in ["ID", "EMPLOYEE ID", "USER NAME", "MENTOR ID"]:
+            continue
+
+        total_rows += 1
         row_errors = []
-        if not mentor_id:
-            row_errors.append("Mentor ID is required.")
+
         if not name:
             row_errors.append("Mentor Name is required.")
+        if not mentor_id and not email:
+            row_errors.append("Mentor ID or Email is required.")
 
-        if mentor_id in seen_ids_in_file:
-            row_errors.append(f"Duplicate Mentor ID '{mentor_id}' within Excel file.")
-        else:
-            if mentor_id:
-                seen_ids_in_file.add(mentor_id)
+        if mentor_id and mentor_id in seen_ids_in_file:
+            row_errors.append(f"Duplicate Mentor ID '{mentor_id}' within file.")
+        elif mentor_id:
+            seen_ids_in_file.add(mentor_id)
 
         if row_errors:
             failed_count += 1
             errors.append({"row": row_idx, "mentor_id": mentor_id or "N/A", "errors": row_errors})
             continue
 
-        now = datetime.now(timezone.utc)
-        email = f"{mentor_id.lower()}@fams.edu"
+        if not mentor_id and email:
+            mentor_id = email.split("@")[0].upper()
 
-        if mentor_id in existing_mentors:
-            u_id = existing_mentors[mentor_id]
-            update_data = {"name": name, "updated_at": now}
-            if phone:
-                update_data["phone"] = phone
-            if password:
-                update_data["password_hash"] = hash_password(password)
-            await db.users.update_one({"_id": ObjectId(u_id)}, {"$set": update_data})
+        if not email:
+            email = f"{mentor_id.lower()}@nrtec.in"
+
+        now = datetime.now(timezone.utc)
+        target_id = existing_by_id.get(mentor_id) or existing_by_email.get(email)
+
+        update_fields = {
+            "name": name,
+            "email": email,
+            "mentor_id": mentor_id,
+            "roll_number": mentor_id,
+            "updated_at": now,
+        }
+        if phone:
+            update_fields["phone"] = phone
+        if designation:
+            update_fields["designation"] = designation
+        if department:
+            update_fields["department"] = department
+        if profile:
+            update_fields["profile"] = profile
+        if password:
+            update_fields["password_hash"] = hash_password(password)
+
+        if target_id:
+            await db.users.update_one({"_id": ObjectId(target_id)}, {"$set": update_fields})
             updated_count += 1
         else:
             new_doc = {
                 "name": name,
                 "email": email,
                 "mentor_id": mentor_id,
-                "password_hash": hash_password(password),
+                "roll_number": mentor_id,
+                "password_hash": hash_password(password) if password else default_pwd_hash,
                 "role": UserRole.MENTOR.value,
                 "phone": phone if phone else None,
+                "designation": designation if designation else None,
+                "department": department if department else None,
+                "profile": profile if profile else None,
                 "is_active": True,
                 "created_at": now,
                 "updated_at": now,
             }
             res = await db.users.insert_one(new_doc)
-            existing_mentors[mentor_id] = str(res.inserted_id)
+            new_str_id = str(res.inserted_id)
+            existing_by_id[mentor_id] = new_str_id
+            existing_by_email[email] = new_str_id
             created_count += 1
 
     await db.audit_logs.insert_one({

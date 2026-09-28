@@ -6,16 +6,22 @@ import { cn } from "@/lib/utils";
 type UploadStatus = "idle" | "uploading" | "success" | "error";
 
 interface FileUploadProps {
-  /** Performs the (mock) upload. Real parsing happens in the backend. */
-  onUpload: (file: File) => Promise<{ message: string }>;
+  /** Upload handler function passed by parent page (supports onUpload or onFileSelect) */
+  onUpload?: (file: File) => Promise<{ message?: string } | any>;
+  onFileSelect?: (file: File) => Promise<{ message?: string } | any> | void;
   accept?: string;
   hint?: string;
+  label?: string;
+  uploading?: boolean;
 }
 
 export function FileUpload({
   onUpload,
-  accept = ".xlsx",
-  hint = "Supported format: .xlsx",
+  onFileSelect,
+  accept = ".xlsx,.xls,.csv",
+  hint,
+  label = "Drag & drop your Excel/CSV file here",
+  uploading = false,
 }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -23,35 +29,55 @@ export function FileUpload({
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
 
+  const displayHint = hint || `Supported formats: ${accept}`;
+
   const selectFile = (selected: File | null) => {
     if (!selected) return;
     setFile(selected);
     setStatus("idle");
-    if (!selected.name.toLowerCase().endsWith(".xlsx")) {
+    setMessage(null);
+
+    const validExts = accept
+      .split(",")
+      .map((e) => e.trim().toLowerCase());
+    const fileExt = "." + (selected.name.split(".").pop()?.toLowerCase() || "");
+    if (validExts.length > 0 && !validExts.includes(fileExt) && !accept.includes("*")) {
       setStatus("error");
-      setMessage("Upload failed. Please check the Excel format (.xlsx required).");
-    } else {
-      setMessage(null);
+      setMessage(`Unsupported file type '${fileExt}'. Allowed format(s): ${accept}`);
     }
   };
 
   const handleUpload = async () => {
     if (!file) return;
+    const uploadFn = onUpload || onFileSelect;
+    if (!uploadFn) {
+      setStatus("error");
+      setMessage("No upload function configured for this uploader.");
+      return;
+    }
+
     setStatus("uploading");
     setMessage(null);
     try {
-      const result = await onUpload(file);
+      const result = await uploadFn(file);
       setStatus("success");
-      setMessage(result.message);
-    } catch (error) {
+      setMessage(
+        (result && typeof result === "object" && result.message) ||
+          "File uploaded and processed successfully!"
+      );
+    } catch (error: any) {
       setStatus("error");
       setMessage(
         error instanceof Error
           ? `Upload failed. ${error.message}`
-          : "Upload failed. Please check the Excel format.",
+          : error?.message
+          ? `Upload failed. ${error.message}`
+          : "Upload failed. Please check your file."
       );
     }
   };
+
+  const isUploading = status === "uploading" || uploading;
 
   return (
     <div className="space-y-4">
@@ -74,16 +100,16 @@ export function FileUpload({
         }}
         className={cn(
           "flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors",
-          dragging && "border-primary bg-accent",
+          dragging && "border-primary bg-accent"
         )}
       >
         <UploadCloud className="size-8 text-muted-foreground" />
-        <p className="text-sm font-medium">Drag &amp; drop your Excel file here</p>
+        <p className="text-sm font-medium">{label}</p>
         <p className="text-xs text-muted-foreground">or</p>
         <span className="text-sm font-medium text-primary underline underline-offset-4">
           Browse files
         </span>
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p className="text-xs text-muted-foreground">{displayHint}</p>
         <input
           ref={inputRef}
           type="file"
@@ -102,10 +128,10 @@ export function FileUpload({
               <p className="truncate text-sm font-medium">{file.name}</p>
             </div>
           </div>
-          <Button onClick={handleUpload} disabled={status === "uploading"} size="sm">
-            {status === "uploading" ? (
+          <Button onClick={handleUpload} disabled={isUploading || status === "error"} size="sm">
+            {isUploading ? (
               <>
-                <Loader2 className="size-4 animate-spin" /> Uploading...
+                <Loader2 className="size-4 animate-spin mr-1" /> Uploading...
               </>
             ) : (
               "Upload"
@@ -115,13 +141,13 @@ export function FileUpload({
       ) : null}
 
       {status === "success" && message ? (
-        <p className="flex items-center gap-2 text-sm text-success">
-          <CheckCircle2 className="size-4" /> {message}
+        <p className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+          <CheckCircle2 className="size-4 shrink-0" /> {message}
         </p>
       ) : null}
       {status === "error" && message ? (
-        <p className="flex items-center gap-2 text-sm text-destructive">
-          <XCircle className="size-4" /> {message}
+        <p className="flex items-center gap-2 text-sm text-destructive font-medium">
+          <XCircle className="size-4 shrink-0" /> {message}
         </p>
       ) : null}
     </div>

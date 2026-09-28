@@ -55,6 +55,9 @@ interface MentorFormState {
   mentorId: string;
   email: string;
   phone: string;
+  designation: string;
+  department: string;
+  profile: string;
   password?: string;
 }
 
@@ -63,6 +66,9 @@ const emptyForm: MentorFormState = {
   mentorId: "",
   email: "",
   phone: "",
+  designation: "",
+  department: "",
+  profile: "",
   password: "",
 };
 
@@ -87,7 +93,10 @@ function AdminMentorsPage() {
         m.name.toLowerCase().includes(term) ||
         m.mentorId.toLowerCase().includes(term) ||
         m.email.toLowerCase().includes(term) ||
-        (m.phone && m.phone.toLowerCase().includes(term))
+        (m.phone && m.phone.toLowerCase().includes(term)) ||
+        (m.designation && m.designation.toLowerCase().includes(term)) ||
+        (m.department && m.department.toLowerCase().includes(term)) ||
+        (m.profile && m.profile.toLowerCase().includes(term))
     );
   }, [data, search]);
 
@@ -105,6 +114,9 @@ function AdminMentorsPage() {
       mentorId: mentor.mentorId,
       email: mentor.email,
       phone: mentor.phone || "",
+      designation: mentor.designation || "",
+      department: mentor.department || "",
+      profile: mentor.profile || "",
       password: "",
     });
     setFormErrors({});
@@ -114,14 +126,11 @@ function AdminMentorsPage() {
   const validate = (): boolean => {
     const errs: Partial<Record<keyof MentorFormState, string>> = {};
     if (!form.name.trim()) errs.name = "Name is required.";
-    if (!form.mentorId.trim()) errs.mentorId = "Mentor ID is required.";
+    if (!form.mentorId.trim()) errs.mentorId = "Mentor / Employee ID is required.";
     if (!form.email.trim()) {
       errs.email = "Email is required.";
     } else if (!form.email.includes("@")) {
       errs.email = "Enter a valid email.";
-    }
-    if (!editing && !form.password?.trim()) {
-      // Optional, default password will be assigned if empty
     }
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
@@ -138,6 +147,9 @@ function AdminMentorsPage() {
           mentorId: form.mentorId.trim(),
           email: form.email.trim(),
           phone: form.phone.trim() || undefined,
+          designation: form.designation.trim() || undefined,
+          department: form.department.trim() || undefined,
+          profile: form.profile.trim() || undefined,
           ...(form.password?.trim() ? { password: form.password.trim() } : {}),
         });
         toast.success(`Mentor "${form.name}" updated successfully.`);
@@ -147,7 +159,10 @@ function AdminMentorsPage() {
           mentorId: form.mentorId.trim(),
           email: form.email.trim(),
           phone: form.phone.trim() || undefined,
-          password: form.password?.trim() || "mentor123",
+          designation: form.designation.trim() || undefined,
+          department: form.department.trim() || undefined,
+          profile: form.profile.trim() || undefined,
+          password: form.password?.trim() || "mentor1234",
         });
         toast.success(`Mentor "${form.name}" added successfully.`);
       }
@@ -179,7 +194,7 @@ function AdminMentorsPage() {
       toast.success(result.message || "Mentors imported successfully!");
       reload();
     } catch (err: any) {
-      toast.error(err.message || "Failed to upload Excel file.");
+      toast.error(err.message || "Failed to upload Excel/CSV file.");
     } finally {
       setUploading(false);
     }
@@ -188,15 +203,30 @@ function AdminMentorsPage() {
   const columns: Column<MentorItem>[] = [
     {
       key: "mentorId",
-      header: "Mentor ID",
+      header: "Employee ID",
       cell: (r) => <span className="font-semibold text-primary">{r.mentorId}</span>,
     },
-    { key: "name", header: "Full Name" },
-    { key: "email", header: "Email Address" },
+    { key: "name", header: "Full Name", cell: (r) => r.name },
+    { key: "email", header: "Email Address", cell: (r) => r.email },
+    {
+      key: "designation",
+      header: "Designation",
+      cell: (r) => r.designation || <span className="text-muted-foreground font-mono text-xs">N/A</span>,
+    },
+    {
+      key: "department",
+      header: "Department",
+      cell: (r) => r.department || <span className="text-muted-foreground font-mono text-xs">N/A</span>,
+    },
     {
       key: "phone",
-      header: "Phone Number",
+      header: "Mobile No",
       cell: (r) => r.phone || <span className="text-muted-foreground font-mono text-xs">N/A</span>,
+    },
+    {
+      key: "profile",
+      header: "Profile",
+      cell: (r) => r.profile ? <span className="text-xs font-medium px-2 py-0.5 rounded bg-muted text-foreground">{r.profile}</span> : <span className="text-muted-foreground font-mono text-xs">N/A</span>,
     },
     {
       key: "actions",
@@ -228,7 +258,7 @@ function AdminMentorsPage() {
     <AdminLayout>
       <PageHeader
         title="Mentor Management"
-        description="Add, edit, or bulk import mentors responsible for monitoring student absentees."
+        description="Add, edit, or bulk import mentors using standard format (Name, Employee ID, Email, Designation, Department, Mobile No, Profile)."
         actions={
           <Button onClick={openCreateDialog}>
             <Plus className="size-4 mr-2" /> Add Mentor
@@ -248,7 +278,7 @@ function AdminMentorsPage() {
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by name, ID, or email..."
+                placeholder="Search by name, ID, email, designation..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
@@ -262,7 +292,7 @@ function AdminMentorsPage() {
             ) : rows.length === 0 ? (
               <EmptyState
                 title="No mentors found"
-                description={search ? "No mentor matches your search criteria." : "Get started by adding a mentor or uploading an Excel sheet."}
+                description={search ? "No mentor matches your search criteria." : "Get started by adding a mentor or uploading an Excel/CSV sheet."}
                 action={
                   <Button onClick={openCreateDialog} variant="outline" size="sm">
                     <Plus className="size-4 mr-2" /> Add First Mentor
@@ -270,16 +300,16 @@ function AdminMentorsPage() {
                 }
               />
             ) : (
-              <DataTable columns={columns} data={rows} keyExtractor={(r) => r.id} />
+              <DataTable columns={columns} rows={rows} getRowId={(r) => r.id} />
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Bulk Excel Import</CardTitle>
+            <CardTitle>Bulk Excel / CSV Import</CardTitle>
             <CardDescription>
-              Upload an `.xlsx` file containing mentor details.
+              Upload an `.xlsx`, `.xls`, or `.csv` file with attributes: Name, Employee ID, Email, Designation, Department, Mobile No, Profile.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -293,10 +323,10 @@ function AdminMentorsPage() {
             </Button>
 
             <FileUpload
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.csv"
               onFileSelect={handleFileUpload}
               uploading={uploading}
-              label="Click to browse or drop mentor Excel file"
+              label="Click to browse or drop mentor Excel/CSV file"
             />
           </CardContent>
         </Card>
@@ -313,30 +343,32 @@ function AdminMentorsPage() {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="mentorId">Mentor ID *</Label>
-              <Input
-                id="mentorId"
-                placeholder="e.g. M101"
-                value={form.mentorId}
-                onChange={(e) => setForm({ ...form, mentorId: e.target.value })}
-              />
-              {formErrors.mentorId && (
-                <p className="text-xs font-medium text-destructive">{formErrors.mentorId}</p>
-              )}
-            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="mentorId">Employee ID / ID *</Label>
+                <Input
+                  id="mentorId"
+                  placeholder="e.g. 605101"
+                  value={form.mentorId}
+                  onChange={(e) => setForm({ ...form, mentorId: e.target.value })}
+                />
+                {formErrors.mentorId && (
+                  <p className="text-xs font-medium text-destructive">{formErrors.mentorId}</p>
+                )}
+              </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="name">Full Name *</Label>
-              <Input
-                id="name"
-                placeholder="e.g. Dr. John Doe"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-              {formErrors.name && (
-                <p className="text-xs font-medium text-destructive">{formErrors.name}</p>
-              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="name">Full Name *</Label>
+                <Input
+                  id="name"
+                  placeholder="e.g. SIVA NAGESWARA RAO"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+                {formErrors.name && (
+                  <p className="text-xs font-medium text-destructive">{formErrors.name}</p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -344,7 +376,7 @@ function AdminMentorsPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="mentor@college.edu"
+                placeholder="drssnr@nrtec.in"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
@@ -353,19 +385,53 @@ function AdminMentorsPage() {
               )}
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                placeholder="e.g. +91 9876543210"
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="designation">Designation</Label>
+                <Input
+                  id="designation"
+                  placeholder="e.g. PROFESSOR"
+                  value={form.designation}
+                  onChange={(e) => setForm({ ...form, designation: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="department">Department / Branch</Label>
+                <Input
+                  id="department"
+                  placeholder="e.g. CSE"
+                  value={form.department}
+                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="phone">Mobile Number</Label>
+                <Input
+                  id="phone"
+                  placeholder="e.g. 8977987777"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="profile">Profile / Roles</Label>
+                <Input
+                  id="profile"
+                  placeholder="e.g. Faculty, Administrator"
+                  value={form.profile}
+                  onChange={(e) => setForm({ ...form, profile: e.target.value })}
+                />
+              </div>
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="password">
-                {editing ? "New Password (leave blank to keep current)" : "Password (default: mentor123)"}
+                {editing ? "New Password (leave blank to keep current)" : "Password (default: mentor1234)"}
               </Label>
               <Input
                 id="password"
