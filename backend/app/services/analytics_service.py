@@ -123,11 +123,43 @@ async def get_admin_dashboard_analytics() -> dict:
 async def get_year_cards_summary() -> list:
     """
     Returns Year-level summary cards along with embedded Section-level cards,
-    derived strictly from uploaded timetables in MongoDB.
+    derived strictly from uploaded timetables and sessions in MongoDB in a single fast batch pass.
     """
     db = get_database()
-    tt_years = await db.timetables.distinct("year")
-    valid_years = [y.strip() for y in tt_years if y and isinstance(y, str) and y.strip()]
+    tt_docs = await db.timetables.find({}).to_list(length=10000)
+    sess_docs = await db.sessions.find({}).to_list(length=10000)
+
+    # 1. Gather all unique years and sections from timetables
+    year_sec_tt_map = {}  # key: (yr, sec_raw) -> list of tt
+    sec_fac_map = {}      # key: (yr, sec_raw) -> set of fac names
+
+    for tt in tt_docs:
+        yr = (tt.get("year") or "2nd Year").strip()
+        sec_raw = (tt.get("section") or "").strip().upper()
+        if not yr or not sec_raw:
+            continue
+        key = (yr, sec_raw)
+        if key not in year_sec_tt_map:
+            year_sec_tt_map[key] = []
+            sec_fac_map[key] = set()
+        year_sec_tt_map[key].append(tt)
+        fac = (tt.get("faculty") or "").strip()
+        if fac and fac.upper() not in ["TBD", "NONE", "UNASSIGNED"]:
+            sec_fac_map[key].add(fac)
+
+    # 2. Map sessions by section
+    sec_sess_map = {}  # key: norm_s -> list of sessions
+    for s in sess_docs:
+        norm_s = normalize_section(s.get("section"))
+        if norm_s not in sec_sess_map:
+            sec_sess_map[norm_s] = []
+        sec_sess_map[norm_s].append(s)
+
+        fac = (s.get("faculty") or "").strip()
+        if fac and fac.upper() not in ["TBD", "NONE", "UNASSIGNED"]:
+            for key in sec_fac_map:
+                if normalize_section(key[1]) == norm_s:
+                    sec_fac_map[key].add(fac)
 
     year_order = ["1st Year", "2nd Year", "3rd Year", "4th Year", "I Year", "II Year", "III Year", "IV Year"]
 
@@ -137,15 +169,11 @@ async def get_year_cards_summary() -> list:
                 return idx
         return 99
 
-    sorted_years = sorted(list(set(valid_years)), key=get_sort_key)
-
+    years = sorted(list(set(k[0] for k in year_sec_tt_map.keys())), key=get_sort_key)
     year_cards = []
 
-    for yr in sorted_years:
-        sec_names = await db.timetables.distinct("section", {"year": yr})
-        valid_sec_names = sorted(
-            list(set([s.strip().upper() for s in sec_names if s and isinstance(s, str) and s.strip()]))
-        )
+    for yr in years:
+        secs_in_year = sorted(list(set(k[1] for k in year_sec_tt_map.keys() if k[0] == yr)))
 
         sec_cards = []
         year_total_classes = 0
@@ -155,39 +183,25 @@ async def get_year_cards_summary() -> list:
         year_late = 0
         year_faculties = set()
 
-        for sec_raw in valid_sec_names:
+        for sec_raw in secs_in_year:
+            key = (yr, sec_raw)
             norm_s = normalize_section(sec_raw)
+            sec_sessions = sec_sess_map.get(norm_s, [])
 
-            # Match sessions for this section by string or regex
-            all_sessions = await db.sessions.find({
-                "$or": [
-                    {"section": sec_raw},
-                    {"section": norm_s},
-                    {"section": f"II-{norm_s}"},
-                    {"section": {"$regex": norm_s, "$options": "i"}}
-                ]
-            }).to_list(length=5000)
+            facs = sec_fac_map.get(key, set())
+            year_faculties.update(facs)
 
-            tt_facs = await db.timetables.distinct("faculty", {"section": sec_raw, "year": yr})
-            sess_facs = await db.sessions.distinct("faculty", {"section": norm_s})
-            valid_facs = set([
-                f.strip() for f in (tt_facs + sess_facs)
-                if f and str(f).strip().upper() not in ["TBD", "NONE", "UNASSIGNED"]
-            ])
-            year_faculties.update(valid_facs)
-
-            p_count = sum(1 for s in all_sessions if is_present_status(s.get("faculty_response")))
-            a_count = sum(1 for s in all_sessions if is_absent_status(s.get("faculty_response")))
-            sub_count = sum(1 for s in all_sessions if is_substitute_status(s.get("faculty_response")))
+            p_count = sum(1 for s in sec_sessions if is_present_status(s.get("faculty_response")))
+            a_count = sum(1 for s in sec_sessions if is_absent_status(s.get("faculty_response")))
+            sub_count = sum(1 for s in sec_sessions if is_substitute_status(s.get("faculty_response")))
             late_count = sum(
-                1 for s in all_sessions
+                1 for s in sec_sessions
                 if is_present_status(s.get("faculty_response")) and (s.get("is_late") or s.get("arrival_time") or s.get("arrival_comment"))
             )
 
-            tot_classes = len(all_sessions)
+            tot_classes = len(sec_sessions)
             if tot_classes == 0:
-                sample_count = await db.timetables.count_documents({"section": sec_raw, "year": yr})
-                tot_classes = max(sample_count, 0)
+                tot_classes = len(year_sec_tt_map.get(key, []))
 
             evaluated = p_count + a_count + sub_count
             pct = round((p_count / evaluated * 100), 1) if evaluated > 0 else 0.0
@@ -196,7 +210,7 @@ async def get_year_cards_summary() -> list:
                 "section": sec_raw,
                 "year": yr,
                 "totalClasses": tot_classes,
-                "facultyCount": max(len(valid_facs), 1),
+                "facultyCount": max(len(facs), 1),
                 "present": p_count,
                 "absent": a_count,
                 "substitute": sub_count,

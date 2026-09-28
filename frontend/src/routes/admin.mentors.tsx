@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Plus, Search, Pencil, Trash2, RotateCcw } from "lucide-react";
+import { Download, Plus, Search, Pencil, Trash2, RotateCcw, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -241,7 +241,19 @@ function AdminMentorsPage() {
     {
       key: "phone",
       header: "Mobile No",
-      cell: (r) => r.phone || <span className="text-muted-foreground font-mono text-xs">N/A</span>,
+      cell: (r) =>
+        r.phone ? (
+          <a
+            href={`tel:${r.phone}`}
+            className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline hover:text-primary/80 font-medium"
+            title={`Call Mentor (${r.phone})`}
+          >
+            <Phone className="size-3 text-muted-foreground" />
+            {r.phone}
+          </a>
+        ) : (
+          <span className="text-muted-foreground font-mono text-xs">N/A</span>
+        ),
     },
     {
       key: "profile",

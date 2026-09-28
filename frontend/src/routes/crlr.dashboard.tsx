@@ -28,7 +28,7 @@ function CRLRDashboardPage() {
   const section = user?.section ?? "";
   const isSunday = new Date().getDay() === 0;
 
-  const { data, loading, error, reload } = useAsyncData(() => getSessions(section), [section], 3000);
+  const { data, loading, error, reload } = useAsyncData(() => getSessions(section), [section], 15000);
 
   const sessions = data ?? [];
   const pending = sessions.filter((s) => s.facultyResponse === "Pending").length;

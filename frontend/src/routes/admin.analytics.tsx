@@ -141,7 +141,7 @@ function renderSectionBadge(sec: string, year?: string) {
 
 function AdminAnalyticsPage() {
   const navigate = useNavigate();
-  const { data, loading, error, reload } = useAsyncData(() => getAdminDashboard(), [], 3000);
+  const { data, loading, error, reload } = useAsyncData(() => getAdminDashboard(), [], 15000);
 
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);

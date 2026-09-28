@@ -113,6 +113,27 @@ async def seed_in_memory_db(db):
         )
 
 
+async def ensure_indexes(db):
+    """Ensure database indexes exist for high-performance querying."""
+    try:
+        await db.sessions.create_index([("date", 1), ("section", 1)])
+        await db.sessions.create_index([("section", 1)])
+        await db.sessions.create_index([("status", 1)])
+        await db.timetables.create_index([("section", 1), ("day", 1), ("period", 1)])
+        await db.timetables.create_index([("section", 1)])
+        await db.timetables.create_index([("year", 1)])
+        await db.users.create_index([("email", 1)])
+        await db.users.create_index([("roll_number", 1)])
+        await db.users.create_index([("mentor_id", 1)])
+        await db.users.create_index([("role", 1)])
+        await db.students.create_index([("roll_number", 1)])
+        await db.students.create_index([("section", 1)])
+        await db.students.create_index([("year", 1)])
+        logger.info("MongoDB indexes verified successfully.")
+    except Exception as e:
+        logger.warning("Index creation warning: %s", str(e))
+
+
 async def connect_to_mongo():
     db_name = settings.get_database_name()
     logger.info("Connecting to MongoDB at %s...", settings.MONGODB_URI)
@@ -131,6 +152,7 @@ async def connect_to_mongo():
         db_manager.client = real_client
         db_manager.db = real_client[db_name]
         db_manager.is_mock_mode = False
+        await ensure_indexes(db_manager.db)
         logger.info("MongoDB connection successful. Connected to real database: %s", db_name)
         return
     except Exception as e:
@@ -145,6 +167,7 @@ async def connect_to_mongo():
             db_manager.client = real_client
             db_manager.db = real_client[db_name]
             db_manager.is_mock_mode = False
+            await ensure_indexes(db_manager.db)
             logger.info("MongoDB connection successful with TLS options. Connected to database: %s", db_name)
             return
         except Exception as retry_err:
@@ -160,6 +183,7 @@ async def connect_to_mongo():
     db_manager.is_mock_mode = True
 
     await seed_in_memory_db(db_manager.db)
+    await ensure_indexes(db_manager.db)
     logger.info(
         "Activated In-Memory Mock Database Mode. Database '%s' seeded with admin/CR/LR accounts.",
         db_name,

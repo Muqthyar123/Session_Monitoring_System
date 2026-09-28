@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Plus, Search, Pencil, Trash2, RotateCcw } from "lucide-react";
+import { Download, Plus, Search, Pencil, Trash2, RotateCcw, Phone } from "lucide-react";
 import { toast } from "sonner";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -237,12 +237,36 @@ function AdminStudentsPage() {
     {
       key: "studentPhone",
       header: "Student Phone",
-      cell: (r) => r.studentPhone || <span className="text-muted-foreground font-mono text-xs">N/A</span>,
+      cell: (r) =>
+        r.studentPhone ? (
+          <a
+            href={`tel:${r.studentPhone}`}
+            className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline hover:text-primary/80 font-medium"
+            title={`Call Student (${r.studentPhone})`}
+          >
+            <Phone className="size-3 text-muted-foreground" />
+            {r.studentPhone}
+          </a>
+        ) : (
+          <span className="text-muted-foreground font-mono text-xs">N/A</span>
+        ),
     },
     {
       key: "parentPhone",
       header: "Parent Phone",
-      cell: (r) => r.parentPhone || <span className="text-muted-foreground font-mono text-xs">N/A</span>,
+      cell: (r) =>
+        r.parentPhone ? (
+          <a
+            href={`tel:${r.parentPhone}`}
+            className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline hover:text-primary/80 font-medium"
+            title={`Call Parent (${r.parentPhone})`}
+          >
+            <Phone className="size-3 text-muted-foreground" />
+            {r.parentPhone}
+          </a>
+        ) : (
+          <span className="text-muted-foreground font-mono text-xs">N/A</span>
+        ),
     },
     {
       key: "actions",

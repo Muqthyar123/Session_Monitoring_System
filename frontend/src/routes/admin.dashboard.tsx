@@ -64,8 +64,8 @@ const alertColumns: Column<AdminAlert>[] = [
 ];
 
 function AdminDashboardPage() {
-  const dashboard = useAsyncData(() => getAdminDashboard(), [], 3000);
-  const alerts = useAsyncData(() => getAlerts(), [], 3000);
+  const dashboard = useAsyncData(() => getAdminDashboard(), [], 15000);
+  const alerts = useAsyncData(() => getAlerts(), [], 15000);
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
