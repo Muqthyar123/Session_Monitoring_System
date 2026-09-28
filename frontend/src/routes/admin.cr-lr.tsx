@@ -98,7 +98,8 @@ function CRLRManagementPage() {
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return (data ?? []).filter((u) => {
+    const crlrOnlyData = (data ?? []).filter((u) => u.role === "CR" || u.role === "LR");
+    return crlrOnlyData.filter((u) => {
       const matchesTerm =
         !term ||
         u.name.toLowerCase().includes(term) ||

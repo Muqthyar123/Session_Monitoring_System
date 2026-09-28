@@ -176,15 +176,22 @@ async def get_students_analytics_summary(year: str, section: str) -> List[Studen
     total_days_count = await db.student_attendance_submissions.count_documents({"year": year_clean, "section": sec_clean})
     total_days = max(total_days_count, 1)
 
+    abs_docs = await db.student_attendance.find({
+        "year": year_clean,
+        "section": sec_clean,
+        "status": "Absent",
+    }).to_list(length=10000)
+
+    abs_counts = {}
+    for doc in abs_docs:
+        r = doc.get("roll_number")
+        if r:
+            abs_counts[r] = abs_counts.get(r, 0) + 1
+
     result = []
     for s in students:
         roll = s["roll_number"]
-        abs_count = await db.student_attendance.count_documents({
-            "year": year_clean,
-            "section": sec_clean,
-            "roll_number": roll,
-            "status": "Absent",
-        })
+        abs_count = abs_counts.get(roll, 0)
 
         pct = round(((total_days - abs_count) / total_days) * 100, 1) if total_days > 0 else 100.0
         if pct < 0:

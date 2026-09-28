@@ -99,17 +99,21 @@ async def _sync_user_to_section(user_id: str, role: str, section_name: str):
 
 async def get_users(
     role: Optional[UserRole] = None,
+    crlr_only: bool = False,
     section: Optional[str] = None,
     year: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 500,
 ) -> List[UserResponse]:
     db = get_database()
     query = {}
 
     if role:
         query["role"] = role.value
+    elif crlr_only:
+        query["role"] = {"$in": ["CR", "LR"]}
+
     if section:
         query["section"] = section
     if year:

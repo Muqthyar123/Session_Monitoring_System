@@ -17,7 +17,7 @@ export async function getSections(): Promise<SectionItem[]> {
 }
 
 export async function getCRLRUsers(): Promise<CRLRUser[]> {
-  return request<CRLRUser[]>("/admin/users");
+  return request<CRLRUser[]>("/admin/users?crlr_only=true");
 }
 
 export async function createCRLRUser(data: Omit<CRLRUser, "id">): Promise<CRLRUser> {

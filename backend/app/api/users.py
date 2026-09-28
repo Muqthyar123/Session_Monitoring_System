@@ -21,14 +21,15 @@ router = APIRouter(prefix="/admin/users", tags=["Admin User Management"])
 @router.get("", response_model=ApiResponse[List[UserResponse]])
 async def list_users_api(
     role: Optional[UserRole] = Query(None),
+    crlr_only: bool = Query(False),
     section: Optional[str] = Query(None),
     year: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(500, ge=1, le=1000),
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
-    users = await get_users(role=role, section=section, year=year, search=search, skip=skip, limit=limit)
+    users = await get_users(role=role, crlr_only=crlr_only, section=section, year=year, search=search, skip=skip, limit=limit)
     return ApiResponse(success=True, data=users)
 
 
