@@ -11,6 +11,7 @@ from pydantic import EmailStr, TypeAdapter
 from app.core.security import hash_password
 from app.db.mongodb import get_database
 from app.schemas.user import UserRole
+from app.services.student_service import compute_year_from_batch, find_crlr_for_student
 
 email_adapter = TypeAdapter(EmailStr)
 
@@ -734,7 +735,7 @@ def generate_mentor_excel_template() -> bytes:
     ws = wb.active
     ws.title = "Mentor_Import_Template"
 
-    headers = ["S.No", "Name", "Employee ID", "Email", "Designation", "Department", "Mobile No", "Profile"]
+    headers = ["S.NO", "NAME", "ID/EMPLOYEE ID", "MAIL ID/ EMAIL", "DESIGN/DESIGNATION", "BRANCH/DEPARTMENT", "MOBILE NO"]
     ws.append(headers)
 
     header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
@@ -747,9 +748,11 @@ def generate_mentor_excel_template() -> bytes:
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     samples = [
-        ["1", "SIVA NAGESWARA RAO SIVARATRI", "605101", "drssnr@nrtec.in", "PROFESSOR", "CSE", "8977987777", "Administrator"],
-        ["2", "MOTURI SIREESHA", "905101", "moturisireesha@gmail.com", "ASSOCIATE PROFESSOR", "CSE", "9492468445", "Faculty"],
-        ["3", "NAGESWARA RAO KUKKAMUDI", "705201", "knag1999@nrtec.in", "COM.OPERATOR", "CSE", "9705672051", "Course Coordinator"],
+        ["1", "SIVA NAGESWARA RAO SIVARATRI", "605101", "drssnr@nrtec.in", "PROFESSOR", "CSE", "8977987777"],
+        ["2", "MOTURI SIREESHA", "905101", "moturisireesha@gmail.com", "ASSOCIATE PROFESSOR", "CSE", "9492468445"],
+        ["3", "NAGA TIRUMALA RAO TIRUMALA RAO", "1105101", "csehod@nrtec.in", "PROFESSOR & HOD", "CSE", "8247394015"],
+        ["4", "PRASAD MANCHIKANTI", "1310116", "mprasad@nrtec.in", "ASSISTANT PROFESSOR", "CSE", "9885466378"],
+        ["5", "KHAJA MOHIDDIN BASHA SHAIK", "1605104", "sk.basha579@gmail.com", "ASSISTANT PROFESSOR", "CSE", "8096622595"],
     ]
     for row in samples:
         ws.append(row)
@@ -757,7 +760,7 @@ def generate_mentor_excel_template() -> bytes:
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
         col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = max(max_len + 4, 16)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 18)
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -1169,7 +1172,7 @@ def generate_student_excel_template() -> bytes:
     ws = wb.active
     ws.title = "Student_Import_Template"
 
-    headers = ["Year", "Name", "Roll Number", "Section", "Student Phone Number", "Parent Phone Number"]
+    headers = ["name", "rollNumber", "branch", "batch", "section", "parentPhone", "studentPhone"]
     ws.append(headers)
 
     header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
@@ -1182,9 +1185,9 @@ def generate_student_excel_template() -> bytes:
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     samples = [
-        ["2nd Year", "Rahul Kumar", "23CS001", "CSE-A", "9876543210", "9876543299"],
-        ["2nd Year", "Sneha Sharma", "23CS002", "CSE-A", "9876543211", "9876543298"],
-        ["3rd Year", "Vikram Singh", "22CS010", "CSE-B", "9876543212", "9876543297"],
+        ["BODAPATI PALLAVI", "24471A0575", "CSE", 2029, "J", "9642648130", "9505371832"],
+        ["RAHUL KUMAR", "24471A0501", "CSE", 2029, "A", "9876543210", "9876543299"],
+        ["SNEHA SHARMA", "23471A0502", "CSE", 2028, "B", "9876543211", "9876543298"],
     ]
     for row in samples:
         ws.append(row)
@@ -1215,57 +1218,76 @@ async def parse_and_import_student_excel(
     header_idx = -1
     col_map = {}
 
-    for idx, row in enumerate(raw_rows):
-        row_lower = [str(c).strip().lower() for c in row]
-        has_roll = any("roll" in cell or "pin" in cell or "htno" in cell or "reg" in cell or "s.no" in cell for cell in row_lower)
-        has_name = any("name" in cell for cell in row_lower)
+    NAME_ALIASES = {"name", "studentname", "fullname", "student"}
+    ROLL_ALIASES = {"rollnumber", "rollno", "roll", "pin", "htno", "regno", "reg"}
+    BRANCH_ALIASES = {"branch", "department", "dept", "stream"}
+    BATCH_ALIASES = {"batch", "passoutyear", "graduationyear", "joiningyear"}
+    SECTION_ALIASES = {"section", "sec"}
+    PARENT_PHONE_ALIASES = {"parentphone", "parentmobile", "fatherphone", "fathermobile", "guardianphone", "parent"}
+    STUDENT_PHONE_ALIASES = {"studentphone", "studentmobile", "phone", "mobile", "mobileno", "phoneno", "contact"}
+
+    for idx, row in enumerate(raw_rows[:30]):
+        row_cleaned = [re.sub(r'[^a-z0-9]', '', str(cell).lower()) for cell in row]
+        has_roll = any(c in ROLL_ALIASES or "roll" in c or "htno" in c or "pin" in c for c in row_cleaned)
+        has_name = any(c in NAME_ALIASES or ("name" in c and "father" not in c and "file" not in c) for c in row_cleaned)
 
         if has_name or has_roll:
-            # Check if this row looks like column header
-            matched_headers = 0
-            for c_idx, cell_str in enumerate(row_lower):
-                c_clean = cell_str.replace("_", " ").replace(".", "")
-                if "year" in c_clean:
-                    col_map["year"] = c_idx
-                    matched_headers += 1
-                elif "roll" in c_clean or "pin" in c_clean or "htno" in c_clean or "reg" in c_clean:
-                    col_map["roll_number"] = c_idx
-                    matched_headers += 1
-                elif "section" in c_clean or "sec" in c_clean:
-                    col_map["section"] = c_idx
-                    matched_headers += 1
-                elif "parent" in c_clean or "father" in c_clean or "guardian" in c_clean:
-                    col_map["parent_phone"] = c_idx
-                elif "student" in c_clean or ("phone" in c_clean and "parent" not in c_clean) or "mobile" in c_clean:
-                    col_map["student_phone"] = c_idx
-                elif "name" in c_clean and "father" not in c_clean:
-                    col_map["name"] = c_idx
-                    matched_headers += 1
+            temp_map = {}
+            for c_idx, c_norm in enumerate(row_cleaned):
+                if not c_norm or c_norm in ["sno", "slno"]:
+                    continue
 
-            if matched_headers >= 2:
+                if c_norm in NAME_ALIASES or ("name" in c_norm and "father" not in c_norm and "file" not in c_norm and "roll" not in c_norm):
+                    if "name" not in temp_map:
+                        temp_map["name"] = c_idx
+                elif c_norm in ROLL_ALIASES or "roll" in c_norm or "htno" in c_norm or "pin" in c_norm:
+                    if "roll_number" not in temp_map:
+                        temp_map["roll_number"] = c_idx
+                elif c_norm in BRANCH_ALIASES or "branch" in c_norm or "dept" in c_norm or "stream" in c_norm:
+                    if "branch" not in temp_map:
+                        temp_map["branch"] = c_idx
+                elif c_norm in BATCH_ALIASES or "batch" in c_norm:
+                    if "batch" not in temp_map:
+                        temp_map["batch"] = c_idx
+                elif "year" in c_norm:
+                    if "year" not in temp_map:
+                        temp_map["year"] = c_idx
+                elif c_norm in SECTION_ALIASES or "sec" in c_norm:
+                    if "section" not in temp_map:
+                        temp_map["section"] = c_idx
+                elif c_norm in PARENT_PHONE_ALIASES or "parent" in c_norm or "father" in c_norm or "guardian" in c_norm:
+                    if "parent_phone" not in temp_map:
+                        temp_map["parent_phone"] = c_idx
+                elif c_norm in STUDENT_PHONE_ALIASES or "phone" in c_norm or "mobile" in c_norm:
+                    if "student_phone" not in temp_map:
+                        temp_map["student_phone"] = c_idx
+
+            if len(temp_map) >= 2 and ("name" in temp_map or "roll_number" in temp_map):
                 header_idx = idx
+                col_map = temp_map
                 break
 
     if header_idx == -1:
-        # Fallback to row 0 if no headers matched
         header_idx = 0
-        col_map = {"year": 0, "name": 1, "roll_number": 2, "section": 3, "student_phone": 4, "parent_phone": 5}
+        col_map = {"name": 0, "roll_number": 1, "branch": 2, "batch": 3, "section": 4, "parent_phone": 5, "student_phone": 6}
 
     if "name" not in col_map and "roll_number" not in col_map:
         raise ValueError("Invalid Student Roster file format! The uploaded file does not contain required Student headers (Roll Number and Student Name). Please upload a valid Student Roster Excel/CSV file.")
 
-
-    # Infer year & section from filename if missing from columns
     inferred_year = "2nd Year"
+    inferred_batch = 2029
     if "3" in fn_lower or "iii" in fn_lower:
         inferred_year = "3rd Year"
+        inferred_batch = 2028
     elif "4" in fn_lower or "iv" in fn_lower:
         inferred_year = "4th Year"
+        inferred_batch = 2027
     elif "1" in fn_lower or "i" in fn_lower:
         inferred_year = "1st Year"
+        inferred_batch = 2030
 
-    inferred_section = "II-CSE-A"
-    sec_match = re.search(r'([i|v|x]+-cse-[a-z]+|cse-[a-z]+)', fn_lower)
+    inferred_section = "A"
+    sec_match = re.search(r'([i|v|x]+-cse-[a-z]+|cse-[a-z]+|section-[a-z]+)', fn_lower)
     if sec_match:
         inferred_section = sec_match.group(1).upper()
 
@@ -1299,17 +1321,30 @@ async def parse_and_import_student_excel(
                 return clean_val(row_values[c_i])
             return ""
 
-        year = get_field("year") or inferred_year
         name = get_field("name")
         roll = get_field("roll_number").upper()
+        branch = get_field("branch") or "CSE"
+        batch_raw = get_field("batch")
+        year_raw = get_field("year")
         section = get_field("section").upper() or inferred_section
         student_phone = get_field("student_phone")
         parent_phone = get_field("parent_phone")
 
         if not roll and not name:
             continue
-        if roll in ["ROLL NUMBER", "ROLL NO", "PIN", "HT NO", "S.NO"]:
+        if roll in ["ROLL NUMBER", "ROLL NO", "PIN", "HT NO", "S.NO", "ROLLNUMBER"]:
             continue
+
+        # Calculate year and batch
+        if batch_raw:
+            batch = int(batch_raw) if batch_raw.isdigit() else batch_raw
+            year = compute_year_from_batch(batch)
+        elif year_raw:
+            year = year_raw
+            batch = inferred_batch
+        else:
+            batch = inferred_batch
+            year = inferred_year
 
         total_rows += 1
         row_errors = []
@@ -1329,14 +1364,20 @@ async def parse_and_import_student_excel(
             errors.append({"row": row_idx, "roll_number": roll or "N/A", "errors": row_errors})
             continue
 
+        crlr_id, crlr_name = await find_crlr_for_student(db, year, section)
+
         now = datetime.now(timezone.utc)
         student_doc = {
+            "batch": batch,
+            "branch": branch,
             "year": year,
             "name": name,
             "roll_number": roll,
             "section": section,
             "student_phone": student_phone if student_phone else None,
             "parent_phone": parent_phone if parent_phone else None,
+            "crlr_id": crlr_id,
+            "crlr_name": crlr_name,
             "updated_at": now,
         }
 

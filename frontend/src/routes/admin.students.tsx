@@ -65,10 +65,35 @@ const SECTIONS = [
   "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"
 ];
 
+const BATCH_OPTIONS = [
+  { batch: 2027, label: "2027 (4th Year)" },
+  { batch: 2028, label: "2028 (3rd Year)" },
+  { batch: 2029, label: "2029 (2nd Year)" },
+  { batch: 2030, label: "2030 (1st Year)" },
+];
+
+export function computeYearFromBatch(batch?: number): string {
+  if (!batch) return "—";
+  const map: Record<number, string> = {
+    2027: "4th Year",
+    2028: "3rd Year",
+    2029: "2nd Year",
+    2030: "1st Year",
+  };
+  if (map[batch]) return map[batch];
+  const yr = 2031 - batch;
+  if (yr >= 1 && yr <= 4) {
+    const suffixes: Record<number, string> = { 1: "1st Year", 2: "2nd Year", 3: "3rd Year", 4: "4th Year" };
+    return suffixes[yr] || `${yr}th Year`;
+  }
+  return "Unknown";
+}
+
 interface StudentFormState {
   name: string;
   rollNumber: string;
-  year: string;
+  batch: number;
+  branch: string;
   section: string;
   studentPhone: string;
   parentPhone: string;
@@ -77,8 +102,9 @@ interface StudentFormState {
 const emptyForm: StudentFormState = {
   name: "",
   rollNumber: "",
-  year: "II Year",
-  section: "CSE-A",
+  batch: 2029,
+  branch: "CSE",
+  section: "CSE-J",
   studentPhone: "",
   parentPhone: "",
 };
@@ -101,6 +127,9 @@ function AdminStudentsPage() {
       (s) =>
         s.name.toLowerCase().includes(term) ||
         s.rollNumber.toLowerCase().includes(term) ||
+        (s.batch && s.batch.toString().includes(term)) ||
+        (s.branch && s.branch.toLowerCase().includes(term)) ||
+        (s.crlrName && s.crlrName.toLowerCase().includes(term)) ||
         (s.studentPhone && s.studentPhone.toLowerCase().includes(term)) ||
         (s.parentPhone && s.parentPhone.toLowerCase().includes(term))
     );
@@ -130,7 +159,8 @@ function AdminStudentsPage() {
     setForm({
       name: student.name,
       rollNumber: student.rollNumber,
-      year: student.year,
+      batch: student.batch || 2029,
+      branch: student.branch || "CSE",
       section: student.section,
       studentPhone: student.studentPhone || "",
       parentPhone: student.parentPhone || "",
@@ -143,7 +173,8 @@ function AdminStudentsPage() {
     const errs: Partial<Record<keyof StudentFormState, string>> = {};
     if (!form.name.trim()) errs.name = "Name is required.";
     if (!form.rollNumber.trim()) errs.rollNumber = "Roll Number is required.";
-    if (!form.year.trim()) errs.year = "Year is required.";
+    if (!form.batch) errs.batch = "Batch graduation year is required.";
+    if (!form.branch.trim()) errs.branch = "Branch is required.";
     if (!form.section.trim()) errs.section = "Section is required.";
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
@@ -154,26 +185,22 @@ function AdminStudentsPage() {
     if (!validate()) return;
     setSaving(true);
     try {
+      const payload = {
+        name: form.name.trim(),
+        rollNumber: form.rollNumber.trim(),
+        batch: Number(form.batch),
+        branch: form.branch.trim() || "CSE",
+        section: form.section,
+        studentPhone: form.studentPhone.trim() || undefined,
+        parentPhone: form.parentPhone.trim() || undefined,
+      };
+
       if (editing) {
         const studentId = editing.id || (editing as any)._id || editing.rollNumber;
-        await updateStudent(studentId, {
-          name: form.name.trim(),
-          rollNumber: form.rollNumber.trim(),
-          year: form.year,
-          section: form.section,
-          studentPhone: form.studentPhone.trim() || undefined,
-          parentPhone: form.parentPhone.trim() || undefined,
-        });
+        await updateStudent(studentId, payload);
         toast.success(`Student "${form.name}" updated successfully.`);
       } else {
-        await createStudent({
-          name: form.name.trim(),
-          rollNumber: form.rollNumber.trim(),
-          year: form.year,
-          section: form.section,
-          studentPhone: form.studentPhone.trim() || undefined,
-          parentPhone: form.parentPhone.trim() || undefined,
-        });
+        await createStudent(payload);
         toast.success(`Student "${form.name}" added successfully.`);
       }
       setDialogOpen(false);
@@ -232,7 +259,29 @@ function AdminStudentsPage() {
       cell: (r) => <span className="font-mono font-semibold text-primary">{r.rollNumber}</span>,
     },
     { key: "name", header: "Student Name" },
-    { key: "year", header: "Academic Year" },
+    {
+      key: "batch",
+      header: "Batch",
+      cell: (r) => (
+        <span className="font-mono font-medium text-xs bg-muted px-2 py-0.5 rounded">
+          {r.batch || "—"}
+        </span>
+      ),
+    },
+    {
+      key: "year",
+      header: "Academic Year",
+      cell: (r) => (
+        <span className="font-medium text-xs text-foreground">
+          {r.year || computeYearFromBatch(r.batch)}
+        </span>
+      ),
+    },
+    {
+      key: "branch",
+      header: "Branch",
+      cell: (r) => <span className="text-xs font-semibold">{r.branch || "CSE"}</span>,
+    },
     { key: "section", header: "Section" },
     {
       key: "studentPhone",
@@ -267,6 +316,21 @@ function AdminStudentsPage() {
         ) : (
           <span className="text-muted-foreground font-mono text-xs">N/A</span>
         ),
+    },
+    {
+      key: "crlrName",
+      header: "Assigned CR/LR",
+      cell: (r) => (
+        <span className="text-xs text-muted-foreground">
+          {r.crlrName ? (
+            <span className="font-medium text-foreground bg-accent/60 px-2 py-0.5 rounded">
+              {r.crlrName}
+            </span>
+          ) : (
+            "—"
+          )}
+        </span>
+      ),
     },
     {
       key: "actions",
@@ -422,19 +486,47 @@ function AdminStudentsPage() {
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="year">Year *</Label>
-                <Select value={form.year} onValueChange={(val) => setForm({ ...form, year: val })}>
-                  <SelectTrigger id="year">
-                    <SelectValue />
+                <Label htmlFor="batch">Batch (Graduation Year) *</Label>
+                <Select
+                  value={form.batch ? form.batch.toString() : "2029"}
+                  onValueChange={(val) => setForm({ ...form, batch: Number(val) })}
+                >
+                  <SelectTrigger id="batch">
+                    <SelectValue placeholder="Select Batch" />
                   </SelectTrigger>
                   <SelectContent>
-                    {MOCK_YEARS.map((y) => (
-                      <SelectItem key={y} value={y}>
-                        {y}
+                    {BATCH_OPTIONS.map((b) => (
+                      <SelectItem key={b.batch} value={b.batch.toString()}>
+                        {b.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {formErrors.batch && (
+                  <p className="text-xs font-medium text-destructive">{formErrors.batch}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Calculated Year</Label>
+                <div className="flex h-9 w-full items-center rounded-md border border-input bg-muted/50 px-3 py-1 text-sm font-semibold text-primary">
+                  {computeYearFromBatch(form.batch)}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="branch">Branch *</Label>
+                <Input
+                  id="branch"
+                  placeholder="e.g. CSE"
+                  value={form.branch}
+                  onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                />
+                {formErrors.branch && (
+                  <p className="text-xs font-medium text-destructive">{formErrors.branch}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -451,6 +543,9 @@ function AdminStudentsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {formErrors.section && (
+                  <p className="text-xs font-medium text-destructive">{formErrors.section}</p>
+                )}
               </div>
             </div>
 

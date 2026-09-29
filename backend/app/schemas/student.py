@@ -4,12 +4,16 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator, computed_fie
 
 
 class StudentBase(BaseModel):
-    year: str = Field(..., min_length=1, max_length=50)
+    batch: Optional[Any] = None
+    branch: Optional[str] = "CSE"
+    year: Optional[str] = Field(None, min_length=1, max_length=50)
     name: str = Field(..., min_length=1, max_length=100)
     roll_number: str = Field(..., alias="rollNumber", min_length=1, max_length=50)
     section: str = Field(..., min_length=1, max_length=50)
     student_phone: Optional[str] = Field(None, alias="studentPhone")
     parent_phone: Optional[str] = Field(None, alias="parentPhone")
+    crlr_id: Optional[str] = Field(None, alias="crlrId")
+    crlr_name: Optional[str] = Field(None, alias="crlrName")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -19,12 +23,16 @@ class StudentCreate(StudentBase):
 
 
 class StudentUpdate(BaseModel):
+    batch: Optional[Any] = None
+    branch: Optional[str] = None
     year: Optional[str] = None
     name: Optional[str] = None
     roll_number: Optional[str] = Field(None, alias="rollNumber")
     section: Optional[str] = None
     student_phone: Optional[str] = Field(None, alias="studentPhone")
     parent_phone: Optional[str] = Field(None, alias="parentPhone")
+    crlr_id: Optional[str] = Field(None, alias="crlrId")
+    crlr_name: Optional[str] = Field(None, alias="crlrName")
 
     model_config = ConfigDict(populate_by_name=True)
 

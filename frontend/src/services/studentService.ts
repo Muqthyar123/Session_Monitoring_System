@@ -2,16 +2,22 @@ import { request, downloadApiFile } from "./apiClient";
 
 export interface StudentItem {
   id: string;
+  batch?: string | number;
+  branch?: string;
   year: string;
   name: string;
   rollNumber: string;
   section: string;
   studentPhone?: string;
   parentPhone?: string;
+  crlrId?: string;
+  crlrName?: string;
 }
 
 export interface StudentCreatePayload {
-  year: string;
+  batch?: string | number;
+  branch?: string;
+  year?: string;
   name: string;
   rollNumber: string;
   section: string;
