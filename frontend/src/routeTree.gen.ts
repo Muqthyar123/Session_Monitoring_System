@@ -29,7 +29,9 @@ import { Route as CrlrStudentAttendanceRouteImport } from './routes/crlr.student
 import { Route as CrlrTimetableRouteImport } from './routes/crlr.timetable'
 import { Route as MentorAbsenteesRouteImport } from './routes/mentor.absentees'
 import { Route as MentorAnalyticsRouteImport } from './routes/mentor.analytics'
+import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as MentorLoginRouteImport } from './routes/mentor.login'
+import { Route as MentorStudentsRouteImport } from './routes/mentor.students'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -131,9 +133,19 @@ const MentorAnalyticsRoute = MentorAnalyticsRouteImport.update({
   path: '/mentor/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MentorDashboardRoute = MentorDashboardRouteImport.update({
+  id: '/mentor/dashboard',
+  path: '/mentor/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MentorLoginRoute = MentorLoginRouteImport.update({
   id: '/mentor/login',
   path: '/mentor/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MentorStudentsRoute = MentorStudentsRouteImport.update({
+  id: '/mentor/students',
+  path: '/mentor/students',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -158,7 +170,9 @@ export interface FileRoutesByFullPath {
   '/crlr/timetable': typeof CrlrTimetableRoute
   '/mentor/absentees': typeof MentorAbsenteesRoute
   '/mentor/analytics': typeof MentorAnalyticsRoute
+  '/mentor/dashboard': typeof MentorDashboardRoute
   '/mentor/login': typeof MentorLoginRoute
+  '/mentor/students': typeof MentorStudentsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -181,7 +195,9 @@ export interface FileRoutesByTo {
   '/crlr/timetable': typeof CrlrTimetableRoute
   '/mentor/absentees': typeof MentorAbsenteesRoute
   '/mentor/analytics': typeof MentorAnalyticsRoute
+  '/mentor/dashboard': typeof MentorDashboardRoute
   '/mentor/login': typeof MentorLoginRoute
+  '/mentor/students': typeof MentorStudentsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -205,7 +221,9 @@ export interface FileRoutesById {
   '/crlr/timetable': typeof CrlrTimetableRoute
   '/mentor/absentees': typeof MentorAbsenteesRoute
   '/mentor/analytics': typeof MentorAnalyticsRoute
+  '/mentor/dashboard': typeof MentorDashboardRoute
   '/mentor/login': typeof MentorLoginRoute
+  '/mentor/students': typeof MentorStudentsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -230,7 +248,9 @@ export interface FileRouteTypes {
     | '/crlr/timetable'
     | '/mentor/absentees'
     | '/mentor/analytics'
+    | '/mentor/dashboard'
     | '/mentor/login'
+    | '/mentor/students'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -253,7 +273,9 @@ export interface FileRouteTypes {
     | '/crlr/timetable'
     | '/mentor/absentees'
     | '/mentor/analytics'
+    | '/mentor/dashboard'
     | '/mentor/login'
+    | '/mentor/students'
   id:
     | '__root__'
     | '/'
@@ -276,7 +298,9 @@ export interface FileRouteTypes {
     | '/crlr/timetable'
     | '/mentor/absentees'
     | '/mentor/analytics'
+    | '/mentor/dashboard'
     | '/mentor/login'
+    | '/mentor/students'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -300,7 +324,9 @@ export interface RootRouteChildren {
   CrlrTimetableRoute: typeof CrlrTimetableRoute
   MentorAbsenteesRoute: typeof MentorAbsenteesRoute
   MentorAnalyticsRoute: typeof MentorAnalyticsRoute
+  MentorDashboardRoute: typeof MentorDashboardRoute
   MentorLoginRoute: typeof MentorLoginRoute
+  MentorStudentsRoute: typeof MentorStudentsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -445,11 +471,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MentorAnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mentor/dashboard': {
+      id: '/mentor/dashboard'
+      path: '/mentor/dashboard'
+      fullPath: '/mentor/dashboard'
+      preLoaderRoute: typeof MentorDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/mentor/login': {
       id: '/mentor/login'
       path: '/mentor/login'
       fullPath: '/mentor/login'
       preLoaderRoute: typeof MentorLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mentor/students': {
+      id: '/mentor/students'
+      path: '/mentor/students'
+      fullPath: '/mentor/students'
+      preLoaderRoute: typeof MentorStudentsRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -476,7 +516,9 @@ const rootRouteChildren: RootRouteChildren = {
   CrlrTimetableRoute: CrlrTimetableRoute,
   MentorAbsenteesRoute: MentorAbsenteesRoute,
   MentorAnalyticsRoute: MentorAnalyticsRoute,
+  MentorDashboardRoute: MentorDashboardRoute,
   MentorLoginRoute: MentorLoginRoute,
+  MentorStudentsRoute: MentorStudentsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

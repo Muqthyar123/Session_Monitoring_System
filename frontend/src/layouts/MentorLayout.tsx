@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  LayoutDashboard,
+  Users,
   UserX,
   BarChart3,
   LogOut,
@@ -14,7 +16,9 @@ import { RoleGuard } from "@/components/common/RoleGuard";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { to: "/mentor/absentees", label: "Absentee Students", icon: UserX },
+  { to: "/mentor/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/mentor/students", label: "All Students", icon: Users },
+  { to: "/mentor/absentees", label: "Today's Absentees", icon: UserX },
   { to: "/mentor/analytics", label: "Attendance Analytics", icon: BarChart3 },
 ] as const;
 

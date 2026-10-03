@@ -467,12 +467,12 @@ function AdminMentorsPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="password">
-                {editing ? "New Password (leave blank to keep current)" : "Password (default: mentor1234)"}
+                {editing ? "New Password (leave blank to keep current)" : "Password (default: Mentor ID number)"}
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder="Leave blank to use Mentor ID as default password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />

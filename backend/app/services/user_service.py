@@ -30,7 +30,10 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
         roll_clean = None
 
     now = datetime.now(timezone.utc)
-    raw_pwd = data.password or data.roll_number or "crlr1234"
+    if data.role == UserRole.MENTOR:
+        raw_pwd = data.password or data.mentor_id or data.roll_number or "mentor1234"
+    else:
+        raw_pwd = data.password or data.roll_number or "crlr1234"
     hashed_pwd = hash_password(raw_pwd)
 
     user_doc = {

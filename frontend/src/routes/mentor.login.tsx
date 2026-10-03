@@ -36,7 +36,7 @@ function MentorLoginPage() {
     try {
       await signIn(identifier.trim(), password, "MENTOR");
       toast.success("Welcome, Mentor!");
-      navigate({ to: "/mentor/absentees", replace: true });
+      navigate({ to: "/mentor/dashboard", replace: true });
     } catch (err: any) {
       toast.error(err.message || "Invalid credentials or unauthorized account.");
     } finally {
@@ -97,6 +97,11 @@ function MentorLoginPage() {
               {loading ? "Signing in..." : "Sign In to Mentor Portal"}
             </Button>
           </form>
+
+          <div className="mt-4 rounded-md border border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-xs text-muted-foreground">
+            <p className="font-semibold text-emerald-800 dark:text-emerald-300">Default Password</p>
+            <p>Your default password is your <strong>Mentor / Employee ID number</strong> (e.g. <code>605101</code>).</p>
+          </div>
 
           <div className="mt-6 border-t border-slate-100 pt-4 text-center text-xs text-slate-500 dark:border-slate-800 flex justify-center gap-4">
             <a href="/admin/login" className="hover:text-indigo-600 underline">Admin Login</a>

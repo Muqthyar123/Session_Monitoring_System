@@ -38,7 +38,9 @@ class StudentAttendanceRecordResponse(BaseModel):
     submitted_by: Optional[str] = Field(None, alias="submittedBy")
     status: str = "Absent"
     reason: Optional[str] = None
+    reason_updated_by: Optional[str] = Field(None, alias="reasonUpdatedBy")
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(populate_by_name=True)
 

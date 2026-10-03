@@ -121,12 +121,15 @@ function CRLRLoginPage() {
             <p>Log in using your assigned CR or LR email address &amp; password.</p>
           </div>
 
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Administrator?{" "}
+          <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">
             <Link to="/admin/login" className="font-medium text-primary underline underline-offset-4">
               Admin Login
             </Link>
-          </p>
+            <span>•</span>
+            <Link to="/mentor/login" className="font-medium text-emerald-600 dark:text-emerald-400 underline underline-offset-4">
+              Mentor Login
+            </Link>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -1125,12 +1125,13 @@ async def parse_and_import_mentor_excel(
             await db.users.update_one(query, {"$set": update_fields})
             updated_count += 1
         else:
+            pwd_to_use = password.strip() if password and password.strip() else mentor_id
             new_doc = {
                 "name": name,
                 "email": email,
                 "mentor_id": mentor_id,
                 "roll_number": mentor_id,
-                "password_hash": hash_password(password) if password else default_pwd_hash,
+                "password_hash": hash_password(pwd_to_use),
                 "role": UserRole.MENTOR.value,
                 "phone": phone if phone else None,
                 "designation": designation if designation else None,
