@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List, Tuple, Dict, Any
 import zoneinfo
 from app.core.config import settings
 from app.db.mongodb import get_database
@@ -120,6 +120,63 @@ async def get_admin_dashboard_analytics() -> dict:
     }
 
 
+def extract_individual_faculties(doc: dict) -> Tuple[str, List[str]]:
+    """
+    Extracts cleaned subject and individual faculty members list from a timetable or session document.
+    Rule 1: Everything before first ':' is subject/lab name.
+    Rule 2: Everything after ':' is faculty information.
+    Rule 3: Commas ',' separate multiple individual faculty persons.
+    Rule 4: Trim all names and ignore empty/placeholder values.
+    """
+    subj_raw = str(doc.get("subject") or "").strip()
+    fac_raw = str(doc.get("faculty") or "").strip()
+    fac_names_raw = doc.get("faculty_names")
+
+    clean_subj = subj_raw
+    fac_list: List[str] = []
+
+    if isinstance(fac_names_raw, list) and len(fac_names_raw) > 0:
+        for f in fac_names_raw:
+            if f and isinstance(f, str):
+                f_str = f.strip()
+                if ":" in f_str:
+                    parts = f_str.split(":", 1)
+                    if not clean_subj or clean_subj == subj_raw:
+                        clean_subj = parts[0].strip()
+                    fac_list.extend([x.strip() for x in parts[1].split(",") if x.strip()])
+                else:
+                    fac_list.extend([x.strip() for x in f_str.split(",") if x.strip()])
+    else:
+        # Check if subject contains colon
+        if ":" in subj_raw:
+            parts = subj_raw.split(":", 1)
+            clean_subj = parts[0].strip()
+            fac_str = parts[1].strip()
+            fac_list.extend([x.strip() for x in fac_str.split(",") if x.strip()])
+
+        # Also check faculty field
+        if fac_raw:
+            if ":" in fac_raw:
+                parts = fac_raw.split(":", 1)
+                fac_list.extend([x.strip() for x in parts[1].split(",") if x.strip()])
+            else:
+                fac_list.extend([x.strip() for x in fac_raw.split(",") if x.strip()])
+
+    if ":" in clean_subj:
+        clean_subj = clean_subj.split(":", 1)[0].strip()
+
+    # Filter out empty or TBD placeholders
+    cleaned_fac_list: List[str] = []
+    seen: set = set()
+    for f in fac_list:
+        f_norm = normalize_faculty(f)
+        if f_norm and f_norm not in ["TBD", "NONE", "UNASSIGNED"] and f_norm not in seen:
+            seen.add(f_norm)
+            cleaned_fac_list.append(f.strip())
+
+    return clean_subj, cleaned_fac_list
+
+
 async def get_year_cards_summary() -> list:
     """
     Returns Year-level summary cards along with embedded Section-level cards,
@@ -143,9 +200,9 @@ async def get_year_cards_summary() -> list:
             year_sec_tt_map[key] = []
             sec_fac_map[key] = set()
         year_sec_tt_map[key].append(tt)
-        fac = (tt.get("faculty") or "").strip()
-        if fac and fac.upper() not in ["TBD", "NONE", "UNASSIGNED"]:
-            sec_fac_map[key].add(fac)
+        _, fac_list = extract_individual_faculties(tt)
+        for f in fac_list:
+            sec_fac_map[key].add(normalize_faculty(f))
 
     # 2. Map sessions by section
     sec_sess_map = {}  # key: norm_s -> list of sessions
@@ -155,11 +212,12 @@ async def get_year_cards_summary() -> list:
             sec_sess_map[norm_s] = []
         sec_sess_map[norm_s].append(s)
 
-        fac = (s.get("faculty") or "").strip()
-        if fac and fac.upper() not in ["TBD", "NONE", "UNASSIGNED"]:
+        _, fac_list = extract_individual_faculties(s)
+        for f in fac_list:
+            norm_f = normalize_faculty(f)
             for key in sec_fac_map:
                 if normalize_section(key[1]) == norm_s:
-                    sec_fac_map[key].add(fac)
+                    sec_fac_map[key].add(norm_f)
 
     year_order = ["1st Year", "2nd Year", "3rd Year", "4th Year", "I Year", "II Year", "III Year", "IV Year"]
 
@@ -300,117 +358,122 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
 
     # 1. Populate scheduled timetable hours and faculty mappings
     for tt in tt_docs:
-        raw_fac = (tt.get("faculty") or "").strip()
-        subj = (tt.get("subject") or "").strip()
+        subj, fac_list = extract_individual_faculties(tt)
         raw_sec = (tt.get("section") or "").strip()
         yr = (tt.get("year") or "2nd Year").strip()
-
-        norm_f = normalize_faculty(raw_fac)
         norm_s = normalize_section(raw_sec)
 
-        if not norm_f or norm_f in ["TBD", "NONE", "UNASSIGNED"]:
-            continue
+        for raw_fac in fac_list:
+            norm_f = normalize_faculty(raw_fac)
+            if not norm_f or norm_f in ["TBD", "NONE", "UNASSIGNED"]:
+                continue
 
-        key = (norm_f, norm_s)
-        if key not in faculty_map:
-            display_sec = format_display_section(raw_sec, yr)
-            faculty_map[key] = {
-                "facultyName": raw_fac,
-                "section": display_sec,
-                "year": yr,
-                "subjects": set(),
-                "ttHours": 0,
-                "attendedHours": 0,
-                "absentHours": 0,
-                "lateHours": 0,
-                "substitutedHours": 0,
-                "processed_session_ids": set(),
-            }
-        if subj:
-            faculty_map[key]["subjects"].add(subj)
-        faculty_map[key]["ttHours"] += 1
+            key = (norm_f, norm_s)
+            if key not in faculty_map:
+                display_sec = format_display_section(raw_sec, yr)
+                faculty_map[key] = {
+                    "facultyName": raw_fac,
+                    "section": display_sec,
+                    "year": yr,
+                    "subjects": set(),
+                    "ttHours": 0,
+                    "attendedHours": 0,
+                    "absentHours": 0,
+                    "lateHours": 0,
+                    "substitutedHours": 0,
+                    "processed_session_ids": set(),
+                }
+            if subj:
+                faculty_map[key]["subjects"].add(subj)
+            faculty_map[key]["ttHours"] += 1
 
     # 2. Process attendance from db.sessions
     for s in sess_docs:
-        raw_fac = (s.get("faculty") or "").strip()
-        subj = (s.get("subject") or "").strip()
+        subj, fac_list = extract_individual_faculties(s)
         raw_sec = (s.get("section") or "").strip()
         yr = (s.get("year") or "2nd Year").strip()
-
-        norm_f = normalize_faculty(raw_fac)
         norm_s = normalize_section(raw_sec)
 
-        if not norm_f or norm_f in ["TBD", "NONE", "UNASSIGNED"]:
-            continue
-
-        key = (norm_f, norm_s)
-        if key not in faculty_map:
-            display_sec = format_display_section(raw_sec, yr)
-            faculty_map[key] = {
-                "facultyName": raw_fac,
-                "section": display_sec,
-                "year": yr,
-                "subjects": set(),
-                "ttHours": 0,
-                "attendedHours": 0,
-                "absentHours": 0,
-                "lateHours": 0,
-                "substitutedHours": 0,
-                "processed_session_ids": set(),
-            }
-
-        if subj:
-            faculty_map[key]["subjects"].add(subj)
-
         s_id = str(s["_id"])
-        faculty_map[key]["processed_session_ids"].add(s_id)
-
         hrs = len(s.get("periods_included") or [1])
         resp = s.get("faculty_response")
         arr_time = s.get("arrival_time")
         arr_comment = s.get("arrival_comment")
         is_late = bool(s.get("is_late") or arr_time or arr_comment)
 
-        if is_present_status(resp):
-            faculty_map[key]["attendedHours"] += hrs
-            if is_late:
-                faculty_map[key]["lateHours"] += hrs
-        elif is_absent_status(resp):
-            faculty_map[key]["absentHours"] += hrs
-        elif is_substitute_status(resp):
-            faculty_map[key]["substitutedHours"] += hrs
+        for raw_fac in fac_list:
+            norm_f = normalize_faculty(raw_fac)
+            if not norm_f or norm_f in ["TBD", "NONE", "UNASSIGNED"]:
+                continue
+
+            key = (norm_f, norm_s)
+            if key not in faculty_map:
+                display_sec = format_display_section(raw_sec, yr)
+                faculty_map[key] = {
+                    "facultyName": raw_fac,
+                    "section": display_sec,
+                    "year": yr,
+                    "subjects": set(),
+                    "ttHours": 0,
+                    "attendedHours": 0,
+                    "absentHours": 0,
+                    "lateHours": 0,
+                    "substitutedHours": 0,
+                    "processed_session_ids": set(),
+                }
+
+            if subj:
+                faculty_map[key]["subjects"].add(subj)
+
+            faculty_map[key]["processed_session_ids"].add(s_id)
+
+            if is_present_status(resp):
+                faculty_map[key]["attendedHours"] += hrs
+                if is_late:
+                    faculty_map[key]["lateHours"] += hrs
+            elif is_absent_status(resp):
+                faculty_map[key]["absentHours"] += hrs
+            elif is_substitute_status(resp):
+                faculty_map[key]["substitutedHours"] += hrs
 
     # 3. Process attendance from db.attendance_records
     for rec in rec_docs:
         s_id = rec.get("session_id")
         s_doc = session_id_map.get(s_id) if s_id else None
 
-        raw_fac = (s_doc.get("faculty") if s_doc else "").strip()
-        raw_sec = (rec.get("section") or (s_doc.get("section") if s_doc else "")).strip()
+        if s_doc:
+            subj, fac_list = extract_individual_faculties(s_doc)
+            raw_sec = (rec.get("section") or s_doc.get("section") or "").strip()
+            yr = (s_doc.get("year") or "2nd Year").strip()
+        else:
+            subj, fac_list = extract_individual_faculties(rec)
+            raw_sec = (rec.get("section") or "").strip()
+            yr = (rec.get("year") or "2nd Year").strip()
 
-        norm_f = normalize_faculty(raw_fac)
         norm_s = normalize_section(raw_sec)
 
-        if not norm_f or norm_f in ["TBD", "NONE", "UNASSIGNED"]:
-            continue
+        for raw_fac in fac_list:
+            norm_f = normalize_faculty(raw_fac)
+            if not norm_f or norm_f in ["TBD", "NONE", "UNASSIGNED"]:
+                continue
 
-        key = (norm_f, norm_s)
-        if key in faculty_map and s_id not in faculty_map[key]["processed_session_ids"]:
-            faculty_map[key]["processed_session_ids"].add(s_id)
-            status_val = rec.get("status")
-            hrs = len(s_doc.get("periods_included") or [1]) if s_doc else 1
-            arr_time = rec.get("arrival_time")
-            arr_comment = rec.get("arrival_comment")
-            is_late = bool(rec.get("is_late") or arr_time or arr_comment)
+            key = (norm_f, norm_s)
+            if key in faculty_map and s_id not in faculty_map[key]["processed_session_ids"]:
+                faculty_map[key]["processed_session_ids"].add(s_id)
+                status_val = rec.get("status")
+                hrs = len(s_doc.get("periods_included") or [1]) if s_doc else 1
+                arr_time = rec.get("arrival_time")
+                arr_comment = rec.get("arrival_comment")
+                is_late = bool(rec.get("is_late") or arr_time or arr_comment)
 
-            if is_present_status(status_val):
-                faculty_map[key]["attendedHours"] += hrs
-                if is_late:
-                    faculty_map[key]["lateHours"] += hrs
-            elif is_absent_status(status_val):
-                faculty_map[key]["absentHours"] += hrs
-            elif is_substitute_status(status_val):
-                faculty_map[key]["substitutedHours"] += hrs
+                if is_present_status(status_val):
+                    faculty_map[key]["attendedHours"] += hrs
+                    if is_late:
+                        faculty_map[key]["lateHours"] += hrs
+                elif is_absent_status(status_val):
+                    faculty_map[key]["absentHours"] += hrs
+                elif is_substitute_status(status_val):
+                    faculty_map[key]["substitutedHours"] += hrs
 
     # 4. Construct final summary result list
     result = []

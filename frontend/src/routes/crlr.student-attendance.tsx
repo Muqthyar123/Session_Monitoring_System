@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, UserX, Search, Send, GraduationCap, Calendar } from "lucide-react";
+import { CheckCircle2, UserX, Search, Send, GraduationCap, Calendar, Lock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { CRLRLayout } from "@/layouts/CRLRLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -14,6 +14,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import {
   getCRLRStudents,
+  getCRLRSubmissionStatus,
   submitStudentAttendance,
 } from "@/services/studentAttendanceService";
 import { getSessions } from "@/services/sessionService";
@@ -44,10 +45,32 @@ function CRLRStudentAttendancePage() {
     [showSundayNoClass]
   );
 
+  // Daily Submission Status Check
+  const {
+    data: subStatus,
+    loading: loadingStatus,
+    reload: reloadStatus,
+  } = useAsyncData(
+    () =>
+      user?.year && user?.section
+        ? getCRLRSubmissionStatus(user.year, user.section)
+        : Promise.resolve(null),
+    [user?.year, user?.section]
+  );
+
+  const isSubmittedToday = subStatus?.isSubmittedToday ?? false;
+
   const [search, setSearch] = useState("");
   // Set of rollNumbers marked as ABSENT
   const [absentRolls, setAbsentRolls] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+
+  // Auto-sync submitted absentees if attendance is already submitted
+  useEffect(() => {
+    if (subStatus?.isSubmittedToday && subStatus.absentRolls) {
+      setAbsentRolls(new Set(subStatus.absentRolls));
+    }
+  }, [subStatus]);
 
   const filteredStudents = useMemo(() => {
     if (!students) return [];
@@ -61,6 +84,10 @@ function CRLRStudentAttendancePage() {
   }, [students, search]);
 
   const toggleAbsent = (rollNumber: string) => {
+    if (isSubmittedToday) {
+      toast.info("Attendance has already been submitted for today and is locked.");
+      return;
+    }
     setAbsentRolls((prev) => {
       const next = new Set(prev);
       if (next.has(rollNumber)) {
@@ -73,6 +100,10 @@ function CRLRStudentAttendancePage() {
   };
 
   const markAllPresent = () => {
+    if (isSubmittedToday) {
+      toast.info("Attendance has already been submitted for today and is locked.");
+      return;
+    }
     setAbsentRolls(new Set());
   };
 
@@ -83,7 +114,11 @@ function CRLRStudentAttendancePage() {
 
   const handleSubmit = async () => {
     if (showSundayNoClass) {
-      toast.error("No class are Available Due to Sunday.");
+      toast.error("No classes are Available Due to Sunday.");
+      return;
+    }
+    if (isSubmittedToday) {
+      toast.error("Today's attendance has already been submitted and cannot be duplicated.");
       return;
     }
     if (!user?.year || !user?.section) {
@@ -110,10 +145,11 @@ function CRLRStudentAttendancePage() {
       toast.success(
         res.message || `Student attendance submitted successfully (${res.absent_count} absent).`
       );
-      setAbsentRolls(new Set());
-      reload();
+      if (reloadStatus) reloadStatus();
+      if (reload) reload();
     } catch (err: any) {
       toast.error(err.message || "Failed to submit student attendance.");
+      if (reloadStatus) reloadStatus();
     } finally {
       setSubmitting(false);
     }
@@ -138,6 +174,28 @@ function CRLRStudentAttendancePage() {
         </Card>
       ) : (
         <>
+          {/* Already Submitted Warning Banner */}
+          {isSubmittedToday && (
+            <Card className="border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30">
+              <CardContent className="flex items-center gap-3 py-3.5">
+                <div className="rounded-full bg-emerald-500/20 p-2 text-emerald-700 dark:text-emerald-300 shrink-0">
+                  <CheckCircle2 className="size-5" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                    Today's Attendance Submitted & Locked
+                  </p>
+                  <p className="text-xs text-emerald-800 dark:text-emerald-300/80">
+                    Attendance for {user?.year} Section {user?.section} was submitted by{" "}
+                    <strong>{subStatus?.submittedBy}</strong>
+                    {subStatus?.submittedAt ? ` on ${new Date(subStatus.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}{" "}
+                    ({subStatus?.absentCount ?? 0} absentees recorded). Submissions reset tomorrow.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Info Banner */}
           <Card className="border-primary/20 bg-primary/5">
             <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
@@ -148,7 +206,7 @@ function CRLRStudentAttendancePage() {
                 <div>
                   <p className="font-semibold text-sm">Assigned Class Section</p>
                   <p className="text-xs text-muted-foreground">
-                    {user?.year} &bull; Section {user?.section} &bull; CR/LR: {user?.name}
+                    {user?.year} &bull; Section {user?.section} &bull; Logged in as: {user?.name} ({user?.role})
                   </p>
                 </div>
               </div>
@@ -171,14 +229,25 @@ function CRLRStudentAttendancePage() {
             <Card className="lg:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <div>
-                  <CardTitle>Class Roll Call</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    Class Roll Call
+                    {isSubmittedToday && (
+                      <Badge variant="outline" className="gap-1 border-emerald-500 text-emerald-700 dark:text-emerald-400 text-[10px]">
+                        <Lock className="size-3" /> Submitted Record
+                      </Badge>
+                    )}
+                  </CardTitle>
                   <CardDescription>
-                    Check the box next to a student to mark them as ABSENT today.
+                    {isSubmittedToday
+                      ? "Today's attendance has been recorded and is displayed below."
+                      : "Check the box next to a student to mark them as ABSENT today."}
                   </CardDescription>
                 </div>
-                <Button variant="outline" size="sm" onClick={markAllPresent}>
-                  Mark All Present
-                </Button>
+                {!isSubmittedToday && (
+                  <Button variant="outline" size="sm" onClick={markAllPresent}>
+                    Mark All Present
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="relative">
@@ -191,7 +260,7 @@ function CRLRStudentAttendancePage() {
                   />
                 </div>
 
-                {loading ? (
+                {loading || loadingStatus ? (
                   <LoadingState label="Loading section students..." />
                 ) : error ? (
                   <ErrorState title="Failed to load students" description={error.message} retry={reload} />
@@ -213,13 +282,16 @@ function CRLRStudentAttendancePage() {
                         <div
                           key={s.id}
                           onClick={() => toggleAbsent(s.rollNumber)}
-                          className={`flex cursor-pointer items-center justify-between p-3.5 transition-colors ${
+                          className={`flex items-center justify-between p-3.5 transition-colors ${
+                            isSubmittedToday ? "cursor-default" : "cursor-pointer"
+                          } ${
                             isAbsent ? "bg-rose-500/10 dark:bg-rose-950/20" : "hover:bg-muted/50"
                           }`}
                         >
                           <div className="flex items-center gap-3">
                             <Checkbox
                               checked={isAbsent}
+                              disabled={isSubmittedToday}
                               onCheckedChange={() => toggleAbsent(s.rollNumber)}
                               className="size-5 border-rose-500 data-[state=checked]:bg-rose-600 data-[state=checked]:text-white"
                             />
@@ -255,7 +327,9 @@ function CRLRStudentAttendancePage() {
               <CardHeader>
                 <CardTitle>Attendance Submission Summary</CardTitle>
                 <CardDescription>
-                  Review absent students before submitting daily record.
+                  {isSubmittedToday
+                    ? "Summary of recorded attendance for today."
+                    : "Review absent students before submitting daily record."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -291,15 +365,32 @@ function CRLRStudentAttendancePage() {
                   </div>
                 )}
 
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={handleSubmit}
-                  disabled={submitting || !students || students.length === 0}
-                >
-                  <Send className="size-4 mr-2" />
-                  {submitting ? "Submitting..." : "Submit Attendance Record"}
-                </Button>
+                {isSubmittedToday ? (
+                  <Button
+                    className="w-full bg-emerald-600 hover:bg-emerald-600 cursor-not-allowed opacity-90 text-white"
+                    size="lg"
+                    disabled
+                  >
+                    <CheckCircle2 className="size-4 mr-2" />
+                    Attendance Already Submitted for Today
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={handleSubmit}
+                    disabled={submitting || !students || students.length === 0}
+                  >
+                    <Send className="size-4 mr-2" />
+                    {submitting ? "Submitting..." : "Submit Attendance Record"}
+                  </Button>
+                )}
+
+                {isSubmittedToday && (
+                  <p className="text-[11px] text-center text-muted-foreground">
+                    Only one attendance submission is permitted per section each day. Next submission opens tomorrow.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -308,3 +399,4 @@ function CRLRStudentAttendancePage() {
     </CRLRLayout>
   );
 }
+

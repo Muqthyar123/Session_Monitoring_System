@@ -37,6 +37,9 @@ class StudentAttendanceRecordResponse(BaseModel):
     parent_phone: Optional[str] = Field(None, alias="parentPhone")
     submitted_by: Optional[str] = Field(None, alias="submittedBy")
     status: str = "Absent"
+    subject: Optional[str] = "Academic Session"
+    faculty: Optional[str] = "Assigned Faculty"
+    session: Optional[str] = "Daily Session"
     reason: Optional[str] = None
     reason_updated_by: Optional[str] = Field(None, alias="reasonUpdatedBy")
     created_at: Optional[datetime] = None

@@ -318,25 +318,61 @@ function AdminStudentAnalyticsPage() {
                     {historyList.map((log) => (
                       <div
                         key={log.id}
-                        className="rounded-md border p-3 text-xs space-y-1 bg-muted/30"
+                        className="rounded-lg border p-3.5 text-xs space-y-2 bg-card shadow-xs"
                       >
-                        <div className="flex items-center justify-between font-semibold">
-                          <span className="flex items-center gap-1.5 text-rose-600">
-                            <UserX className="size-3.5" /> Absent on {log.date}
-                          </span>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded">
+                              <UserX className="size-3.5" /> Absent on {log.date}
+                            </span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {log.session || "Session"}
+                            </Badge>
+                          </div>
                           {log.submittedBy && (
-                            <span className="text-muted-foreground font-normal">
-                              Submitted by: {log.submittedBy}
+                            <span className="text-[11px] text-muted-foreground">
+                              Submitted by: <span className="font-medium text-foreground">{log.submittedBy}</span>
                             </span>
                           )}
                         </div>
-                        {log.reason ? (
-                          <p className="text-foreground pt-1">
-                            <strong>Mentor Note:</strong> {log.reason}
-                          </p>
-                        ) : (
-                          <p className="text-muted-foreground italic pt-1">No reason recorded by mentor yet.</p>
-                        )}
+
+                        <div className="grid grid-cols-2 gap-2 text-muted-foreground text-[11px]">
+                          <div>
+                            <span className="font-medium text-foreground">Subject: </span>
+                            {log.subject || "Academic Class"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-foreground">Faculty: </span>
+                            {log.faculty || "Assigned Faculty"}
+                          </div>
+                        </div>
+
+                        <div className="rounded-md bg-muted/50 p-2 text-xs">
+                          {log.reason ? (
+                            <div className="space-y-1">
+                              <p className="text-foreground">
+                                <strong className="text-primary font-semibold">Absence Reason:</strong> {log.reason}
+                              </p>
+                              <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-muted">
+                                <span>
+                                  Updated by Mentor: <strong className="text-foreground">{log.reasonUpdatedBy || "Assigned Mentor"}</strong>
+                                </span>
+                                {log.updatedAt && (
+                                  <span>
+                                    {new Date(log.updatedAt).toLocaleString("en-IN", {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-muted-foreground italic text-center py-0.5">
+                              No reason recorded by mentor yet.
+                            </p>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

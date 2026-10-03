@@ -282,18 +282,25 @@ async def update_absence_comment(
 ) -> StudentAttendanceRecordResponse:
     """Save or update absence reason/comment by mentor."""
     db = get_database()
-    if not ObjectId.is_valid(record_id):
-        raise HTTPException(status_code=400, detail="Invalid record ID.")
+    query = {"_id": ObjectId(record_id)} if ObjectId.is_valid(record_id) else {"_id": record_id}
 
-    doc = await db.student_attendance.find_one({"_id": ObjectId(record_id)})
+    doc = await db.student_attendance.find_one(query)
+    if not doc:
+        doc = await db.student_attendance.find_one({
+            "$or": [
+                {"student_id": record_id},
+                {"roll_number": record_id.upper()},
+            ]
+        })
     if not doc:
         raise HTTPException(status_code=404, detail="Attendance record not found.")
 
     now_utc = datetime.now(timezone.utc)
     actor_name = current_user.get("name", "Mentor")
+    actual_id = doc["_id"]
 
     await db.student_attendance.update_one(
-        {"_id": ObjectId(record_id)},
+        {"_id": actual_id},
         {
             "$set": {
                 "reason": comment.strip(),
@@ -304,16 +311,16 @@ async def update_absence_comment(
         },
     )
 
-    # Optional audit log
+    # Audit log
     await db.audit_logs.insert_one({
-        "actor_id": str(current_user["_id"]),
+        "actor_id": str(current_user.get("_id", "")),
         "actor_email": current_user.get("email"),
         "action": "UPDATE_ABSENCE_COMMENT",
-        "target_attendance_id": record_id,
+        "target_attendance_id": str(actual_id),
         "metadata": {"comment": comment.strip(), "student": doc.get("student_name")},
         "created_at": now_utc,
     })
 
-    updated = await db.student_attendance.find_one({"_id": ObjectId(record_id)})
+    updated = await db.student_attendance.find_one({"_id": actual_id})
     updated["_id"] = str(updated["_id"])
     return StudentAttendanceRecordResponse(**updated)

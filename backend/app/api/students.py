@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, status
 from app.core.dependencies import require_roles
 from app.schemas.common import ApiResponse
 from app.schemas.student import StudentCreate, StudentResponse, StudentUpdate

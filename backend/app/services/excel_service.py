@@ -2,7 +2,7 @@ import csv
 import io
 import re
 from datetime import datetime, time, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from bson import ObjectId
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -344,6 +344,50 @@ def _parse_time_range(time_str: str, period_num: int) -> Tuple[str, str]:
     return convert_time(parts[0]), convert_time(parts[1])
 
 
+def _parse_subject_and_faculty(raw_text: str) -> Tuple[str, List[str], Optional[str]]:
+    """
+    Parses a timetable cell or subject/faculty string.
+    Rule 1: If room in parentheses e.g. '(B-204)', extract room.
+    Rule 2: If ':' is present:
+      - Subject name is before ':'.
+      - Faculty information is after ':'.
+      - Faculty names separated by comma ',' are individual persons.
+      - Whitespace around each name is trimmed.
+    Rule 3: If no ':' is present:
+      - Multi-line text: line 0 is subject, subsequent lines contain faculty (or colon).
+    """
+    if not raw_text:
+        return "", [], None
+
+    raw = str(raw_text).strip()
+    room = None
+    m_room = re.search(r"\(([^)]+)\)", raw)
+    if m_room:
+        room = m_room.group(1).strip()
+        raw = re.sub(r"\(([^)]+)\)", "", raw).strip()
+
+    if ":" in raw:
+        parts = raw.split(":", 1)
+        subj = parts[0].strip()
+        fac_str = parts[1].strip()
+        fac_list = [f.strip() for f in fac_str.split(",") if f.strip() and len(f.strip()) > 1]
+        return subj, fac_list, room
+
+    lines = [l.strip() for l in re.split(r"[\r\n]+", raw) if l.strip()]
+    if len(lines) >= 2:
+        subj = lines[0]
+        rest = " ".join(lines[1:]).strip()
+        if ":" in rest:
+            _, fac_list, _ = _parse_subject_and_faculty(rest)
+            return subj, fac_list, room
+        if not re.match(r"^[\d\s\-_/]+$", rest):
+            fac_list = [f.strip() for f in rest.split(",") if f.strip() and len(f.strip()) > 1]
+            return subj, fac_list, room
+        return subj, [], room
+
+    return raw, [], room
+
+
 def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sheet_name: str) -> List[Dict[str, Any]]:
     """Parse College Matrix Grid Timetable sheet (e.g. DAY | 1 | 2 | Break | 3 | 4 | Lunch | 5 | 6 | 7)."""
     # 1. Search top 12 rows for Section, Year, Semester
@@ -466,20 +510,7 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
                 if not cell_raw or cell_raw.upper() in ["BREAK", "LUNCH", "FREE", "NONE"]:
                     continue
 
-                room = None
-                cell_no_room = cell_raw
-                m_room = re.search(r"\(([^)]+)\)", cell_raw)
-                if m_room:
-                    room = m_room.group(1).strip()
-                    cell_no_room = re.sub(r"\(([^)]+)\)", "", cell_raw).strip()
-
-                faculty_in_cell = None
-                lines = [l.strip() for l in re.split(r"[\r\n]+", cell_no_room) if l.strip()]
-                subject = lines[0] if lines else cell_no_room
-                if len(lines) >= 2:
-                    possible_fac = " ".join(lines[1:]).strip()
-                    if possible_fac and not re.match(r"^[\d\s\-_/]+$", possible_fac):
-                        faculty_in_cell = possible_fac
+                subj_parsed, fac_list_parsed, room_parsed = _parse_subject_and_faculty(cell_raw)
 
                 records.append({
                     "year": detected_year,
@@ -488,50 +519,55 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
                     "period": p_num,
                     "start_time": start_t,
                     "end_time": end_t,
-                    "subject": subject,
-                    "faculty": faculty_in_cell,
-                    "room": room,
+                    "subject": subj_parsed,
+                    "faculty": ", ".join(fac_list_parsed) if fac_list_parsed else None,
+                    "faculty_names": fac_list_parsed,
+                    "room": room_parsed,
                     "updated_at": datetime.now(timezone.utc),
                 })
 
     # 4. Parse Faculty Legend Table below last day row (and adjacent cells)
-    faculty_legend: Dict[str, str] = {}
+    faculty_legend: Dict[str, List[str]] = {}
     for r in range(last_day_row_idx + 1, ws.max_row + 1):
         for c in range(1, ws.max_column + 1):
             cell_val = str(_get_cell_value(ws, r, c) or "").strip()
             if not cell_val:
                 continue
 
-            # Case A: Separator in single cell (e.g. "DMGT : Dr. Ramesh", "PYTHON LAB - Prof. Sharma")
+            # Case A: Separator in single cell (e.g. "DMGT : Dr. Ramesh, Prof. Suresh", "PYTHON LAB - Prof. Sharma, Mr. Verma")
             m_sep = re.split(r"\s*[:\-\u2013\u2014]\s*", cell_val, maxsplit=1)
             if len(m_sep) == 2 and m_sep[0].strip() and m_sep[1].strip():
                 subj_code = m_sep[0].replace("\n", " ").strip().upper()
-                fac_name = m_sep[1].replace("\n", " ").strip()
-                if len(fac_name) > 2 and subj_code not in faculty_legend:
-                    faculty_legend[subj_code] = fac_name
+                fac_raw = m_sep[1].replace("\n", " ").strip()
+                fac_list = [f.strip() for f in fac_raw.split(",") if f.strip() and len(f.strip()) > 1]
+                if fac_list and subj_code not in faculty_legend:
+                    faculty_legend[subj_code] = fac_list
                 continue
 
-            # Case B: Two adjacent cells in a row (Column A = "DMGT", Column B = "Dr. Ramesh")
+            # Case B: Two adjacent cells in a row (Column A = "DMGT", Column B = "Dr. Ramesh, Prof. Suresh")
             if c < ws.max_column:
                 adj_val = str(_get_cell_value(ws, r, c + 1) or "").strip()
                 if cell_val and adj_val:
                     code_norm = cell_val.replace("\n", " ").strip().upper()
-                    name_norm = adj_val.replace("\n", " ").strip()
-                    if len(code_norm) <= 25 and len(name_norm) > 2 and code_norm not in faculty_legend:
+                    fac_raw = adj_val.replace("\n", " ").strip()
+                    fac_list = [f.strip() for f in fac_raw.split(",") if f.strip() and len(f.strip()) > 1]
+                    if len(code_norm) <= 25 and fac_list and code_norm not in faculty_legend:
                         if code_norm not in ["SUBJECT", "COURSE", "SL.NO", "CODE", "PERIOD"]:
-                            faculty_legend[code_norm] = name_norm
+                            faculty_legend[code_norm] = fac_list
 
     # Assign faculty names to matching subject records
     for rec in records:
-        if rec["faculty"]:
+        if rec.get("faculty_names"):
             continue
         subj_upper = rec["subject"].upper()
         if subj_upper in faculty_legend:
-            rec["faculty"] = faculty_legend[subj_upper]
+            rec["faculty_names"] = faculty_legend[subj_upper]
+            rec["faculty"] = ", ".join(faculty_legend[subj_upper])
         else:
             for k, v in faculty_legend.items():
                 if k in subj_upper or subj_upper in k:
-                    rec["faculty"] = v
+                    rec["faculty_names"] = v
+                    rec["faculty"] = ", ".join(v)
                     break
 
     return records
@@ -557,17 +593,26 @@ async def parse_and_import_timetable_excel(
     # Process all sheets in workbook
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
-        
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            continue
+
+        first_row_non_empty = next((r for r in rows if any(r)), None)
+        first_row_str = " ".join(str(c or "").lower() for c in first_row_non_empty) if first_row_non_empty else ""
+
+        is_tabular = ("subject" in first_row_str and "period" in first_row_str) or ("start time" in first_row_str) or ("start_time" in first_row_str) or ("starttime" in first_row_str)
+
         # Check if sheet is a College Matrix Grid sheet (e.g. contains DAY in top rows)
         is_matrix_grid = False
-        for r in range(1, min(15, ws.max_row + 1)):
-            for c in range(1, min(6, ws.max_column + 1)):
-                val_upper = str(_get_cell_value(ws, r, c) or "").strip().upper()
-                if "DAY" in val_upper or "TIME TABLE" in val_upper or any(k in val_upper for k in ["MON", "TUE", "WED", "THU", "FRI", "SAT"]):
-                    is_matrix_grid = True
+        if not is_tabular:
+            for r in range(1, min(15, ws.max_row + 1)):
+                for c in range(1, min(6, ws.max_column + 1)):
+                    val_upper = str(_get_cell_value(ws, r, c) or "").strip().upper()
+                    if "DAY" in val_upper or "TIME TABLE" in val_upper or any(k in val_upper for k in ["MON", "TUE", "WED", "THU", "FRI", "SAT"]):
+                        is_matrix_grid = True
+                        break
+                if is_matrix_grid:
                     break
-            if is_matrix_grid:
-                break
 
         if is_matrix_grid:
             matrix_records = _parse_matrix_timetable_excel(ws, sheet_name)
@@ -576,9 +621,6 @@ async def parse_and_import_timetable_excel(
             continue
 
         # Standard Tabular parsing fallback
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            continue
 
         header_row = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
         header_lower = [h.lower() for h in header_row]
@@ -641,6 +683,27 @@ async def parse_and_import_timetable_excel(
                 errors.append({"sheet": sheet_name, "row": row_idx, "errors": row_errors})
                 continue
 
+            if ":" in subject:
+                subj_clean, fac_from_subj, room_from_subj = _parse_subject_and_faculty(subject)
+                subject = subj_clean
+                if not room and room_from_subj:
+                    room = room_from_subj
+                if fac_from_subj:
+                    faculty_names = fac_from_subj
+                elif faculty:
+                    faculty_names = [f.strip() for f in faculty.split(",") if f.strip() and len(f.strip()) > 1]
+                else:
+                    faculty_names = []
+            elif faculty:
+                if ":" in faculty:
+                    _, faculty_names, _ = _parse_subject_and_faculty(faculty)
+                else:
+                    faculty_names = [f.strip() for f in faculty.split(",") if f.strip() and len(f.strip()) > 1]
+            else:
+                faculty_names = []
+
+            faculty_display = ", ".join(faculty_names) if faculty_names else (faculty if faculty else None)
+
             records_to_insert.append(
                 {
                     "year": year,
@@ -650,7 +713,8 @@ async def parse_and_import_timetable_excel(
                     "start_time": start_time,
                     "end_time": end_time,
                     "subject": subject,
-                    "faculty": faculty if faculty else None,
+                    "faculty": faculty_display,
+                    "faculty_names": faculty_names,
                     "room": room if room else None,
                     "updated_at": datetime.now(timezone.utc),
                 }
@@ -703,6 +767,34 @@ async def parse_and_import_timetable_excel(
             },
             upsert=True,
         )
+
+    # Persist all individual faculty members as distinct records in users collection
+    all_fac_names = set()
+    for rec in records_to_insert:
+        for f_name in rec.get("faculty_names", []):
+            if f_name and len(f_name) > 1:
+                all_fac_names.add(f_name.strip())
+
+    for f_name in all_fac_names:
+        existing_u = await db.users.find_one({"name": f_name})
+        if not existing_u:
+            clean_email_prefix = re.sub(r'[^a-z0-9]', '', f_name.lower())
+            fac_email = f"{clean_email_prefix}@nrtec.in" if clean_email_prefix else f"fac_{ObjectId()}@nrtec.in"
+            await db.users.update_one(
+                {"name": f_name},
+                {
+                    "$setOnInsert": {
+                        "name": f_name,
+                        "email": fac_email,
+                        "role": "FACULTY",
+                        "password_hash": hash_password("faculty1234"),
+                        "is_active": True,
+                        "created_at": datetime.now(timezone.utc),
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+                upsert=True,
+            )
 
     await db.audit_logs.insert_one(
         {

@@ -14,6 +14,61 @@ from app.schemas.student_attendance import (
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
 
+async def get_student_attendance_submission_status(
+    year: str, section: str, date: Optional[str] = None
+) -> Dict[str, Any]:
+    """Check whether attendance for a given section and year has already been submitted for today."""
+    db = get_database()
+    if not date:
+        date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
+
+    req_sec = section.strip().upper()
+    req_year = year.strip()
+
+    sub = await db.student_attendance_submissions.find_one({
+        "year": req_year,
+        "section": req_sec,
+        "date": date,
+    })
+
+    if not sub:
+        return {
+            "isSubmittedToday": False,
+            "date": date,
+            "year": req_year,
+            "section": req_sec,
+            "submittedBy": None,
+            "submittedByRole": None,
+            "submittedAt": None,
+            "absentCount": 0,
+            "absentRolls": [],
+        }
+
+    # Retrieve roll numbers marked as absent today
+    abs_docs = await db.student_attendance.find({
+        "year": req_year,
+        "section": req_sec,
+        "date": date,
+        "status": "Absent",
+    }).to_list(length=500)
+    abs_rolls = [d.get("roll_number") for d in abs_docs if d.get("roll_number")]
+
+    submitted_at_val = sub.get("submitted_at") or sub.get("updated_at")
+    submitted_at_str = submitted_at_val.isoformat() if isinstance(submitted_at_val, datetime) else str(submitted_at_val or "")
+
+    return {
+        "isSubmittedToday": True,
+        "date": date,
+        "year": req_year,
+        "section": req_sec,
+        "submittedBy": sub.get("submitted_by", "CR/LR"),
+        "submittedByRole": sub.get("submitted_by_role", "CR"),
+        "submittedAt": submitted_at_str,
+        "absentCount": sub.get("absent_count", len(abs_rolls)),
+        "absentRolls": abs_rolls,
+    }
+
+
 async def submit_student_attendance(
     data: StudentAttendanceSubmitRequest, current_user: dict
 ) -> Dict[str, Any]:
@@ -38,33 +93,35 @@ async def submit_student_attendance(
     req_sec = data.section.strip().upper()
     req_year = data.year.strip()
 
-    # Check if attendance was already submitted today for this year + section
+    # Prevent duplicate submission by either CR or LR for the same section on the same calendar day
     existing_sub = await db.student_attendance_submissions.find_one({
         "year": req_year,
         "section": req_sec,
         "date": date_str,
     })
     if existing_sub:
-        # Update existing submission records
-        await db.student_attendance.delete_many({
-            "year": req_year,
-            "section": req_sec,
-            "date": date_str,
-        })
+        prev_submitter = existing_sub.get("submitted_by", "a Class Representative")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Today's attendance for {req_year} Section {req_sec} has already been submitted by {prev_submitter}. Only one submission per section is permitted each day.",
+        )
 
     # Save absentee records
     absentee_docs = []
+    absent_rolls = []
     for ab in data.absentees:
+        r_num = ab.roll_number.strip().upper()
+        absent_rolls.append(r_num)
         doc = {
             "date": date_str,
             "year": req_year,
             "section": req_sec,
-            "roll_number": ab.roll_number.strip().upper(),
+            "roll_number": r_num,
             "student_id": ab.student_id,
             "student_name": ab.student_name.strip(),
             "student_phone": ab.student_phone,
             "parent_phone": ab.parent_phone,
-            "submitted_by": current_user.get("name", "CRLR"),
+            "submitted_by": f"{current_user.get('name', 'CRLR')} ({user_role})",
             "status": "Absent",
             "reason": None,
             "created_at": now_utc,
@@ -76,12 +133,17 @@ async def submit_student_attendance(
         await db.student_attendance.insert_many(absentee_docs)
 
     # Record submission marker
+    submitter_display = f"{current_user.get('name', 'CRLR')} ({user_role})"
     sub_marker = {
         "year": req_year,
         "section": req_sec,
         "date": date_str,
-        "submitted_by": current_user.get("name", "CRLR"),
+        "submitted_by": submitter_display,
+        "submitted_by_role": user_role,
+        "submitted_by_id": str(current_user.get("_id", "")),
         "absent_count": len(absentee_docs),
+        "absent_rolls": absent_rolls,
+        "submitted_at": now_utc,
         "updated_at": now_utc,
     }
     await db.student_attendance_submissions.update_one(
@@ -94,6 +156,7 @@ async def submit_student_attendance(
         "message": f"Successfully submitted attendance for {req_year} Section {req_sec}.",
         "date": date_str,
         "absent_count": len(absentee_docs),
+        "submitted_by": submitter_display,
     }
 
 
@@ -139,29 +202,39 @@ async def get_absentee_students_for_section(year: str, section: str, date: Optio
     return absentees
 
 
-async def save_absence_reason(record_id: str, reason: str, actor_name: str) -> StudentAttendanceRecordResponse:
+async def save_absence_reason(record_id: str, reason: str, actor_name: str, actor_id: Optional[str] = None) -> StudentAttendanceRecordResponse:
     """Save or update the absence reason for a specific attendance record."""
     db = get_database()
-    if not ObjectId.is_valid(record_id):
-        raise HTTPException(status_code=400, detail="Invalid Record ID.")
+    query = {"_id": ObjectId(record_id)} if ObjectId.is_valid(record_id) else {"_id": record_id}
 
-    doc = await db.student_attendance.find_one({"_id": ObjectId(record_id)})
+    doc = await db.student_attendance.find_one(query)
+    if not doc:
+        doc = await db.student_attendance.find_one({
+            "$or": [
+                {"student_id": record_id},
+                {"roll_number": record_id.upper()},
+            ]
+        })
     if not doc:
         raise HTTPException(status_code=404, detail="Attendance record not found.")
 
     now_utc = datetime.now(timezone.utc)
+    actual_id = doc["_id"]
+
+    update_payload = {
+        "reason": reason.strip(),
+        "reason_updated_by": actor_name,
+        "updated_at": now_utc,
+    }
+    if actor_id:
+        update_payload["reason_updated_by_id"] = str(actor_id)
+
     await db.student_attendance.update_one(
-        {"_id": ObjectId(record_id)},
-        {
-            "$set": {
-                "reason": reason.strip(),
-                "reason_updated_by": actor_name,
-                "updated_at": now_utc,
-            }
-        },
+        {"_id": actual_id},
+        {"$set": update_payload},
     )
 
-    updated = await db.student_attendance.find_one({"_id": ObjectId(record_id)})
+    updated = await db.student_attendance.find_one({"_id": actual_id})
     updated["_id"] = str(updated["_id"])
     return StudentAttendanceRecordResponse(**updated)
 
@@ -223,5 +296,11 @@ async def get_student_complete_history(roll_number: str) -> List[StudentAttendan
     history = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
+        if not doc.get("subject"):
+            doc["subject"] = "Academic Session"
+        if not doc.get("faculty"):
+            doc["faculty"] = "Assigned Faculty"
+        if not doc.get("session"):
+            doc["session"] = "Regular Class Session"
         history.append(StudentAttendanceRecordResponse(**doc))
     return history

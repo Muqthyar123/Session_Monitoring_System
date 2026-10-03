@@ -18,6 +18,7 @@ import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminMentorsRouteImport } from './routes/admin.mentors'
 import { Route as AdminSessionsRouteImport } from './routes/admin.sessions'
 import { Route as AdminStudentAnalyticsRouteImport } from './routes/admin.student-analytics'
+import { Route as AdminStudentHistoryRouteImport } from './routes/admin.student-history'
 import { Route as AdminStudentsRouteImport } from './routes/admin.students'
 import { Route as AdminTimetableRouteImport } from './routes/admin.timetable'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
@@ -76,6 +77,11 @@ const AdminSessionsRoute = AdminSessionsRouteImport.update({
 const AdminStudentAnalyticsRoute = AdminStudentAnalyticsRouteImport.update({
   id: '/admin/student-analytics',
   path: '/admin/student-analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminStudentHistoryRoute = AdminStudentHistoryRouteImport.update({
+  id: '/admin/student-history',
+  path: '/admin/student-history',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminStudentsRoute = AdminStudentsRouteImport.update({
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/admin/mentors': typeof AdminMentorsRoute
   '/admin/sessions': typeof AdminSessionsRoute
   '/admin/student-analytics': typeof AdminStudentAnalyticsRoute
+  '/admin/student-history': typeof AdminStudentHistoryRoute
   '/admin/students': typeof AdminStudentsRoute
   '/admin/timetable': typeof AdminTimetableRoute
   '/auth/login': typeof AuthLoginRoute
@@ -184,6 +191,7 @@ export interface FileRoutesByTo {
   '/admin/mentors': typeof AdminMentorsRoute
   '/admin/sessions': typeof AdminSessionsRoute
   '/admin/student-analytics': typeof AdminStudentAnalyticsRoute
+  '/admin/student-history': typeof AdminStudentHistoryRoute
   '/admin/students': typeof AdminStudentsRoute
   '/admin/timetable': typeof AdminTimetableRoute
   '/auth/login': typeof AuthLoginRoute
@@ -210,6 +218,7 @@ export interface FileRoutesById {
   '/admin/mentors': typeof AdminMentorsRoute
   '/admin/sessions': typeof AdminSessionsRoute
   '/admin/student-analytics': typeof AdminStudentAnalyticsRoute
+  '/admin/student-history': typeof AdminStudentHistoryRoute
   '/admin/students': typeof AdminStudentsRoute
   '/admin/timetable': typeof AdminTimetableRoute
   '/auth/login': typeof AuthLoginRoute
@@ -237,6 +246,7 @@ export interface FileRouteTypes {
     | '/admin/mentors'
     | '/admin/sessions'
     | '/admin/student-analytics'
+    | '/admin/student-history'
     | '/admin/students'
     | '/admin/timetable'
     | '/auth/login'
@@ -262,6 +272,7 @@ export interface FileRouteTypes {
     | '/admin/mentors'
     | '/admin/sessions'
     | '/admin/student-analytics'
+    | '/admin/student-history'
     | '/admin/students'
     | '/admin/timetable'
     | '/auth/login'
@@ -287,6 +298,7 @@ export interface FileRouteTypes {
     | '/admin/mentors'
     | '/admin/sessions'
     | '/admin/student-analytics'
+    | '/admin/student-history'
     | '/admin/students'
     | '/admin/timetable'
     | '/auth/login'
@@ -313,6 +325,7 @@ export interface RootRouteChildren {
   AdminMentorsRoute: typeof AdminMentorsRoute
   AdminSessionsRoute: typeof AdminSessionsRoute
   AdminStudentAnalyticsRoute: typeof AdminStudentAnalyticsRoute
+  AdminStudentHistoryRoute: typeof AdminStudentHistoryRoute
   AdminStudentsRoute: typeof AdminStudentsRoute
   AdminTimetableRoute: typeof AdminTimetableRoute
   AuthLoginRoute: typeof AuthLoginRoute
@@ -392,6 +405,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/student-analytics'
       fullPath: '/admin/student-analytics'
       preLoaderRoute: typeof AdminStudentAnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/student-history': {
+      id: '/admin/student-history'
+      path: '/admin/student-history'
+      fullPath: '/admin/student-history'
+      preLoaderRoute: typeof AdminStudentHistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/students': {
@@ -505,6 +525,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminMentorsRoute: AdminMentorsRoute,
   AdminSessionsRoute: AdminSessionsRoute,
   AdminStudentAnalyticsRoute: AdminStudentAnalyticsRoute,
+  AdminStudentHistoryRoute: AdminStudentHistoryRoute,
   AdminStudentsRoute: AdminStudentsRoute,
   AdminTimetableRoute: AdminTimetableRoute,
   AuthLoginRoute: AuthLoginRoute,

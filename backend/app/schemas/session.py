@@ -25,6 +25,7 @@ class ClassSessionResponse(BaseModel):
     year: Optional[str] = None
     subject: str
     faculty: Optional[str] = None
+    faculty_names: Optional[List[str]] = Field(default_factory=list, alias="facultyNames")
     period: str
     periods_included: List[int]
     start_time: str = Field(..., alias="startTime")

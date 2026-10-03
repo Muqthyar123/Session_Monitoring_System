@@ -105,3 +105,43 @@ async def test_matrix_grid_timetable_import():
     assert p2_thu["subject"] == "PYTHON LAB"
     assert p2_thu["faculty"] == "M.SATHYAM REDDY"
     assert p2_thu["room"] == "2201 LAB"
+
+
+@pytest.mark.asyncio
+async def test_faculty_colon_and_comma_parsing():
+    """Test that 'Subject: Faculty A, Faculty B, Faculty C' extracts individual faculty persons."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Class_Timetables"
+
+    headers = ["Year", "Section", "Day", "Period", "Start Time", "End Time", "Subject", "Faculty", "Room"]
+    ws.append(headers)
+    ws.append(["2nd Year", "II-B", "Wednesday", 1, "09:10", "10:00", "Cloud Computing: Dr. S. Rao, Prof. M. Devi, Dr. K. Paul", "", "Lab-3"])
+    ws.append(["2nd Year", "II-B", "Wednesday", 2, "10:00", "10:50", "Big Data", "Dr. A. Sharma, Prof. R. Verma", "Room-102"])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    file_bytes = buf.getvalue()
+
+    res = await parse_and_import_timetable_excel(file_bytes, "multi_faculty.xlsx", "actor-999")
+    assert res["inserted"] == 2
+
+    db = get_database()
+    rec1 = await db.timetables.find_one({"section": "II-B", "period": 1, "day": "Wednesday"})
+    assert rec1 is not None
+    assert rec1["subject"] == "Cloud Computing"
+    assert rec1["faculty_names"] == ["Dr. S. Rao", "Prof. M. Devi", "Dr. K. Paul"]
+    assert "Dr. S. Rao" in rec1["faculty"]
+    assert "Prof. M. Devi" in rec1["faculty"]
+
+    rec2 = await db.timetables.find_one({"section": "II-B", "period": 2, "day": "Wednesday"})
+    assert rec2 is not None
+    assert rec2["subject"] == "Big Data"
+    assert rec2["faculty_names"] == ["Dr. A. Sharma", "Prof. R. Verma"]
+
+    # Verify individual faculty members are persisted in users collection
+    for f in ["Dr. S. Rao", "Prof. M. Devi", "Dr. K. Paul", "Dr. A. Sharma", "Prof. R. Verma"]:
+        u = await db.users.find_one({"name": f})
+        assert u is not None
+        assert u["role"] == "FACULTY"
+

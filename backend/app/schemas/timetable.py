@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -13,6 +13,7 @@ class TimetablePeriodResponse(BaseModel):
     end_time: str = Field(..., alias="endTime")
     subject: str
     faculty: Optional[str] = None
+    faculty_names: Optional[List[str]] = Field(default_factory=list, alias="facultyNames")
     room: Optional[str] = None
 
     model_config = ConfigDict(populate_by_name=True)

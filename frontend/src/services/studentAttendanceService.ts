@@ -13,7 +13,13 @@ export interface AbsenteeStudentItem {
   parentPhone?: string;
   submittedBy?: string;
   status: string;
+  subject?: string;
+  faculty?: string;
+  session?: string;
   reason?: string;
+  reasonUpdatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface StudentAnalyticsSummaryItem {
@@ -29,8 +35,28 @@ export interface StudentAnalyticsSummaryItem {
   attendancePercentage: number;
 }
 
+export interface StudentAttendanceSubmissionStatus {
+  isSubmittedToday: boolean;
+  date: string;
+  year: string;
+  section: string;
+  submittedBy?: string | null;
+  submittedByRole?: string | null;
+  submittedAt?: string | null;
+  absentCount: number;
+  absentRolls: string[];
+}
+
 export async function getCRLRStudents(): Promise<StudentItem[]> {
   return request<StudentItem[]>("/crlr/students");
+}
+
+export async function getCRLRSubmissionStatus(year?: string, section?: string): Promise<StudentAttendanceSubmissionStatus> {
+  const params = new URLSearchParams();
+  if (year) params.append("year", year);
+  if (section) params.append("section", section);
+  const qStr = params.toString() ? `?${params.toString()}` : "";
+  return request<StudentAttendanceSubmissionStatus>(`/crlr/student-attendance/status${qStr}`);
 }
 
 export async function submitStudentAttendance(payload: {

@@ -26,6 +26,7 @@ def combine_continuous_periods(periods: List[dict]) -> List[dict]:
     for p in sorted_periods:
         subj = p.get("subject", "").strip()
         fac = (p.get("faculty") or "").strip()
+        fac_names = p.get("faculty_names") or ([f.strip() for f in fac.split(",") if f.strip()] if fac else [])
         s_time = p.get("start_time", "").strip()
         e_time = p.get("end_time", "").strip()
         p_num = p.get("period", 1)
@@ -37,6 +38,7 @@ def combine_continuous_periods(periods: List[dict]) -> List[dict]:
                 "day": p.get("day", ""),
                 "subject": subj,
                 "faculty": fac,
+                "faculty_names": fac_names,
                 "room": p.get("room"),
                 "start_time": s_time,
                 "end_time": e_time,
@@ -60,6 +62,7 @@ def combine_continuous_periods(periods: List[dict]) -> List[dict]:
                     "day": p.get("day", ""),
                     "subject": subj,
                     "faculty": fac,
+                    "faculty_names": fac_names,
                     "room": p.get("room"),
                     "start_time": s_time,
                     "end_time": e_time,
@@ -179,6 +182,7 @@ async def generate_and_sync_sessions_for_date(
                 "year": cs.get("year", sec_doc.get("year", "2nd Year")),
                 "subject": subj_val,
                 "faculty": fac_val,
+                "faculty_names": cs.get("faculty_names", []),
                 "period": cs["period_display"],
                 "periods_included": cs["periods_included"],
                 "start_time": cs["start_time"],

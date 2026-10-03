@@ -14,6 +14,7 @@ from app.services.student_attendance_service import (
     get_absentee_sections,
     get_absentee_students_for_section,
     get_absentee_years,
+    get_student_attendance_submission_status,
     get_student_complete_history,
     get_students_analytics_summary,
     save_absence_reason,
@@ -41,6 +42,23 @@ async def get_crlr_assigned_students_api(
 
     students = await get_students(year=user_year, section=user_sec, limit=1000)
     return ApiResponse(success=True, data=students)
+
+
+@router.get("/crlr/student-attendance/status", response_model=ApiResponse[dict])
+async def get_crlr_student_attendance_status_api(
+    year: Optional[str] = Query(None),
+    section: Optional[str] = Query(None),
+    date: Optional[str] = Query(None),
+    current_user: dict = Depends(require_roles([UserRole.CR, UserRole.LR, UserRole.MENTOR, UserRole.ADMIN])),
+):
+    """Check if attendance has already been submitted for a class section today."""
+    req_year = year or current_user.get("year") or "2nd Year"
+    req_sec = section or current_user.get("section") or ""
+    if not req_sec:
+        raise HTTPException(status_code=400, detail="Section is required to check submission status.")
+
+    status_data = await get_student_attendance_submission_status(req_year, req_sec, date)
+    return ApiResponse(success=True, data=status_data)
 
 
 @router.post("/crlr/student-attendance", response_model=ApiResponse[dict])
