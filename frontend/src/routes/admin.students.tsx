@@ -524,22 +524,6 @@ function AdminStudentsPage() {
                 </Select>
               </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const yLabel = yearFilter !== ALL ? `_${yearFilter.replace(/\s+/g, "_")}` : "";
-                  const sLabel = sectionFilter !== ALL ? `_${sectionFilter}` : "";
-                  exportToCSV(filteredStudents, `Students_Roster${yLabel}${sLabel}`, studentExportColumns);
-                }}
-                disabled={filteredStudents.length === 0}
-                className="gap-1.5"
-                title="Export filtered students to Excel/CSV"
-              >
-                <Download className="size-4" />
-                Export
-              </Button>
-
               <Button onClick={openCreateDialog} size="sm" className="gap-1.5">
                 <Plus className="size-4" /> Add Student
               </Button>
