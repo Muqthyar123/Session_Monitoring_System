@@ -300,6 +300,26 @@ function AdminMentorsPage() {
             <Button variant="destructive" size="sm" onClick={() => setResetDialogOpen(true)}>
               <RotateCcw className="size-4 mr-2" /> Reset Mentors
             </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const mentorExportColumns = [
+                  { key: "mentorId", header: "Employee ID" },
+                  { key: "name", header: "Mentor Name" },
+                  { key: "email", header: "Email" },
+                  { key: "phone", header: "Mobile No", transform: (v: any) => v || "" },
+                  { key: "designation", header: "Designation", transform: (v: any) => v || "" },
+                  { key: "department", header: "Department", transform: (v: any) => v || "" },
+                  { key: "profile", header: "Profile", transform: (v: any) => v || "" },
+                ];
+                exportToCSV(rows, "Mentors_Directory", mentorExportColumns);
+              }}
+              disabled={rows.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs font-semibold gap-1.5"
+              title="Export mentors to Excel/CSV"
+            >
+              <Download className="size-4 mr-1.5" /> Export Mentors
+            </Button>
           </div>
         }
       />

@@ -157,12 +157,13 @@ function TimetablePage() {
         title="Timetable Management"
         description="Upload the college timetable workbook. Parsing is performed by the backend."
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={downloadTimetableTemplate}>
-              <Download className="size-4 mr-1.5" /> Download Timetable Template
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={downloadTimetableTemplate}>
+              <Download className="size-4 mr-1.5" /> Download Template
             </Button>
             <Button
               variant="destructive"
+              size="sm"
               onClick={async () => {
                 if (confirm("Reset Timetables: Are you sure you want to delete all timetables from MongoDB database?")) {
                   try {
@@ -177,6 +178,28 @@ function TimetablePage() {
               }}
             >
               <Trash2 className="size-4 mr-1.5" /> Reset Timetables
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const ttData = timetable.data ?? [];
+                const ttExportColumns = [
+                  { key: "day", header: "Day" },
+                  { key: "periodNumber", header: "Period" },
+                  { key: "startTime", header: "Start Time", transform: (v: any) => v || "" },
+                  { key: "endTime", header: "End Time", transform: (v: any) => v || "" },
+                  { key: "subject", header: "Subject" },
+                  { key: "facultyName", header: "Faculty Name", transform: (v: any) => v || "" },
+                  { key: "room", header: "Room / Lab", transform: (v: any) => v || "" },
+                  { key: "section", header: "Section", transform: (v: any) => v || section || "" },
+                ];
+                exportToCSV(ttData, `Timetable_${year.replace(/\s+/g, "_")}_${section || "All"}`, ttExportColumns);
+              }}
+              disabled={!timetable.data || timetable.data.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs font-semibold gap-1.5"
+              title="Export active timetable grid to Excel/CSV"
+            >
+              <Download className="size-4 mr-1.5" /> Export Timetable
             </Button>
           </div>
         }

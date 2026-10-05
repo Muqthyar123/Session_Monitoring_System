@@ -436,6 +436,19 @@ function AdminStudentsPage() {
             <Button variant="destructive" size="sm" onClick={() => setResetDialogOpen(true)}>
               <RotateCcw className="size-4 mr-2" /> Reset Students
             </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                const yLabel = yearFilter !== ALL ? `_${yearFilter.replace(/\s+/g, "_")}` : "";
+                const sLabel = sectionFilter !== ALL ? `_${sectionFilter}` : "";
+                exportToCSV(filteredStudents, `Students_Roster${yLabel}${sLabel}`, studentExportColumns);
+              }}
+              disabled={filteredStudents.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs font-semibold gap-1.5"
+              title="Export students to Excel/CSV"
+            >
+              <Download className="size-4 mr-1.5" /> Export Students
+            </Button>
           </div>
         }
       />

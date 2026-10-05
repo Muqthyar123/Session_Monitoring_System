@@ -226,19 +226,18 @@ function CRLRManagementPage() {
         description="Maintain the representatives responsible for reporting faculty attendance."
         actions={
           <>
+            <Button variant="outline" size="sm" onClick={downloadCRLRTemplate}>
+              <Download className="size-4 mr-1.5" /> Download Template
+            </Button>
             <Button
-              variant="outline"
-              className="text-destructive border-destructive/30 hover:bg-destructive/10"
+              variant="destructive"
+              size="sm"
               onClick={() => setResetDialogOpen(true)}
               disabled={(data ?? []).length === 0}
             >
               <RotateCcw className="size-4 mr-1.5" /> Reset CR/LR
             </Button>
-            <Button variant="outline" onClick={downloadCRLRTemplate}>
-              <Download className="size-4" /> Download CR/LR Template
-            </Button>
             <Button
-              variant="outline"
               size="sm"
               onClick={() => {
                 const crlrExportColumns = [
@@ -253,12 +252,12 @@ function CRLRManagementPage() {
                 exportToCSV(rows, "CR_LR_Representatives", crlrExportColumns);
               }}
               disabled={rows.length === 0}
-              className="gap-1.5"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs font-semibold gap-1.5"
               title="Export filtered CR/LR records to Excel/CSV"
             >
-              <Download className="size-4" /> Export
+              <Download className="size-4 mr-1.5" /> Export CR/LR
             </Button>
-            <Button onClick={openCreate}>
+            <Button onClick={openCreate} size="sm" className="gap-1.5">
               <Plus className="size-4" /> Add Record
             </Button>
           </>
