@@ -9,6 +9,7 @@ from app.services.excel_service import (
 )
 from app.services.user_service import (
     create_user,
+    delete_all_crlrs,
     delete_user,
     get_user_by_id,
     get_users,
@@ -87,6 +88,18 @@ async def update_user_api(
 ):
     updated = await update_user(user_id, data, actor_id=admin["id"])
     return ApiResponse(success=True, data=updated, message="User updated successfully.")
+
+
+@router.delete("/reset", response_model=ApiResponse[dict])
+async def reset_crlrs_api(
+    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+):
+    deleted_count = await delete_all_crlrs(actor_id=admin["id"])
+    return ApiResponse(
+        success=True,
+        data={"deleted_count": deleted_count},
+        message=f"Successfully reset CR/LR directory ({deleted_count} representatives deleted).",
+    )
 
 
 @router.delete("/{user_id}", response_model=ApiResponse[dict])

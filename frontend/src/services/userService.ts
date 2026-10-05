@@ -40,6 +40,12 @@ export async function deleteCRLRUser(id: string): Promise<void> {
   });
 }
 
+export async function resetCRLRUsers(): Promise<{ message: string; deleted_count?: number }> {
+  return request<{ message: string; deleted_count?: number }>("/admin/users/reset", {
+    method: "DELETE",
+  });
+}
+
 export async function uploadCRLRExcel(file: File): Promise<{ message: string }> {
   const formData = new FormData();
   formData.append("file", file);

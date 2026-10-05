@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, FileSpreadsheet, Trash2 } from "lucide-react";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { FileUpload } from "@/components/common/FileUpload";
@@ -262,6 +263,27 @@ function TimetablePage() {
               </SelectContent>
             </Select>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const ttCols = [
+                { key: "day", header: "Day" },
+                { key: "period", header: "Period" },
+                { key: "startTime", header: "Start Time" },
+                { key: "endTime", header: "End Time" },
+                { key: "subject", header: "Subject" },
+                { key: "faculty", header: "Faculty", transform: (v: any) => v || "-" },
+                { key: "room", header: "Room / Lab", transform: (v: any) => v || "-" },
+              ];
+              exportToCSV(timetable.data ?? [], `Timetable_${year.replace(/\s+/g, "_")}_${section}`, ttCols);
+            }}
+            disabled={(timetable.data?.length ?? 0) === 0}
+            className="gap-1.5 self-center"
+            title="Export timetable to Excel/CSV"
+          >
+            <Download className="size-4" /> Export Timetable
+          </Button>
         </div>
 
         {timetable.loading ? (

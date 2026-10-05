@@ -13,7 +13,7 @@ from app.schemas.mentor import (
 )
 from app.schemas.student import StudentResponse
 from app.schemas.student_attendance import StudentAttendanceRecordResponse
-from app.services.student_service import compute_year_from_batch
+from app.services.student_service import compute_year_from_batch, infer_batch_from_roll
 
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
@@ -185,8 +185,12 @@ async def search_students_global(search_term: str, limit: int = 100) -> List[Stu
     results: List[StudentResponse] = []
     async for s in cursor:
         s["_id"] = str(s["_id"])
-        if not s.get("year") and s.get("batch"):
+        if not s.get("batch") and s.get("roll_number"):
+            s["batch"] = infer_batch_from_roll(s["roll_number"])
+        if s.get("batch"):
             s["year"] = compute_year_from_batch(s["batch"])
+        elif not s.get("year"):
+            s["year"] = "2nd Year"
         results.append(StudentResponse(**s))
     return results
 

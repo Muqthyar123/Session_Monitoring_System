@@ -10,7 +10,9 @@ import {
   Phone,
   RotateCcw,
   X,
+  Download,
 } from "lucide-react";
+import { exportToCSV } from "@/utils/exportUtils";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable, type Column } from "@/components/common/DataTable";
@@ -40,21 +42,40 @@ export const Route = createFileRoute("/mentor/students")({
   component: MentorStudentsPage,
 });
 
-export function computeYearFromBatch(batch?: number): string {
+export function inferBatchFromRoll(roll?: string): number | undefined {
+  if (!roll) return undefined;
+  const clean = roll.trim().toUpperCase();
+  const m = clean.match(/^(\d{2})/);
+  if (m) {
+    const yy = parseInt(m[1], 10);
+    if (yy >= 18 && yy <= 40) {
+      const adm = 2000 + yy;
+      const isLE = /^\d{2}[A-Z0-9]{2}[5L]/.test(clean);
+      return isLE ? adm + 3 : adm + 4;
+    }
+  }
+  return undefined;
+}
+
+export function computeYearFromBatch(batch?: number | string): string {
   if (!batch) return "—";
+  const b = typeof batch === "string" ? parseInt(batch, 10) : batch;
+  if (isNaN(b)) return "—";
   const map: Record<number, string> = {
     2027: "4th Year",
     2028: "3rd Year",
     2029: "2nd Year",
     2030: "1st Year",
   };
-  if (map[batch]) return map[batch];
-  const yr = 2031 - batch;
-  if (yr >= 1 && yr <= 4) {
-    const suffixes: Record<number, string> = { 1: "1st Year", 2: "2nd Year", 3: "3rd Year", 4: "4th Year" };
-    return suffixes[yr] || `${yr}th Year`;
-  }
-  return "Unknown";
+  if (map[b]) return map[b];
+  const yr = 2031 - b;
+  if (yr === 4) return "4th Year";
+  if (yr === 3) return "3rd Year";
+  if (yr === 2) return "2nd Year";
+  if (yr === 1) return "1st Year";
+  if (yr > 4) return "Graduated";
+  if (yr <= 0) return "1st Year";
+  return `${yr}th Year`;
 }
 
 function MentorStudentsPage() {
@@ -147,20 +168,27 @@ function MentorStudentsPage() {
     {
       key: "batch",
       header: "Batch",
-      cell: (r) => (
-        <span className="font-mono font-medium text-xs bg-muted px-2 py-0.5 rounded">
-          {r.batch || "—"}
-        </span>
-      ),
+      cell: (r) => {
+        const displayBatch = r.batch || inferBatchFromRoll(r.rollNumber);
+        return (
+          <span className="font-mono font-medium text-xs bg-muted px-2 py-0.5 rounded">
+            {displayBatch || "—"}
+          </span>
+        );
+      },
     },
     {
       key: "year",
       header: "Academic Year",
-      cell: (r) => (
-        <span className="font-medium text-xs text-foreground">
-          {r.year || computeYearFromBatch(r.batch)}
-        </span>
-      ),
+      cell: (r) => {
+        const effBatch = r.batch || inferBatchFromRoll(r.rollNumber);
+        const displayYear = effBatch ? computeYearFromBatch(effBatch) : (r.year || "—");
+        return (
+          <span className="font-medium text-xs text-foreground">
+            {displayYear}
+          </span>
+        );
+      },
     },
     {
       key: "branch",
@@ -293,9 +321,44 @@ function MentorStudentsPage() {
                   Showing students matching "{globalSearch}" across all academic years and sections.
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")}>
-                Close Search
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const exportCols = [
+                      { key: "rollNumber", header: "Roll Number" },
+                      { key: "name", header: "Student Name" },
+                      {
+                        key: "batch",
+                        header: "Batch",
+                        transform: (_: any, r: any) => r.batch || inferBatchFromRoll(r.rollNumber) || "",
+                      },
+                      {
+                        key: "year",
+                        header: "Academic Year",
+                        transform: (_: any, r: any) => {
+                          const effBatch = r.batch || inferBatchFromRoll(r.rollNumber);
+                          return effBatch ? computeYearFromBatch(effBatch) : (r.year || "");
+                        },
+                      },
+                      { key: "branch", header: "Branch", transform: (v: any) => v || "CSE" },
+                      { key: "section", header: "Section" },
+                      { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+                      { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+                      { key: "crlrName", header: "Assigned CR/LR", transform: (v: any) => v || "" },
+                    ];
+                    exportToCSV(searchResults || [], `Search_Students_${globalSearch.trim()}`, exportCols);
+                  }}
+                  disabled={!searchResults || searchResults.length === 0}
+                  className="gap-1.5"
+                >
+                  <Download className="size-4" /> Export
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")}>
+                  Close Search
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {searching ? (
@@ -453,6 +516,44 @@ function MentorStudentsPage() {
                     className="pl-9"
                   />
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const exportCols = [
+                      { key: "rollNumber", header: "Roll Number" },
+                      { key: "name", header: "Student Name" },
+                      {
+                        key: "batch",
+                        header: "Batch",
+                        transform: (_: any, r: any) => r.batch || inferBatchFromRoll(r.rollNumber) || "",
+                      },
+                      {
+                        key: "year",
+                        header: "Academic Year",
+                        transform: (_: any, r: any) => {
+                          const effBatch = r.batch || inferBatchFromRoll(r.rollNumber);
+                          return effBatch ? computeYearFromBatch(effBatch) : (r.year || "");
+                        },
+                      },
+                      { key: "branch", header: "Branch", transform: (v: any) => v || "CSE" },
+                      { key: "section", header: "Section" },
+                      { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+                      { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+                      { key: "crlrName", header: "Assigned CR/LR", transform: (v: any) => v || "" },
+                    ];
+                    exportToCSV(
+                      filteredSectionStudents,
+                      `Students_${selectedYear.replace(/\s+/g, "_")}_Section_${selectedSection}`,
+                      exportCols
+                    );
+                  }}
+                  disabled={filteredSectionStudents.length === 0}
+                  className="gap-1.5"
+                  title="Export section students to Excel/CSV"
+                >
+                  <Download className="size-4" /> Export
+                </Button>
                 <Button variant="outline" size="sm" onClick={reloadStudents}>
                   <RotateCcw className="size-4 mr-2" /> Refresh
                 </Button>

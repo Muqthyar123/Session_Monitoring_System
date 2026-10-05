@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Download, Plus, Search, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { FileUpload } from "@/components/common/FileUpload";
@@ -42,6 +43,7 @@ import {
   deleteCRLRUser,
   downloadCRLRTemplate,
   getCRLRUsers,
+  resetCRLRUsers,
   updateCRLRUser,
   uploadCRLRExcel,
 } from "@/services/userService";
@@ -90,6 +92,22 @@ function CRLRManagementPage() {
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [saving, setSaving] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<CRLRUser | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  const handleReset = async () => {
+    setResetting(true);
+    try {
+      const res = await resetCRLRUsers();
+      toast.success(res.message || "All CR/LR representatives reset successfully.");
+      setResetDialogOpen(false);
+      reload();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset CR/LR users.");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const availableSections = useMemo(() => {
     const fromData = (data ?? []).map((u) => u.section).filter(Boolean);
@@ -208,8 +226,37 @@ function CRLRManagementPage() {
         description="Maintain the representatives responsible for reporting faculty attendance."
         actions={
           <>
+            <Button
+              variant="outline"
+              className="text-destructive border-destructive/30 hover:bg-destructive/10"
+              onClick={() => setResetDialogOpen(true)}
+              disabled={(data ?? []).length === 0}
+            >
+              <RotateCcw className="size-4 mr-1.5" /> Reset CR/LR
+            </Button>
             <Button variant="outline" onClick={downloadCRLRTemplate}>
               <Download className="size-4" /> Download CR/LR Template
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const crlrExportColumns = [
+                  { key: "name", header: "Name" },
+                  { key: "rollNumber", header: "Roll Number", transform: (v: any) => v || "" },
+                  { key: "email", header: "Email" },
+                  { key: "phone", header: "Phone", transform: (v: any) => v || "" },
+                  { key: "role", header: "Role" },
+                  { key: "year", header: "Year", transform: (v: any) => v || "" },
+                  { key: "section", header: "Section", transform: (v: any) => v || "" },
+                ];
+                exportToCSV(rows, "CR_LR_Representatives", crlrExportColumns);
+              }}
+              disabled={rows.length === 0}
+              className="gap-1.5"
+              title="Export filtered CR/LR records to Excel/CSV"
+            >
+              <Download className="size-4" /> Export
             </Button>
             <Button onClick={openCreate}>
               <Plus className="size-4" /> Add Record
@@ -413,6 +460,27 @@ function CRLRManagementPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset all CR/LR representatives?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all CR and LR user accounts from the database. Administrator and Mentor accounts will NOT be affected. You can re-upload a new list anytime.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleReset}
+              disabled={resetting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {resetting ? "Resetting..." : "Reset All CR/LR"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

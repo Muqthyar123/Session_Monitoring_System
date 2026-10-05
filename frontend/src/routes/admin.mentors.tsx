@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, Plus, Search, Pencil, Trash2, RotateCcw, Phone } from "lucide-react";
 import { toast } from "sonner";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { FileUpload } from "@/components/common/FileUpload";
@@ -341,8 +342,30 @@ function AdminMentorsPage() {
                   className="pl-9"
                 />
               </div>
-              <Button onClick={openCreateDialog}>
-                <Plus className="size-4 mr-2" /> Add Mentor
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const mentorExportColumns = [
+                    { key: "mentorId", header: "Employee ID" },
+                    { key: "name", header: "Mentor Name" },
+                    { key: "email", header: "Email" },
+                    { key: "phone", header: "Mobile No", transform: (v: any) => v || "" },
+                    { key: "designation", header: "Designation", transform: (v: any) => v || "" },
+                    { key: "department", header: "Department", transform: (v: any) => v || "" },
+                    { key: "profile", header: "Profile", transform: (v: any) => v || "" },
+                  ];
+                  exportToCSV(rows, "Mentors_Directory", mentorExportColumns);
+                }}
+                disabled={rows.length === 0}
+                className="gap-1.5"
+                title="Export mentors to Excel/CSV"
+              >
+                <Download className="size-4" />
+                Export
+              </Button>
+              <Button onClick={openCreateDialog} size="sm" className="gap-1.5">
+                <Plus className="size-4" /> Add Mentor
               </Button>
             </div>
           </CardHeader>

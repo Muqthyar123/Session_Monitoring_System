@@ -14,8 +14,10 @@ import {
   RotateCcw,
   X,
   Layers,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
+import { exportToCSV } from "@/utils/exportUtils";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
@@ -230,9 +232,38 @@ function MentorAbsenteesPage() {
                   Showing today's absent students matching "{globalSearch}".
                 </p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")}>
-                Close Search
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const absCols = [
+                      { key: "date", header: "Date" },
+                      { key: "rollNumber", header: "Roll Number" },
+                      { key: "studentName", header: "Student Name" },
+                      { key: "year", header: "Academic Year" },
+                      { key: "section", header: "Section" },
+                      { key: "status", header: "Status" },
+                      { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+                      { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+                      {
+                        key: "reason",
+                        header: "Reason / Comment",
+                        transform: (_: any, r: any) => reasonInputs[r.id] ?? r.reason ?? "",
+                      },
+                      { key: "submittedBy", header: "Submitted By", transform: (v: any) => v || "" },
+                    ];
+                    exportToCSV(searchResults || [], `Absentees_Search_${globalSearch.trim()}`, absCols);
+                  }}
+                  disabled={!searchResults || searchResults.length === 0}
+                  className="gap-1.5"
+                >
+                  <Download className="size-4" /> Export
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")}>
+                  Close Search
+                </Button>
+              </div>
             </div>
 
             {searching ? (
@@ -488,6 +519,38 @@ function MentorAbsenteesPage() {
                     className="pl-9"
                   />
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const absCols = [
+                      { key: "date", header: "Date" },
+                      { key: "rollNumber", header: "Roll Number" },
+                      { key: "studentName", header: "Student Name" },
+                      { key: "year", header: "Academic Year" },
+                      { key: "section", header: "Section" },
+                      { key: "status", header: "Status" },
+                      { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+                      { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+                      {
+                        key: "reason",
+                        header: "Reason / Comment",
+                        transform: (_: any, r: any) => reasonInputs[r.id] ?? r.reason ?? "",
+                      },
+                      { key: "submittedBy", header: "Submitted By", transform: (v: any) => v || "" },
+                    ];
+                    exportToCSV(
+                      filteredSectionAbsentees,
+                      `Absentees_${selectedYear.replace(/\s+/g, "_")}_Section_${selectedSection}`,
+                      absCols
+                    );
+                  }}
+                  disabled={filteredSectionAbsentees.length === 0}
+                  className="gap-1.5"
+                  title="Export absentees to Excel/CSV"
+                >
+                  <Download className="size-4" /> Export
+                </Button>
                 <Button variant="outline" size="sm" onClick={reloadAbsentees}>
                   <RotateCcw className="size-4 mr-2" /> Refresh
                 </Button>

@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, UserX, Search, Send, GraduationCap, Calendar, Lock, AlertCircle } from "lucide-react";
+import { CheckCircle2, UserX, Search, Send, GraduationCap, Calendar, Lock, AlertCircle, Download } from "lucide-react";
 import { toast } from "sonner";
+import { exportToCSV } from "@/utils/exportUtils";
 import { CRLRLayout } from "@/layouts/CRLRLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
@@ -243,11 +244,43 @@ function CRLRStudentAttendancePage() {
                       : "Check the box next to a student to mark them as ABSENT today."}
                   </CardDescription>
                 </div>
-                {!isSubmittedToday && (
-                  <Button variant="outline" size="sm" onClick={markAllPresent}>
-                    Mark All Present
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const todayStr = new Date().toISOString().split("T")[0];
+                      const attCols = [
+                        { key: "rollNumber", header: "Roll Number" },
+                        { key: "name", header: "Student Name" },
+                        { key: "year", header: "Academic Year", transform: (_: any, r: any) => r.year || user?.year || "" },
+                        { key: "section", header: "Section", transform: (_: any, r: any) => r.section || user?.section || "" },
+                        {
+                          key: "status",
+                          header: "Today's Status",
+                          transform: (_: any, r: any) => absentRolls.has(r.rollNumber) ? "Absent" : "Present",
+                        },
+                        { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+                        { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+                      ];
+                      exportToCSV(
+                        filteredStudents,
+                        `Attendance_${user?.year ? user.year.replace(/\s+/g, "_") : "Year"}_Section_${user?.section || "Sec"}_${todayStr}`,
+                        attCols
+                      );
+                    }}
+                    disabled={filteredStudents.length === 0}
+                    className="gap-1.5"
+                    title="Export today's attendance sheet to Excel/CSV"
+                  >
+                    <Download className="size-4" /> Export Sheet
                   </Button>
-                )}
+                  {!isSubmittedToday && (
+                    <Button variant="outline" size="sm" onClick={markAllPresent}>
+                      Mark All Present
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="relative">

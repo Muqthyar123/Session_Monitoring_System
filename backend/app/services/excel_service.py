@@ -11,7 +11,7 @@ from pydantic import EmailStr, TypeAdapter
 from app.core.security import hash_password
 from app.db.mongodb import get_database
 from app.schemas.user import UserRole
-from app.services.student_service import compute_year_from_batch, find_crlr_for_student
+from app.services.student_service import compute_year_from_batch, find_crlr_for_student, infer_batch_from_roll
 
 email_adapter = TypeAdapter(EmailStr)
 
@@ -1021,23 +1021,47 @@ async def parse_and_import_mentor_excel(
         raise ValueError("File is empty or could not be read.")
 
     header_idx = -1
-    col_map = {}
+    col_map: Dict[str, int] = {}
 
-    ID_ALIASES = {"id", "employeeid", "empid", "mentorid", "facid", "facultyid", "empcode", "code", "username", "empno", "idno", "idemployeeid"}
-    NAME_ALIASES = {"name", "fullname", "facultyname", "mentorname", "faculty", "mentor", "teacher"}
-    EMAIL_ALIASES = {"email", "mailid", "mail", "emailid", "emailaddress", "mailidemail"}
-    DESIG_ALIASES = {"designation", "design", "desig", "designdesignation"}
-    DEPT_ALIASES = {"department", "dept", "branch", "stream", "branchdepartment"}
-    PHONE_ALIASES = {"mobileno", "mobile", "phone", "contact", "cell"}
-    PROFILE_ALIASES = {"profile", "role", "roles"}
+    ID_ALIASES = {
+        "id", "employeeid", "empid", "mentorid", "facid", "facultyid",
+        "empcode", "code", "username", "empno", "idno", "idemployeeid",
+        "userid", "empidno", "facultycode",
+    }
+    NAME_ALIASES = {
+        "name", "fullname", "facultyname", "mentorname", "faculty",
+        "mentor", "teacher", "employeename", "staffname",
+    }
+    EMAIL_ALIASES = {
+        "email", "mailid", "mail", "emailid", "emailaddress",
+        "mailidemail", "officialemail", "personalemail", "emailidmailid",
+    }
+    DESIG_ALIASES = {
+        "designation", "design", "desig", "designdesignation",
+        "post", "role", "roles", "position",
+    }
+    DEPT_ALIASES = {
+        "department", "dept", "branch", "stream", "branchdepartment",
+        "discipline", "deptbranch",
+    }
+    PHONE_ALIASES = {
+        "mobileno", "mobile", "phone", "contact", "cell",
+        "mobilenumber", "phonenumber", "contactnumber", "cellno",
+        "contactno", "mobilephone",
+    }
+    PROFILE_ALIASES = {
+        "profile", "profilerole", "userprofile", "userroles",
+        "rolesassigned", "profileassigned",
+    }
 
+    # Extended Header Range: Search top 30 rows
     for idx, row in enumerate(raw_rows[:30]):
-        row_cleaned = [re.sub(r'[^a-z0-9]', '', str(cell).lower()) for cell in row]
+        row_cleaned = [re.sub(r'[^a-z0-9]', '', str(cell or "").lower()) for cell in row]
 
         has_id_header = any(
             c in ID_ALIASES
-            or "empid" in c
             or "employeeid" in c
+            or "empid" in c
             or "mentorid" in c
             or "facultyid" in c
             or "idemployee" in c
@@ -1046,54 +1070,68 @@ async def parse_and_import_mentor_excel(
         )
         has_name_header = any(
             c in NAME_ALIASES
-            or (("name" in c or "faculty" in c or "mentor" in c) and "father" not in c and "file" not in c)
+            or (("name" in c or "faculty" in c or "mentor" in c) and "father" not in c and "file" not in c and "user" not in c)
             for c in row_cleaned
         )
 
         if has_name_header or has_id_header:
-            temp_map = {}
+            temp_map: Dict[str, int] = {}
             for c_idx, c_norm in enumerate(row_cleaned):
-                if not c_norm or c_norm in ["sno", "slno"]:
+                if not c_norm or c_norm in ["sno", "slno", "serialno", "serialnumber"]:
                     continue
 
-                if (
-                    c_norm in ID_ALIASES
-                    or "employeeid" in c_norm
-                    or "mentorid" in c_norm
-                    or "empid" in c_norm
-                    or "idemployee" in c_norm
-                    or c_norm == "id"
-                ):
-                    if "mentor_id" not in temp_map or "employee" in c_norm or "mentor" in c_norm or c_norm == "employeeid":
-                        temp_map["mentor_id"] = c_idx
-                elif c_norm in NAME_ALIASES or (("name" in c_norm or "faculty" in c_norm or "mentor" in c_norm) and "father" not in c_norm and "file" not in c_norm and "id" not in c_norm):
-                    if "name" not in temp_map:
-                        temp_map["name"] = c_idx
-                elif c_norm in EMAIL_ALIASES or "mail" in c_norm or "email" in c_norm:
-                    if "email" not in temp_map:
-                        temp_map["email"] = c_idx
-                elif c_norm in DESIG_ALIASES or "design" in c_norm or "desig" in c_norm:
-                    if "designation" not in temp_map:
-                        temp_map["designation"] = c_idx
-                elif c_norm in DEPT_ALIASES or "branch" in c_norm or "dept" in c_norm or "stream" in c_norm:
-                    if "department" not in temp_map:
-                        temp_map["department"] = c_idx
-                elif c_norm in PHONE_ALIASES or "mobile" in c_norm or "phone" in c_norm or "contact" in c_norm:
-                    if "phone" not in temp_map:
-                        temp_map["phone"] = c_idx
-                elif c_norm in PROFILE_ALIASES or "profile" in c_norm:
+                # 1. Profile
+                if c_norm in PROFILE_ALIASES or "profile" in c_norm:
                     if "profile" not in temp_map:
                         temp_map["profile"] = c_idx
+
+                # 2. Mobile / Phone
+                elif c_norm in PHONE_ALIASES or any(k in c_norm for k in ["mobile", "phone", "contact", "cell"]):
+                    if "phone" not in temp_map:
+                        temp_map["phone"] = c_idx
+
+                # 3. Email / Mail ID
+                elif c_norm in EMAIL_ALIASES or any(k in c_norm for k in ["email", "mail"]):
+                    if "email" not in temp_map:
+                        temp_map["email"] = c_idx
+
+                # 4. Designation
+                elif c_norm in DESIG_ALIASES or any(k in c_norm for k in ["designation", "design", "desig", "post"]):
+                    if "designation" not in temp_map:
+                        temp_map["designation"] = c_idx
+
+                # 5. Department / Branch
+                elif c_norm in DEPT_ALIASES or any(k in c_norm for k in ["department", "dept", "branch", "stream", "discipline"]):
+                    if "department" not in temp_map:
+                        temp_map["department"] = c_idx
+
+                # 6. Mentor / Employee ID / User Name
+                elif (
+                    c_norm in ID_ALIASES
+                    or any(k in c_norm for k in ["employeeid", "mentorid", "facid", "facultyid", "empid", "empcode", "username", "idemployee"])
+                    or c_norm == "id"
+                ):
+                    if "mentor_id" not in temp_map or "employee" in c_norm or "mentor" in c_norm or "empid" in c_norm:
+                        temp_map["mentor_id"] = c_idx
+
+                # 7. Name
+                elif (
+                    c_norm in NAME_ALIASES
+                    or (any(k in c_norm for k in ["name", "faculty", "mentor", "teacher"])
+                        and "user" not in c_norm and "file" not in c_norm and "father" not in c_norm and "id" not in c_norm)
+                ):
+                    if "name" not in temp_map:
+                        temp_map["name"] = c_idx
 
             if len(temp_map) >= 2 and ("name" in temp_map or "mentor_id" in temp_map):
                 header_idx = idx
                 col_map = temp_map
                 break
 
-    # Smart positional fallback if headers were slightly off or non-standard
+    # Positional fallback if headers could not be matched
     if (header_idx == -1 or "name" not in col_map or "mentor_id" not in col_map) and len(raw_rows) >= 1:
         for f_idx in range(min(10, len(raw_rows))):
-            row_str = [str(c).strip() for c in raw_rows[f_idx]]
+            row_str = [str(c or "").strip() for c in raw_rows[f_idx]]
             row_clean = [re.sub(r'[^a-z0-9]', '', c.lower()) for c in row_str]
             for c_i, c_val in enumerate(row_clean):
                 if ("id" in c_val or "emp" in c_val or "code" in c_val) and "mentor_id" not in col_map:
@@ -1117,7 +1155,7 @@ async def parse_and_import_mentor_excel(
     existing_by_id = {str(u.get("mentor_id") or u.get("roll_number") or "").upper(): str(u["_id"]) for u in existing_users if u.get("mentor_id") or u.get("roll_number")}
     existing_by_email = {str(u["email"]).lower(): str(u["_id"]) for u in existing_users if u.get("email")}
 
-    seen_ids_in_file = set()
+    seen_ids_in_file: set = set()
     total_rows = 0
     created_count = 0
     updated_count = 0
@@ -1128,12 +1166,13 @@ async def parse_and_import_mentor_excel(
         if val is None:
             return ""
         s = str(val).strip()
-        if s.endswith(".0"):
+        if s.endswith(".0") and re.match(r"^\d+\.0$", s):
             s = s[:-2]
-        s = re.sub(r'^[âÂ\xa0\s]+', '', s).strip()
+        # Strip special/corrupt unicode characters like â, Â, \xa0, \u200b, \ufeff
+        s = re.sub(r"[Ââ\xa0\u200b\ufeff\r\n\t]+", " ", s)
+        # Collapse multiple whitespace
+        s = re.sub(r"\s+", " ", s).strip()
         return s
-
-    default_pwd_hash = hash_password("mentor1234")
 
     for row_idx, row_values in enumerate(raw_rows[header_idx + 1:], start=header_idx + 2):
         if not any(row_values):
@@ -1145,21 +1184,30 @@ async def parse_and_import_mentor_excel(
                 return clean_val(row_values[c_i])
             return ""
 
-        mentor_id = get_field("mentor_id").upper()
-        name = get_field("name")
-        email = get_field("email").lower()
+        raw_mentor_id = get_field("mentor_id")
+        raw_name = get_field("name")
+        raw_email = get_field("email")
         designation = get_field("designation")
         department = get_field("department")
-        phone = get_field("phone")
+        raw_phone = get_field("phone")
         profile = get_field("profile")
         password = get_field("password")
 
-        name_upper = name.upper().strip()
-        mentor_id_upper = mentor_id.upper().strip()
+        # Sanitize specific fields
+        mentor_id = re.sub(r'[^a-zA-Z0-9_\-/]', '', raw_mentor_id).upper().strip()
+        name = raw_name.strip()
+        email = re.sub(r'[^a-zA-Z0-9_.+@-]', '', raw_email).lower().strip()
+        phone = re.sub(r'[^0-9+]', '', raw_phone).strip()
 
-        if (not mentor_id or mentor_id_upper in ["ID", "EMPLOYEE ID", "USER NAME", "MENTOR ID", "ID/EMPLOYEE ID"]) and (not name or name_upper in ["NAME", "FULL NAME", "FACULTY NAME", "MENTOR NAME", "TEACHING", "NON-TEACHING", "S.NO", "SL.NO"] or name_upper.startswith("S.N")):
+        name_upper = name.upper()
+        mentor_id_upper = mentor_id.upper()
+
+        # Skip repeated header rows or section banner rows
+        if (
+            (not mentor_id or mentor_id_upper in ["ID", "EMPLOYEEID", "USERNAME", "MENTORID", "IDEMPLOYEEID"])
+            and (not name or name_upper in ["NAME", "FULL NAME", "FACULTY NAME", "MENTOR NAME", "TEACHING", "NON-TEACHING", "S.NO", "SL.NO"] or name_upper.startswith("S.N"))
+        ):
             continue
-
 
         total_rows += 1
         row_errors = []
@@ -1168,17 +1216,6 @@ async def parse_and_import_mentor_excel(
             row_errors.append("Mentor Name is required.")
         if not mentor_id and not email:
             row_errors.append("Mentor ID or Email is required.")
-
-        if mentor_id and mentor_id in seen_ids_in_file:
-            target_id = existing_by_id.get(mentor_id) or existing_by_email.get(email)
-            if target_id:
-                query = {"_id": ObjectId(target_id)} if ObjectId.is_valid(target_id) else {"_id": target_id}
-                await db.users.update_one(query, {"$set": update_fields})
-                updated_count += 1
-            continue
-        elif mentor_id:
-            seen_ids_in_file.add(mentor_id)
-
 
         if row_errors:
             failed_count += 1
@@ -1189,12 +1226,16 @@ async def parse_and_import_mentor_excel(
             mentor_id = email.split("@")[0].upper()
 
         if not email:
-            email = f"{mentor_id.lower()}@nrtec.in"
+            clean_id_email = re.sub(r'[^a-zA-Z0-9]', '', mentor_id.lower())
+            email = f"{clean_id_email}@nrtec.in"
 
         now = datetime.now(timezone.utc)
         target_id = existing_by_id.get(mentor_id) or existing_by_email.get(email)
 
-        update_fields = {
+        # Default password is the mentor's ID number
+        pwd_to_use = password.strip() if password and password.strip() else mentor_id
+
+        update_fields: Dict[str, Any] = {
             "name": name,
             "email": email,
             "mentor_id": mentor_id,
@@ -1210,14 +1251,22 @@ async def parse_and_import_mentor_excel(
         if profile:
             update_fields["profile"] = profile
         if password:
-            update_fields["password_hash"] = hash_password(password)
+            update_fields["password_hash"] = hash_password(pwd_to_use)
+
+        if mentor_id and mentor_id in seen_ids_in_file:
+            if target_id:
+                query = {"_id": ObjectId(target_id)} if ObjectId.is_valid(target_id) else {"_id": target_id}
+                await db.users.update_one(query, {"$set": update_fields})
+                updated_count += 1
+            continue
+        elif mentor_id:
+            seen_ids_in_file.add(mentor_id)
 
         if target_id:
             query = {"_id": ObjectId(target_id)} if ObjectId.is_valid(target_id) else {"_id": target_id}
             await db.users.update_one(query, {"$set": update_fields})
             updated_count += 1
         else:
-            pwd_to_use = password.strip() if password and password.strip() else mentor_id
             new_doc = {
                 "name": name,
                 "email": email,
@@ -1430,14 +1479,20 @@ async def parse_and_import_student_excel(
 
         # Calculate year and batch
         if batch_raw:
-            batch = int(batch_raw) if batch_raw.isdigit() else batch_raw
+            batch = int(batch_raw) if str(batch_raw).strip().isdigit() else batch_raw
             year = compute_year_from_batch(batch)
         elif year_raw:
             year = year_raw
-            batch = inferred_batch
+            inferred_from_roll = infer_batch_from_roll(roll)
+            batch = inferred_from_roll if inferred_from_roll else inferred_batch
         else:
-            batch = inferred_batch
-            year = inferred_year
+            inferred_from_roll = infer_batch_from_roll(roll)
+            if inferred_from_roll:
+                batch = inferred_from_roll
+                year = compute_year_from_batch(batch)
+            else:
+                batch = inferred_batch
+                year = compute_year_from_batch(batch)
 
         total_rows += 1
         row_errors = []

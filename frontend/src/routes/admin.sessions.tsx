@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Download } from "lucide-react";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable, type Column } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -88,6 +91,35 @@ function SessionsPage() {
       <PageHeader
         title="Sessions / Monitoring"
         description="Actual class occurrences that require a CR/LR response. Continuous periods are shown as one combined session."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const sessCols = [
+                { key: "section", header: "Section" },
+                { key: "subject", header: "Subject" },
+                { key: "faculty", header: "Assigned Faculty", transform: (v: any) => v || "—" },
+                { key: "period", header: "Period" },
+                { key: "startTime", header: "Start Time" },
+                { key: "endTime", header: "End Time" },
+                { key: "crlrName", header: "CR/LR Name", transform: (v: any, r: ClassSession) => `${r.crlrName} (${r.crlrRole})` },
+                { key: "sessionStatus", header: "Session Status" },
+                {
+                  key: "facultyAttendanceStatus",
+                  header: "Faculty Attendance",
+                  transform: (v: any) => v || "Pending",
+                },
+              ];
+              exportToCSV(rows, "Sessions_Monitoring_Log", sessCols);
+            }}
+            disabled={rows.length === 0}
+            className="gap-1.5"
+            title="Export session monitoring logs to Excel/CSV"
+          >
+            <Download className="size-4" /> Export Sessions
+          </Button>
+        }
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:w-2/3">

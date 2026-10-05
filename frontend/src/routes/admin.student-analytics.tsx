@@ -12,7 +12,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   UserX,
+  Download,
 } from "lucide-react";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
@@ -182,14 +184,43 @@ function AdminStudentAnalyticsPage() {
               </Badge>
             </div>
 
-            <div className="relative max-w-xs flex-1">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search student or roll number..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex items-center gap-3 flex-1 justify-end">
+              <div className="relative max-w-xs w-full">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search student or roll number..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const cols = [
+                    { key: "rollNumber", header: "Roll Number" },
+                    { key: "studentName", header: "Student Name" },
+                    { key: "year", header: "Academic Year" },
+                    { key: "section", header: "Section" },
+                    { key: "attendancePercentage", header: "Attendance %" },
+                    { key: "totalAbsences", header: "Total Absences" },
+                    { key: "totalDays", header: "Total Days Tracked" },
+                    { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+                    { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+                  ];
+                  exportToCSV(
+                    filteredSummary,
+                    `Student_Analytics_${selectedYear.replace(/\s+/g, "_")}_Section_${selectedSection}`,
+                    cols
+                  );
+                }}
+                disabled={filteredSummary.length === 0}
+                className="gap-1.5"
+                title="Export student analytics to Excel/CSV"
+              >
+                <Download className="size-4" /> Export Analytics
+              </Button>
             </div>
           </div>
 
@@ -301,9 +332,34 @@ function AdminStudentAnalyticsPage() {
 
               {/* History list */}
               <div className="space-y-2">
-                <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-                  Absence Log (Sorted Newest First):
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+                    Absence Log (Sorted Newest First):
+                  </h4>
+                  {historyList && historyList.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const cols = [
+                          { key: "date", header: "Date" },
+                          { key: "rollNumber", header: "Roll Number" },
+                          { key: "studentName", header: "Student Name" },
+                          { key: "year", header: "Academic Year" },
+                          { key: "section", header: "Section" },
+                          { key: "status", header: "Status" },
+                          { key: "reason", header: "Reason / Remark", transform: (v: any) => v || "" },
+                          { key: "submittedBy", header: "Submitted By", transform: (v: any) => v || "" },
+                        ];
+                        exportToCSV(historyList, `Student_Absence_Log_${activeStudent?.rollNumber}`, cols);
+                      }}
+                      className="h-7 text-xs gap-1"
+                      title="Export student absence log to CSV"
+                    >
+                      <Download className="size-3.5" /> Export Log
+                    </Button>
+                  )}
+                </div>
 
                 {loadingHistory ? (
                   <LoadingState label="Loading complete history..." />

@@ -65,11 +65,16 @@ async def get_all_timetables() -> List[TimetablePeriodResponse]:
 
 async def delete_timetable_by_section(section: str) -> int:
     db = get_database()
-    result = await db.timetables.delete_many({"section": section.strip().upper()})
+    sec_clean = section.strip().upper()
+    result = await db.timetables.delete_many({"section": sec_clean})
+    await db.sessions.delete_many({"section": sec_clean})
+    await db.attendance_records.delete_many({"section": sec_clean})
     return result.deleted_count
 
 
 async def delete_all_timetables() -> int:
     db = get_database()
     result = await db.timetables.delete_many({})
+    await db.sessions.delete_many({})
+    await db.attendance_records.delete_many({})
     return result.deleted_count

@@ -16,7 +16,9 @@ import {
   UserCheck,
   Building2,
   FileSpreadsheet,
+  Download,
 } from "lucide-react";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
@@ -374,9 +376,38 @@ function AdminStudentHistoryPage() {
                 Section {selectedSection}
               </Badge>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {filteredSummary.length} student(s) in this section
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                {filteredSummary.length} student(s) in this section
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const cols = [
+                    { key: "rollNumber", header: "Roll Number" },
+                    { key: "studentName", header: "Student Name" },
+                    { key: "year", header: "Academic Year" },
+                    { key: "section", header: "Section" },
+                    { key: "attendancePercentage", header: "Attendance %" },
+                    { key: "totalAbsences", header: "Total Absences" },
+                    { key: "totalDays", header: "Total Days Tracked" },
+                    { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+                    { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+                  ];
+                  exportToCSV(
+                    filteredSummary,
+                    `Attendance_Roster_${selectedYear.replace(/\s+/g, "_")}_Section_${selectedSection}`,
+                    cols
+                  );
+                }}
+                disabled={filteredSummary.length === 0}
+                className="gap-1.5"
+                title="Export section attendance summary to Excel/CSV"
+              >
+                <Download className="size-4" /> Export Roster
+              </Button>
+            </div>
           </div>
 
           {loadingSummary ? (
@@ -502,11 +533,36 @@ function AdminStudentHistoryPage() {
                   <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
                     <Clock className="size-3.5" /> Absence Records (Sorted Newest First):
                   </h4>
-                  {historyList && (
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {historyList.length} absence(s)
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {historyList && (
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {historyList.length} absence(s)
+                      </span>
+                    )}
+                    {historyList && historyList.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const cols = [
+                            { key: "date", header: "Date" },
+                            { key: "rollNumber", header: "Roll Number" },
+                            { key: "studentName", header: "Student Name" },
+                            { key: "year", header: "Academic Year" },
+                            { key: "section", header: "Section" },
+                            { key: "status", header: "Status" },
+                            { key: "reason", header: "Absence Reason / Remark", transform: (v: any) => v || "" },
+                            { key: "submittedBy", header: "Submitted By", transform: (v: any) => v || "" },
+                          ];
+                          exportToCSV(historyList, `Absence_History_${activeStudent.rollNumber}`, cols);
+                        }}
+                        className="h-7 text-xs gap-1"
+                        title="Export absence logs to CSV"
+                      >
+                        <Download className="size-3.5" /> Export
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {loadingHistory ? (

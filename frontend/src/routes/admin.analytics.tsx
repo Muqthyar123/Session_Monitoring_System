@@ -17,7 +17,9 @@ import {
   ArrowLeft,
   Calendar,
   ChevronRight,
+  Download,
 } from "lucide-react";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
@@ -535,20 +537,48 @@ function AdminAnalyticsPage() {
                 </p>
               </div>
 
-              {(selectedSection || selectedYear || searchQuery) ? (
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    setSelectedYear(null);
-                    setSelectedSection(null);
-                    setSearchQuery("");
+                    const facCols = [
+                      { key: "facultyName", header: "Faculty Member" },
+                      { key: "subjects", header: "Subjects", transform: (v: any) => Array.isArray(v) ? v.join(", ") : (v || "") },
+                      { key: "year", header: "Academic Year", transform: (v: any) => v || "" },
+                      { key: "section", header: "Section", transform: (v: any) => v || "" },
+                      { key: "totalClasses", header: "Total Classes", transform: (_: any, r: any) => r.totalClasses || r.totalHours || 0 },
+                      { key: "attendedClasses", header: "Present Classes", transform: (_: any, r: any) => r.attendedClasses || r.attendedHours || 0 },
+                      { key: "absentClasses", header: "Absent Classes", transform: (_: any, r: any) => r.absentClasses || r.absentHours || 0 },
+                      { key: "lateClasses", header: "Late Classes", transform: (_: any, r: any) => r.lateClasses || r.lateHours || 0 },
+                      { key: "substitutedClasses", header: "Substitute Classes", transform: (_: any, r: any) => r.substitutedClasses || r.substitutedHours || 0 },
+                      { key: "attendancePercentage", header: "Attendance %", transform: (v: any) => `${v || 0}%` },
+                    ];
+                    const label = searchQuery ? `_Search_${searchQuery}` : selectedSection ? `_Section_${selectedSection}` : selectedYear ? `_${selectedYear.replace(/\s+/g, "_")}` : "";
+                    exportToCSV(filteredFaculty, `Faculty_Analytics${label}`, facCols);
                   }}
-                  className="text-xs"
+                  disabled={filteredFaculty.length === 0}
+                  className="text-xs gap-1.5"
+                  title="Export faculty analytics to Excel/CSV"
                 >
-                  Reset Selection Filter
+                  <Download className="size-3.5" /> Export Analytics
                 </Button>
-              ) : null}
+
+                {(selectedSection || selectedYear || searchQuery) ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedYear(null);
+                      setSelectedSection(null);
+                      setSearchQuery("");
+                    }}
+                    className="text-xs"
+                  >
+                    Reset Selection Filter
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
             {filteredFaculty.length === 0 ? (

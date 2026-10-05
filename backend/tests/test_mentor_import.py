@@ -61,15 +61,31 @@ async def test_mentor_import_sample3():
 
 
 @pytest.mark.asyncio
-async def test_mentor_import_binary_xls():
-    import os
-    file_path = r"C:\Users\Shaik Meera Muqthyar\.gemini\antigravity\brain\2e72ca59-040a-4bdf-b2f2-8301c1fb5322\.user_uploaded\media_1790617556901.xls"
-    if os.path.exists(file_path):
-        with open(file_path, "rb") as f:
-            file_bytes = f.read()
-        res = await parse_and_import_mentor_excel(file_bytes, "media_1790617556901.xls", "admin123")
-        assert res["created"] + res["updated"] >= 50
-        assert res["failed"] == 0
+async def test_mentor_import_special_chars_and_unicode():
+    csv_data = """NON-TEACHING ROSTER 2026-2027,,,,,,
+DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING,,,,,,
+,,,,,,
+S.NO,NAME,ID/EMPLOYEE ID,MAIL ID/ EMAIL,DESIGN/DESIGNATION,BRANCH/DEPARTMENT,MOBILE NO
+52.0,YESAIAHÂ BATHULA,2505103,â yesaiahb@nrtec.in,ASSISTANT PROFESSOR,CSE,Â 8790424793
+53.0,NAGOOR BABUÂ Â SHAIK,2505104,â nagoorbabusk@nrtec.in,ASSISTANT PROFESSOR,CSE,8790424794
+"""
+    res = await parse_and_import_mentor_excel(csv_data.encode("utf-8"), "unicode_mentors.csv", "admin123")
+    assert res["created"] + res["updated"] == 2
+    assert res["failed"] == 0
+
+    db = get_database()
+    u1 = await db.users.find_one({"mentor_id": "2505103"})
+    assert u1 is not None
+    assert u1["name"] == "YESAIAH BATHULA"
+    assert u1["email"] == "yesaiahb@nrtec.in"
+    assert u1["phone"] == "8790424793"
+
+    u2 = await db.users.find_one({"mentor_id": "2505104"})
+    assert u2 is not None
+    assert u2["name"] == "NAGOOR BABU SHAIK"
+    assert u2["email"] == "nagoorbabusk@nrtec.in"
+    assert u2["phone"] == "8790424794"
+
 
 
 

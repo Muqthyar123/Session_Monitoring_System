@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Plus, Search, Pencil, Trash2, RotateCcw, Phone } from "lucide-react";
+import { Download, Plus, Search, Pencil, Trash2, RotateCcw, Phone, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
+import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { FileUpload } from "@/components/common/FileUpload";
@@ -70,23 +71,43 @@ const BATCH_OPTIONS = [
   { batch: 2028, label: "2028 (3rd Year)" },
   { batch: 2029, label: "2029 (2nd Year)" },
   { batch: 2030, label: "2030 (1st Year)" },
+  { batch: 2031, label: "2031 (1st Year)" },
 ];
 
-export function computeYearFromBatch(batch?: number): string {
+export function inferBatchFromRoll(roll?: string): number | undefined {
+  if (!roll) return undefined;
+  const clean = roll.trim().toUpperCase();
+  const m = clean.match(/^(\d{2})/);
+  if (m) {
+    const yy = parseInt(m[1], 10);
+    if (yy >= 18 && yy <= 40) {
+      const adm = 2000 + yy;
+      const isLE = /^\d{2}[A-Z0-9]{2}[5L]/.test(clean);
+      return isLE ? adm + 3 : adm + 4;
+    }
+  }
+  return undefined;
+}
+
+export function computeYearFromBatch(batch?: number | string): string {
   if (!batch) return "—";
+  const b = typeof batch === "string" ? parseInt(batch, 10) : batch;
+  if (isNaN(b)) return "—";
   const map: Record<number, string> = {
     2027: "4th Year",
     2028: "3rd Year",
     2029: "2nd Year",
     2030: "1st Year",
   };
-  if (map[batch]) return map[batch];
-  const yr = 2031 - batch;
-  if (yr >= 1 && yr <= 4) {
-    const suffixes: Record<number, string> = { 1: "1st Year", 2: "2nd Year", 3: "3rd Year", 4: "4th Year" };
-    return suffixes[yr] || `${yr}th Year`;
-  }
-  return "Unknown";
+  if (map[b]) return map[b];
+  const yr = 2031 - b;
+  if (yr === 4) return "4th Year";
+  if (yr === 3) return "3rd Year";
+  if (yr === 2) return "2nd Year";
+  if (yr === 1) return "1st Year";
+  if (yr > 4) return "Graduated";
+  if (yr <= 0) return "1st Year";
+  return `${yr}th Year`;
 }
 
 interface StudentFormState {
@@ -119,11 +140,48 @@ function AdminStudentsPage() {
     [yearFilter, sectionFilter]
   );
 
+  const studentExportColumns = [
+    { key: "rollNumber", header: "Roll Number" },
+    { key: "name", header: "Student Name" },
+    {
+      key: "batch",
+      header: "Batch",
+      transform: (_: any, r: StudentItem) => r.batch || inferBatchFromRoll(r.rollNumber) || "",
+    },
+    {
+      key: "year",
+      header: "Academic Year",
+      transform: (_: any, r: StudentItem) => {
+        const effBatch = r.batch || inferBatchFromRoll(r.rollNumber);
+        return effBatch ? computeYearFromBatch(effBatch) : (r.year || "");
+      },
+    },
+    { key: "branch", header: "Branch", transform: (v: any) => v || "CSE" },
+    { key: "section", header: "Section" },
+    { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
+    { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
+    { key: "crlrName", header: "Assigned CR/LR", transform: (v: any) => v || "" },
+  ];
+
   const filteredStudents = useMemo(() => {
     if (!data) return [];
+    let list = data;
+    if (yearFilter && yearFilter !== ALL) {
+      list = list.filter((s) => {
+        const effBatch = s.batch || inferBatchFromRoll(s.rollNumber);
+        const effYear = effBatch ? computeYearFromBatch(effBatch) : (s.year || "");
+        return (
+          effYear.toLowerCase() === yearFilter.toLowerCase() ||
+          (s.year && s.year.toLowerCase() === yearFilter.toLowerCase())
+        );
+      });
+    }
+    if (sectionFilter && sectionFilter !== ALL) {
+      list = list.filter((s) => s.section === sectionFilter || s.section.toUpperCase().includes(sectionFilter.toUpperCase()));
+    }
     const term = search.trim().toLowerCase();
-    if (!term) return data;
-    return data.filter(
+    if (!term) return list;
+    return list.filter(
       (s) =>
         s.name.toLowerCase().includes(term) ||
         s.rollNumber.toLowerCase().includes(term) ||
@@ -133,7 +191,7 @@ function AdminStudentsPage() {
         (s.studentPhone && s.studentPhone.toLowerCase().includes(term)) ||
         (s.parentPhone && s.parentPhone.toLowerCase().includes(term))
     );
-  }, [data, search]);
+  }, [data, yearFilter, sectionFilter, search]);
 
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -262,20 +320,27 @@ function AdminStudentsPage() {
     {
       key: "batch",
       header: "Batch",
-      cell: (r) => (
-        <span className="font-mono font-medium text-xs bg-muted px-2 py-0.5 rounded">
-          {r.batch || "—"}
-        </span>
-      ),
+      cell: (r) => {
+        const displayBatch = r.batch || inferBatchFromRoll(r.rollNumber);
+        return (
+          <span className="font-mono font-medium text-xs bg-muted px-2 py-0.5 rounded">
+            {displayBatch || "—"}
+          </span>
+        );
+      },
     },
     {
       key: "year",
       header: "Academic Year",
-      cell: (r) => (
-        <span className="font-medium text-xs text-foreground">
-          {r.year || computeYearFromBatch(r.batch)}
-        </span>
-      ),
+      cell: (r) => {
+        const effBatch = r.batch || inferBatchFromRoll(r.rollNumber);
+        const displayYear = effBatch ? computeYearFromBatch(effBatch) : (r.year || "—");
+        return (
+          <span className="font-medium text-xs text-foreground">
+            {displayYear}
+          </span>
+        );
+      },
     },
     {
       key: "branch",
@@ -446,8 +511,24 @@ function AdminStudentsPage() {
                 </Select>
               </div>
 
-              <Button onClick={openCreateDialog}>
-                <Plus className="size-4 mr-2" /> Add Student
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const yLabel = yearFilter !== ALL ? `_${yearFilter.replace(/\s+/g, "_")}` : "";
+                  const sLabel = sectionFilter !== ALL ? `_${sectionFilter}` : "";
+                  exportToCSV(filteredStudents, `Students_Roster${yLabel}${sLabel}`, studentExportColumns);
+                }}
+                disabled={filteredStudents.length === 0}
+                className="gap-1.5"
+                title="Export filtered students to Excel/CSV"
+              >
+                <Download className="size-4" />
+                Export
+              </Button>
+
+              <Button onClick={openCreateDialog} size="sm" className="gap-1.5">
+                <Plus className="size-4" /> Add Student
               </Button>
             </div>
           </CardHeader>
@@ -553,9 +634,17 @@ function AdminStudentsPage() {
               <Label htmlFor="rollNumber">Roll Number *</Label>
               <Input
                 id="rollNumber"
-                placeholder="e.g. 21001A0501"
+                placeholder="e.g. 23471A0501"
                 value={form.rollNumber}
-                onChange={(e) => setForm({ ...form, rollNumber: e.target.value })}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const inferred = inferBatchFromRoll(val);
+                  setForm({
+                    ...form,
+                    rollNumber: val,
+                    ...(inferred && !editing ? { batch: inferred } : {}),
+                  });
+                }}
               />
               {formErrors.rollNumber && (
                 <p className="text-xs font-medium text-destructive">{formErrors.rollNumber}</p>
