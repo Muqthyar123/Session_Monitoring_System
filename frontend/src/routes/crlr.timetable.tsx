@@ -141,7 +141,7 @@ function CRLRTimetablePage() {
                     <span className="font-bold text-sm">{period.subject}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pt-0.5">
-                    <span>Faculty: <strong className="text-foreground">{period.faculty || "TBD"}</strong></span>
+                    <span>Faculty: <strong className="text-foreground">{period.faculty ? (period.faculty.includes(":") ? period.faculty.split(":").pop()?.replace(/^\d+[\).:\s]+/, "").trim() || period.faculty : period.faculty) : "TBD"}</strong></span>
                     <span>Room: <strong className="text-foreground">{period.room || "TBD"}</strong></span>
                   </div>
                 </div>

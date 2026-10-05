@@ -173,12 +173,33 @@ async def get_absentee_years() -> List[str]:
 
 
 async def get_absentee_sections(year: str) -> List[str]:
-    """Get sections belonging to a year dynamically."""
+    """Get sections belonging to a year dynamically from uploaded timetables, students, and attendance records."""
     db = get_database()
-    att_secs = await db.student_attendance.distinct("section", {"year": year})
-    stu_secs = await db.students.distinct("section", {"year": year})
+    year_clean = year.strip()
     
-    all_secs = sorted(list(set([s.upper() for s in (att_secs + stu_secs) if s])))
+    # Import student service helpers
+    from app.services.student_service import build_year_filter_clause
+
+    # 1. Sections from uploaded timetables for this year
+    tt_secs = await db.timetables.distinct("section", {"year": year_clean})
+    
+    # Also check roman numeral prefix in timetables (e.g. II-A for 2nd Year, III-A for 3rd Year)
+    roman_map = {"1st Year": "I", "2nd Year": "II", "3rd Year": "III", "4th Year": "IV"}
+    r_prefix = roman_map.get(year_clean)
+    if r_prefix:
+        all_tt_secs = await db.timetables.distinct("section")
+        for s in all_tt_secs:
+            if s and (s.startswith(f"{r_prefix}-") or f"-{r_prefix}-" in s):
+                tt_secs.append(s)
+
+    # 2. Sections from uploaded students for this year
+    year_clause = build_year_filter_clause(year_clean)
+    stu_secs = await db.students.distinct("section", year_clause) if year_clause else await db.students.distinct("section", {"year": year_clean})
+
+    # 3. Sections from student attendance records
+    att_secs = await db.student_attendance.distinct("section", {"year": year_clean})
+
+    all_secs = sorted(list(set([s.upper().strip() for s in (tt_secs + stu_secs + att_secs) if s and s.strip()])))
     return all_secs
 
 
@@ -244,26 +265,68 @@ async def get_students_analytics_summary(year: str, section: str) -> List[Studen
     db = get_database()
     year_clean = year.strip()
     sec_clean = section.strip().upper()
+    sec_norm = (
+        sec_clean.replace("II-", "")
+        .replace("I-", "")
+        .replace("III-", "")
+        .replace("IV-", "")
+        .replace("CSE-", "")
+        .strip()
+    )
 
-    students = await db.students.find({"year": year_clean, "section": sec_clean}).to_list(length=1000)
-    total_days_count = await db.student_attendance_submissions.count_documents({"year": year_clean, "section": sec_clean})
+    sec_candidates = list(set([
+        section,
+        sec_clean,
+        sec_norm,
+        f"CSE-{sec_norm}",
+        f"II-CSE-{sec_norm}",
+        f"I-CSE-{sec_norm}",
+        f"III-CSE-{sec_norm}",
+        f"IV-CSE-{sec_norm}",
+        f"II-{sec_norm}",
+        f"III-{sec_norm}",
+        f"IV-{sec_norm}",
+        f"I-{sec_norm}",
+    ]))
+    sec_candidates = [c for c in sec_candidates if c]
+
+    from app.services.student_service import build_year_filter_clause
+    year_clause = build_year_filter_clause(year_clean)
+
+    query: Dict[str, Any] = {"section": {"$in": sec_candidates}}
+    if year_clause:
+        query = {"$and": [query, {"$or": [{"year": year_clean}, year_clause]}]}
+    else:
+        query["year"] = year_clean
+
+    cursor = db.students.find(query).sort("roll_number", 1)
+    students_docs = await cursor.to_list(length=5000)
+
+    # If nothing matched with year, try section only as a fallback
+    if not students_docs:
+        students_docs = await db.students.find({"section": {"$in": sec_candidates}}).sort("roll_number", 1).to_list(length=5000)
+
+    total_days_count = await db.student_attendance_submissions.count_documents({
+        "section": {"$in": sec_candidates}
+    })
     total_days = max(total_days_count, 1)
 
     abs_docs = await db.student_attendance.find({
-        "year": year_clean,
-        "section": sec_clean,
         "status": "Absent",
-    }).to_list(length=10000)
+    }).to_list(length=20000)
 
     abs_counts = {}
     for doc in abs_docs:
         r = doc.get("roll_number")
         if r:
-            abs_counts[r] = abs_counts.get(r, 0) + 1
+            r_norm = str(r).strip().upper()
+            abs_counts[r_norm] = abs_counts.get(r_norm, 0) + 1
 
     result = []
-    for s in students:
-        roll = s["roll_number"]
+    for s in students_docs:
+        roll = str(s.get("roll_number") or "").strip().upper()
+        if not roll:
+            continue
         abs_count = abs_counts.get(roll, 0)
 
         pct = round(((total_days - abs_count) / total_days) * 100, 1) if total_days > 0 else 100.0
@@ -271,8 +334,8 @@ async def get_students_analytics_summary(year: str, section: str) -> List[Studen
             pct = 0.0
 
         result.append(StudentAnalyticsItem(
-            student_id=str(s["_id"]),
-            student_name=s["name"],
+            student_id=str(s.get("_id", roll)),
+            student_name=s.get("name", "Student"),
             roll_number=roll,
             year=year_clean,
             section=sec_clean,

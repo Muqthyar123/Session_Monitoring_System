@@ -1,5 +1,5 @@
 import re
-from typing import List, Optional
+from typing import Any, List, Optional
 from app.db.mongodb import get_database
 from app.schemas.timetable import TimetablePeriodResponse
 
@@ -16,6 +16,19 @@ def format_12h(t_str: str) -> str:
     return f"{h:02d}:{m_val:02d}"
 
 
+def clean_faculty_display(fac: Any) -> Optional[str]:
+    """Ensure faculty display string contains only faculty names starting strictly after ':' colon."""
+    if not fac:
+        return None
+    s = str(fac).strip()
+    if ":" in s:
+        parts = s.rsplit(":", 1)
+        s = parts[1].strip()
+    # Remove leading numbering like '1) Dr. X'
+    s = re.sub(r"^\d+[\).:\s]+", "", s).strip()
+    return s if s else None
+
+
 def _format_doc(doc: dict) -> dict:
     d = dict(doc)
     d["_id"] = str(d["_id"])
@@ -23,6 +36,22 @@ def _format_doc(doc: dict) -> dict:
         d["start_time"] = format_12h(d["start_time"])
     if "end_time" in d:
         d["end_time"] = format_12h(d["end_time"])
+
+    # Clean faculty string if present
+    if "faculty" in d and d["faculty"]:
+        d["faculty"] = clean_faculty_display(d["faculty"])
+
+    # Clean faculty_names list if present
+    if "faculty_names" in d and isinstance(d["faculty_names"], list):
+        cleaned_fac_names = []
+        for fn in d["faculty_names"]:
+            cfn = clean_faculty_display(fn)
+            if cfn and cfn not in cleaned_fac_names:
+                cleaned_fac_names.append(cfn)
+        d["faculty_names"] = cleaned_fac_names
+        if not d.get("faculty") and cleaned_fac_names:
+            d["faculty"] = ", ".join(cleaned_fac_names)
+
     return d
 
 

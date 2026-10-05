@@ -344,17 +344,57 @@ def _parse_time_range(time_str: str, period_num: int) -> Tuple[str, str]:
     return convert_time(parts[0]), convert_time(parts[1])
 
 
+def extract_faculty_names_from_str(text: Any) -> List[str]:
+    """
+    Extracts individual faculty names from a timetable/legend text.
+    Rule:
+    1. If ':' is present, the faculty name(s) start strictly AFTER the colon ':'.
+       (e.g., 'Computer Networks : Dr.Sk.Zuber Basha' -> ['Dr.Sk.Zuber Basha']
+        '1): Mobile Computing : Dr.S.V.N.Srinivasu' -> ['Dr.S.V.N.Srinivasu']
+        'Data Warehousing and Data Mining : Y.Chandana' -> ['Y.Chandana'])
+    2. Split multiple faculty names separated by commas.
+    3. Trim whitespace around each name.
+    4. Ignore empty values and placeholders.
+    """
+    if not text:
+        return []
+    s = str(text).strip()
+    if not s or s.upper() in ["BREAK", "LUNCH", "FREE", "NONE", "N/A", "-"]:
+        return []
+
+    if ":" in s:
+        parts = s.rsplit(":", 1)
+        faculty_portion = parts[1].strip()
+    else:
+        faculty_portion = s
+
+    # Remove enclosing parentheses if any like '(Dr. X)'
+    faculty_portion = re.sub(r"^\((.+)\)$", r"\1", faculty_portion).strip()
+
+    # Split by comma for multiple faculty members
+    raw_names = [f.strip() for f in faculty_portion.split(",") if f.strip()]
+
+    valid_names = []
+    for name in raw_names:
+        clean_name = re.sub(r"^\d+[\).:\s]+", "", name).strip()
+        if clean_name and len(clean_name) > 1 and clean_name.upper() not in ["N/A", "NONE", "NULL", "-"]:
+            valid_names.append(clean_name)
+
+    return valid_names
+
+
 def _parse_subject_and_faculty(raw_text: str) -> Tuple[str, List[str], Optional[str]]:
     """
     Parses a timetable cell or subject/faculty string.
-    Rule 1: If room in parentheses e.g. '(B-204)', extract room.
-    Rule 2: If ':' is present:
-      - Subject name is before ':'.
-      - Faculty information is after ':'.
-      - Faculty names separated by comma ',' are individual persons.
-      - Whitespace around each name is trimmed.
-    Rule 3: If no ':' is present:
-      - Multi-line text: line 0 is subject, subsequent lines contain faculty (or colon).
+    Rule:
+    1. If room in parentheses e.g. '(B-204)' or '(Lab-1)', extract room.
+    2. If ':' is present:
+       - Subject name is before the colon ':'.
+       - Faculty information starts strictly after ':'.
+       - Faculty names separated by comma ',' are individual persons.
+       - Whitespace around each name is trimmed.
+    3. If no ':' is present:
+       - Multi-line text: line 0 is subject, subsequent lines contain faculty.
     """
     if not raw_text:
         return "", [], None
@@ -363,27 +403,24 @@ def _parse_subject_and_faculty(raw_text: str) -> Tuple[str, List[str], Optional[
     room = None
     m_room = re.search(r"\(([^)]+)\)", raw)
     if m_room:
-        room = m_room.group(1).strip()
-        raw = re.sub(r"\(([^)]+)\)", "", raw).strip()
+        potential_room = m_room.group(1).strip()
+        if any(c.isdigit() for c in potential_room) or "LAB" in potential_room.upper() or "ROOM" in potential_room.upper():
+            room = potential_room
+            raw = re.sub(r"\(([^)]+)\)", "", raw).strip()
 
     if ":" in raw:
-        parts = raw.split(":", 1)
+        parts = raw.rsplit(":", 1)
         subj = parts[0].strip()
-        fac_str = parts[1].strip()
-        fac_list = [f.strip() for f in fac_str.split(",") if f.strip() and len(f.strip()) > 1]
+        subj = re.sub(r"^\d+[\).:\s]+", "", subj).strip()
+        fac_list = extract_faculty_names_from_str(parts[1])
         return subj, fac_list, room
 
     lines = [l.strip() for l in re.split(r"[\r\n]+", raw) if l.strip()]
     if len(lines) >= 2:
-        subj = lines[0]
+        subj = re.sub(r"^\d+[\).:\s]+", "", lines[0]).strip()
         rest = " ".join(lines[1:]).strip()
-        if ":" in rest:
-            _, fac_list, _ = _parse_subject_and_faculty(rest)
-            return subj, fac_list, room
-        if not re.match(r"^[\d\s\-_/]+$", rest):
-            fac_list = [f.strip() for f in rest.split(",") if f.strip() and len(f.strip()) > 1]
-            return subj, fac_list, room
-        return subj, [], room
+        fac_list = extract_faculty_names_from_str(rest)
+        return subj, fac_list, room
 
     return raw, [], room
 
@@ -534,30 +571,30 @@ def _parse_matrix_timetable_excel(ws: openpyxl.worksheet.worksheet.Worksheet, sh
             if not cell_val:
                 continue
 
-            # Case A: Separator in single cell (e.g. "DMGT : Dr. Ramesh, Prof. Suresh", "PYTHON LAB - Prof. Sharma, Mr. Verma")
-            m_sep = re.split(r"\s*[:\-\u2013\u2014]\s*", cell_val, maxsplit=1)
-            if len(m_sep) == 2 and m_sep[0].strip() and m_sep[1].strip():
-                subj_code = m_sep[0].replace("\n", " ").strip().upper()
-                fac_raw = m_sep[1].replace("\n", " ").strip()
-                fac_list = [f.strip() for f in fac_raw.split(",") if f.strip() and len(f.strip()) > 1]
-                if fac_list and subj_code not in faculty_legend:
-                    faculty_legend[subj_code] = fac_list
-                continue
+            # Case A: Separator in single cell (e.g. "DMGT : Dr. Ramesh, Prof. Suresh", "1): Mobile Computing : Dr.S.V.N.Srinivasu")
+            if ":" in cell_val or "-" in cell_val:
+                m_sep = re.split(r"\s*[:\-\u2013\u2014]\s*", cell_val, maxsplit=1)
+                if len(m_sep) == 2 and m_sep[0].strip() and m_sep[1].strip():
+                    subj_code = re.sub(r"^\d+[\).:\s]+", "", m_sep[0]).replace("\n", " ").strip().upper()
+                    fac_list = extract_faculty_names_from_str(m_sep[1])
+                    if fac_list and subj_code not in faculty_legend:
+                        faculty_legend[subj_code] = fac_list
+                    continue
 
-            # Case B: Two adjacent cells in a row (Column A = "DMGT", Column B = "Dr. Ramesh, Prof. Suresh")
+            # Case B: Two adjacent cells in a row (Column A = "CN", Column B = "Computer Networks : Dr.Sk.Zuber Basha" or "Data Warehousing and Data Mining : Y.Chandana")
             if c < ws.max_column:
                 adj_val = str(_get_cell_value(ws, r, c + 1) or "").strip()
                 if cell_val and adj_val:
-                    code_norm = cell_val.replace("\n", " ").strip().upper()
-                    fac_raw = adj_val.replace("\n", " ").strip()
-                    fac_list = [f.strip() for f in fac_raw.split(",") if f.strip() and len(f.strip()) > 1]
+                    code_norm = re.sub(r"^\d+[\).:\s]+", "", cell_val).replace("\n", " ").strip().upper()
+                    fac_list = extract_faculty_names_from_str(adj_val)
                     if len(code_norm) <= 25 and fac_list and code_norm not in faculty_legend:
-                        if code_norm not in ["SUBJECT", "COURSE", "SL.NO", "CODE", "PERIOD"]:
+                        if code_norm not in ["SUBJECT", "COURSE", "SL.NO", "CODE", "PERIOD", "FACULTY", "STAFF"]:
                             faculty_legend[code_norm] = fac_list
 
     # Assign faculty names to matching subject records
     for rec in records:
         if rec.get("faculty_names"):
+            rec["faculty"] = ", ".join(rec["faculty_names"])
             continue
         subj_upper = rec["subject"].upper()
         if subj_upper in faculty_legend:

@@ -286,27 +286,6 @@ function TimetablePage() {
               </SelectContent>
             </Select>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              const ttCols = [
-                { key: "day", header: "Day" },
-                { key: "period", header: "Period" },
-                { key: "startTime", header: "Start Time" },
-                { key: "endTime", header: "End Time" },
-                { key: "subject", header: "Subject" },
-                { key: "faculty", header: "Faculty", transform: (v: any) => v || "-" },
-                { key: "room", header: "Room / Lab", transform: (v: any) => v || "-" },
-              ];
-              exportToCSV(timetable.data ?? [], `Timetable_${year.replace(/\s+/g, "_")}_${section}`, ttCols);
-            }}
-            disabled={(timetable.data?.length ?? 0) === 0}
-            className="gap-1.5 self-center"
-            title="Export timetable to Excel/CSV"
-          >
-            <Download className="size-4" /> Export Timetable
-          </Button>
         </div>
 
         {timetable.loading ? (
@@ -341,16 +320,20 @@ function TimetablePage() {
                   <TableBody>
                     {(timetable.data ?? [])
                       .filter((p) => p.day === day)
-                      .map((p) => (
-                        <TableRow key={`${day}-${p.period}`}>
-                          <TableCell>{p.period}</TableCell>
-                          <TableCell>{p.startTime}</TableCell>
-                          <TableCell>{p.endTime}</TableCell>
-                          <TableCell className="font-medium">{p.subject}</TableCell>
-                          <TableCell className="text-muted-foreground">{p.faculty || "-"}</TableCell>
-                          <TableCell>{p.room || "-"}</TableCell>
-                        </TableRow>
-                      ))}
+                      .map((p) => {
+                        const rawFac = p.faculty || "";
+                        const cleanFac = rawFac.includes(":") ? rawFac.split(":").pop()?.replace(/^\d+[\).:\s]+/, "").trim() || rawFac : rawFac;
+                        return (
+                          <TableRow key={`${day}-${p.period}`}>
+                            <TableCell>{p.period}</TableCell>
+                            <TableCell>{p.startTime}</TableCell>
+                            <TableCell>{p.endTime}</TableCell>
+                            <TableCell className="font-medium">{p.subject}</TableCell>
+                            <TableCell className="text-muted-foreground">{cleanFac || "-"}</TableCell>
+                            <TableCell>{p.room || "-"}</TableCell>
+                          </TableRow>
+                        );
+                      })}
                   </TableBody>
                 </Table>
               </div>
