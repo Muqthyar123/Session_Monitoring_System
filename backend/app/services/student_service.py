@@ -195,6 +195,32 @@ async def create_student(data: StudentCreate, actor_id: Optional[str] = None) ->
     return StudentResponse(**student_doc)
 
 
+async def sync_all_students_batch_and_year(db) -> int:
+    """
+    Synchronizes batch and academic year for all students in MongoDB:
+    - Roll starting with 23... -> Batch 2027 -> 4th Year
+    - Roll starting with 24... -> Batch 2028 -> 3rd Year
+    - Roll starting with 25... -> Batch 2029 -> 2nd Year
+    - Roll starting with 26... -> Batch 2030 -> 1st Year
+    """
+    cursor = db.students.find({})
+    updated_cnt = 0
+    async for s in cursor:
+        roll = s.get("roll_number")
+        batch = s.get("batch")
+        inferred = infer_batch_from_roll(roll) if roll else None
+        eff_batch = batch if batch else inferred
+        if eff_batch:
+            eff_year = compute_year_from_batch(eff_batch)
+            if s.get("batch") != eff_batch or s.get("year") != eff_year:
+                await db.students.update_one(
+                    {"_id": s["_id"]},
+                    {"$set": {"batch": eff_batch, "year": eff_year, "updated_at": datetime.now(timezone.utc)}}
+                )
+                updated_cnt += 1
+    return updated_cnt
+
+
 def build_year_filter_clause(year: str) -> dict:
     """Builds a MongoDB filter clause that matches an academic year by year name, batch, or roll prefix."""
     y_clean = year.strip()
@@ -219,10 +245,10 @@ def build_year_filter_clause(year: str) -> dict:
 
     return {
         "$or": [
-            {"year": {"$in": aliases}},
             {"batch": target_batch},
             {"batch": str(target_batch)},
             {"roll_number": {"$regex": f"^{roll_prefix}", "$options": "i"}},
+            {"year": {"$in": aliases}},
         ]
     }
 

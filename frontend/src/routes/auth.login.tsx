@@ -32,16 +32,14 @@ function CRLRLoginPage() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const nextErrors: typeof errors = {};
-    if (!email.trim()) nextErrors.email = "Email is required.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
-      nextErrors.email = "Enter a valid email address.";
+    if (!email.trim()) nextErrors.email = "Roll Number or Email is required.";
     if (!password) nextErrors.password = "Password is required.";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
     setSubmitting(true);
     try {
-      await signIn(email, password, "CRLR");
+      await signIn(email.trim(), password.trim(), "CRLR");
       navigate({ to: "/crlr/dashboard", replace: true });
     } catch (error) {
       setErrors({ form: error instanceof Error ? error.message : "Login failed." });
@@ -65,14 +63,14 @@ function CRLRLoginPage() {
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit} noValidate>
             <div className="space-y-1.5">
-              <Label htmlFor="crlr-email">Email / Username</Label>
+              <Label htmlFor="crlr-email">Roll Number / Email</Label>
               <Input
                 id="crlr-email"
-                type="email"
+                type="text"
                 autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="cr@example.com"
+                placeholder="e.g. 23471A0501 or cr@example.com"
                 aria-invalid={Boolean(errors.email)}
               />
               {errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
@@ -86,6 +84,7 @@ function CRLRLoginPage() {
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   value={password}
+                  placeholder="Default: Your Roll Number"
                   onChange={(e) => setPassword(e.target.value)}
                   className="pr-10"
                   aria-invalid={Boolean(errors.password)}
@@ -116,9 +115,9 @@ function CRLRLoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">Section Representatives</p>
-            <p>Log in using your assigned CR or LR email address &amp; password.</p>
+          <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground">Section Representatives Credentials</p>
+            <p>Log in using your <strong>Roll Number</strong> (or assigned email) and your default password is your <strong>Roll Number</strong> (e.g. <code>23471A0501</code>).</p>
           </div>
 
           <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">

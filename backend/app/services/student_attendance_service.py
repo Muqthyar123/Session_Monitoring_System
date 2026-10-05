@@ -226,16 +226,26 @@ async def get_absentee_students_for_section(year: str, section: str, date: Optio
 async def save_absence_reason(record_id: str, reason: str, actor_name: str, actor_id: Optional[str] = None) -> StudentAttendanceRecordResponse:
     """Save or update the absence reason for a specific attendance record."""
     db = get_database()
-    query = {"_id": ObjectId(record_id)} if ObjectId.is_valid(record_id) else {"_id": record_id}
+    clean_id = (record_id or "").strip()
 
-    doc = await db.student_attendance.find_one(query)
+    doc = None
+    if ObjectId.is_valid(clean_id):
+        doc = await db.student_attendance.find_one({"_id": ObjectId(clean_id)})
+    if not doc:
+        doc = await db.student_attendance.find_one({"_id": clean_id})
+    if not doc:
+        today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
+        doc = await db.student_attendance.find_one({
+            "roll_number": clean_id.upper(),
+            "date": today_date,
+        })
     if not doc:
         doc = await db.student_attendance.find_one({
             "$or": [
-                {"student_id": record_id},
-                {"roll_number": record_id.upper()},
+                {"student_id": clean_id},
+                {"roll_number": clean_id.upper()},
             ]
-        })
+        }, sort=[("date", -1), ("created_at", -1)])
     if not doc:
         raise HTTPException(status_code=404, detail="Attendance record not found.")
 

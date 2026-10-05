@@ -204,12 +204,14 @@ async def parse_and_import_crlr_excel(
             updated_count += 1
         else:
             # Create new user
+            user_roll = roll.strip().upper() if roll else None
+            raw_pwd = user_roll if user_roll else "crlr1234"
             new_user_doc = {
                 "name": name,
                 "email": email,
-                "password_hash": default_password_hash,
+                "password_hash": hash_password(raw_pwd),
                 "role": role,
-                "roll_number": roll if roll else None,
+                "roll_number": user_roll,
                 "phone": phone if phone else None,
                 "year": year,
                 "section": section,

@@ -13,7 +13,12 @@ from app.schemas.mentor import (
 )
 from app.schemas.student import StudentResponse
 from app.schemas.student_attendance import StudentAttendanceRecordResponse
-from app.services.student_service import compute_year_from_batch, infer_batch_from_roll
+from app.services.student_service import (
+    build_year_filter_clause,
+    compute_year_from_batch,
+    infer_batch_from_roll,
+    sync_all_students_batch_and_year,
+)
 
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
@@ -23,6 +28,9 @@ STANDARD_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 async def get_mentor_dashboard_data(current_user: dict) -> MentorDashboardResponse:
     db = get_database()
     today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
+
+    # Synchronize student batch and year if any were unsynced
+    await sync_all_students_batch_and_year(db)
 
     # 1. Total students
     total_students = await db.students.count_documents({})
@@ -40,7 +48,8 @@ async def get_mentor_dashboard_data(current_user: dict) -> MentorDashboardRespon
     # 4. Year counts (students + absentees today)
     year_cards: List[MentorYearCard] = []
     for y in all_years:
-        stu_cnt = await db.students.count_documents({"year": y})
+        y_clause = build_year_filter_clause(y)
+        stu_cnt = await db.students.count_documents(y_clause) if y_clause else await db.students.count_documents({"year": y})
         abs_cnt = await db.student_attendance.count_documents({
             "year": y,
             "date": today_date,
@@ -119,12 +128,15 @@ async def get_mentor_years_summary() -> List[MentorYearCard]:
     db = get_database()
     today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
 
+    await sync_all_students_batch_and_year(db)
+
     db_years = await db.students.distinct("year")
     all_years = sorted(list(set([y for y in db_years if y] + STANDARD_YEARS)))
 
     res: List[MentorYearCard] = []
     for y in all_years:
-        stu_cnt = await db.students.count_documents({"year": y})
+        y_clause = build_year_filter_clause(y)
+        stu_cnt = await db.students.count_documents(y_clause) if y_clause else await db.students.count_documents({"year": y})
         abs_cnt = await db.student_attendance.count_documents({
             "year": y,
             "date": today_date,
@@ -144,13 +156,19 @@ async def get_mentor_sections_summary(year: str) -> List[MentorSectionCard]:
     year_clean = year.strip()
     today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
 
-    db_secs = await db.students.distinct("section", {"year": year_clean})
+    y_clause = build_year_filter_clause(year_clean)
+    db_secs = await db.students.distinct("section", y_clause) if y_clause else await db.students.distinct("section", {"year": year_clean})
     if not db_secs:
         db_secs = [f"CSE-{l}" for l in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]]
 
     res: List[MentorSectionCard] = []
     for s in sorted(list(set(db_secs))):
-        stu_cnt = await db.students.count_documents({"year": year_clean, "section": s})
+        s_clause = {"section": s}
+        if y_clause:
+            query = {"$and": [s_clause, y_clause]}
+        else:
+            query = {"year": year_clean, "section": s}
+        stu_cnt = await db.students.count_documents(query)
         abs_cnt = await db.student_attendance.count_documents({
             "year": year_clean,
             "section": s,
@@ -196,9 +214,11 @@ async def search_students_global(search_term: str, limit: int = 100) -> List[Stu
 
 
 async def get_mentor_absentee_years_summary() -> List[MentorYearCard]:
-    """Retrieve years that have absentee records today with absentee count."""
+    """Retrieve years that have absentee records today with accurate student count."""
     db = get_database()
     today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
+
+    await sync_all_students_batch_and_year(db)
 
     att_years = await db.student_attendance.distinct("year", {"date": today_date, "status": "Absent"})
     all_years = sorted(list(set(att_years + STANDARD_YEARS)))
@@ -210,7 +230,8 @@ async def get_mentor_absentee_years_summary() -> List[MentorYearCard]:
             "date": today_date,
             "status": "Absent",
         })
-        stu_cnt = await db.students.count_documents({"year": y})
+        y_clause = build_year_filter_clause(y)
+        stu_cnt = await db.students.count_documents(y_clause) if y_clause else await db.students.count_documents({"year": y})
         res.append(MentorYearCard(
             year=y,
             studentCount=stu_cnt,
@@ -230,7 +251,8 @@ async def get_mentor_absentee_sections_summary(year: str) -> List[MentorSectionC
         "date": today_date,
         "status": "Absent",
     })
-    stu_secs = await db.students.distinct("section", {"year": year_clean})
+    y_clause = build_year_filter_clause(year_clean)
+    stu_secs = await db.students.distinct("section", y_clause) if y_clause else await db.students.distinct("section", {"year": year_clean})
     all_secs = sorted(list(set(att_secs + stu_secs)))
     if not all_secs:
         all_secs = [f"CSE-{l}" for l in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]]
@@ -243,7 +265,9 @@ async def get_mentor_absentee_sections_summary(year: str) -> List[MentorSectionC
             "date": today_date,
             "status": "Absent",
         })
-        stu_cnt = await db.students.count_documents({"year": year_clean, "section": s})
+        s_clause = {"section": s}
+        query = {"$and": [s_clause, y_clause]} if y_clause else {"year": year_clean, "section": s}
+        stu_cnt = await db.students.count_documents(query)
         res.append(MentorSectionCard(
             year=year_clean,
             section=s,
@@ -286,16 +310,26 @@ async def update_absence_comment(
 ) -> StudentAttendanceRecordResponse:
     """Save or update absence reason/comment by mentor."""
     db = get_database()
-    query = {"_id": ObjectId(record_id)} if ObjectId.is_valid(record_id) else {"_id": record_id}
+    clean_id = (record_id or "").strip()
 
-    doc = await db.student_attendance.find_one(query)
+    doc = None
+    if ObjectId.is_valid(clean_id):
+        doc = await db.student_attendance.find_one({"_id": ObjectId(clean_id)})
+    if not doc:
+        doc = await db.student_attendance.find_one({"_id": clean_id})
+    if not doc:
+        today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
+        doc = await db.student_attendance.find_one({
+            "roll_number": clean_id.upper(),
+            "date": today_date,
+        })
     if not doc:
         doc = await db.student_attendance.find_one({
             "$or": [
-                {"student_id": record_id},
-                {"roll_number": record_id.upper()},
+                {"student_id": clean_id},
+                {"roll_number": clean_id.upper()},
             ]
-        })
+        }, sort=[("date", -1), ("created_at", -1)])
     if not doc:
         raise HTTPException(status_code=404, detail="Attendance record not found.")
 

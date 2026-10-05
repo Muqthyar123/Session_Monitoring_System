@@ -38,6 +38,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAsyncData } from "@/hooks/useAsyncData";
+import { ComboboxInput } from "@/components/ui/combobox-input";
+import { getTimetableUploads } from "@/services/timetableService";
 import {
   createStudent,
   deleteStudent,
@@ -139,6 +141,7 @@ function AdminStudentsPage() {
     () => getStudents(yearFilter, sectionFilter),
     [yearFilter, sectionFilter]
   );
+  const timetableUploads = useAsyncData(() => getTimetableUploads(), []);
 
   const studentExportColumns = [
     { key: "rollNumber", header: "Roll Number" },
@@ -203,6 +206,54 @@ function AdminStudentsPage() {
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const formCalculatedYear = useMemo(() => {
+    return computeYearFromBatch(form.batch);
+  }, [form.batch]);
+
+  // Timetable sections specifically for the selected form academic year
+  const formYearSections = useMemo(() => {
+    const rawYear = formCalculatedYear;
+    const fromTimetable = (timetableUploads.data ?? [])
+      .filter((t) => {
+        if (!t.academicYear) return true;
+        const aYear = t.academicYear.toLowerCase().trim();
+        const curYear = rawYear.toLowerCase().trim();
+        if (aYear === curYear) return true;
+        if (curYear.startsWith("2") && (aYear.startsWith("2") || aYear.includes("ii"))) return true;
+        if (curYear.startsWith("3") && (aYear.startsWith("3") || aYear.includes("iii"))) return true;
+        if (curYear.startsWith("4") && (aYear.startsWith("4") || aYear.includes("iv"))) return true;
+        if (curYear.startsWith("1") && (aYear.startsWith("1") || aYear.includes("i"))) return true;
+        return false;
+      })
+      .map((t) => t.section)
+      .filter(Boolean);
+
+    if (fromTimetable.length > 0) {
+      return Array.from(new Set(fromTimetable)).sort();
+    }
+
+    const fromStudents = (data ?? [])
+      .filter((s) => {
+        const effBatch = s.batch || inferBatchFromRoll(s.rollNumber);
+        const effYear = effBatch ? computeYearFromBatch(effBatch) : (s.year || "");
+        return effYear.toLowerCase() === rawYear.toLowerCase();
+      })
+      .map((s) => s.section)
+      .filter(Boolean);
+
+    if (fromStudents.length > 0) {
+      return Array.from(new Set(fromStudents)).sort();
+    }
+
+    return SECTIONS;
+  }, [formCalculatedYear, timetableUploads.data, data]);
+
+  const availableFilterSections = useMemo(() => {
+    const fromTimetable = (timetableUploads.data ?? []).map((t) => t.section).filter(Boolean);
+    const fromStudents = (data ?? []).map((s) => s.section).filter(Boolean);
+    return Array.from(new Set([...fromTimetable, ...fromStudents, ...SECTIONS])).sort();
+  }, [timetableUploads.data, data]);
 
   const openCreateDialog = () => {
     setEditing(null);
@@ -515,7 +566,7 @@ function AdminStudentsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ALL}>All Sections</SelectItem>
-                    {SECTIONS.map((s) => (
+                    {availableFilterSections.map((s) => (
                       <SelectItem key={s} value={s}>
                         {s}
                       </SelectItem>
@@ -565,21 +616,20 @@ function AdminStudentsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="batch">Batch (Graduation Year) *</Label>
-                <Select
-                  value={form.batch ? form.batch.toString() : "2029"}
-                  onValueChange={(val) => setForm({ ...form, batch: Number(val) })}
-                >
-                  <SelectTrigger id="batch">
-                    <SelectValue placeholder="Select Batch" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {BATCH_OPTIONS.map((b) => (
-                      <SelectItem key={b.batch} value={b.batch.toString()}>
-                        {b.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ComboboxInput
+                  id="batch"
+                  type="number"
+                  placeholder="e.g. 2029"
+                  value={form.batch || ""}
+                  onChange={(val) => {
+                    const num = Number(val);
+                    setForm((prev) => ({ ...prev, batch: isNaN(num) ? prev.batch : num }));
+                  }}
+                  options={BATCH_OPTIONS.map((b) => ({
+                    value: String(b.batch),
+                    label: b.label,
+                  }))}
+                />
                 {formErrors.batch && (
                   <p className="text-xs font-medium text-destructive">{formErrors.batch}</p>
                 )}
@@ -596,11 +646,12 @@ function AdminStudentsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="branch">Branch *</Label>
-                <Input
+                <ComboboxInput
                   id="branch"
                   placeholder="e.g. CSE"
                   value={form.branch}
-                  onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                  onChange={(val) => setForm((prev) => ({ ...prev, branch: val.toUpperCase() }))}
+                  options={["CSE", "ECE", "IT", "AIDS", "AIML", "MECH", "CIVIL", "CSBS"]}
                 />
                 {formErrors.branch && (
                   <p className="text-xs font-medium text-destructive">{formErrors.branch}</p>
@@ -609,18 +660,14 @@ function AdminStudentsPage() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="section">Section *</Label>
-                <Select value={form.section} onValueChange={(val) => setForm({ ...form, section: val })}>
-                  <SelectTrigger id="section">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SECTIONS.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ComboboxInput
+                  id="section"
+                  placeholder="e.g. CSE-A"
+                  value={form.section}
+                  onChange={(val) => setForm((prev) => ({ ...prev, section: val.toUpperCase() }))}
+                  options={formYearSections}
+                  title={`Available sections for ${formCalculatedYear}`}
+                />
                 {formErrors.section && (
                   <p className="text-xs font-medium text-destructive">{formErrors.section}</p>
                 )}

@@ -136,15 +136,16 @@ function MentorAbsenteesPage() {
   };
 
   const handleSaveReason = async (record: AbsenteeStudentItem) => {
-    const reasonText = reasonInputs[record.id] ?? record.reason ?? "";
+    const recordId = record.id || (record as any)._id || record.rollNumber;
+    const reasonText = reasonInputs[recordId] ?? record.reason ?? "";
     if (!reasonText.trim()) {
       toast.error("Please enter a reason or note before saving.");
       return;
     }
 
-    setSavingId(record.id);
+    setSavingId(recordId);
     try {
-      await saveAbsenceComment(record.id, reasonText.trim());
+      await saveAbsenceComment(recordId, reasonText.trim());
       toast.success(`Absence note saved for ${record.studentName}.`);
       if (reloadAbsentees) reloadAbsentees();
       if (globalSearch) {
@@ -276,14 +277,15 @@ function MentorAbsenteesPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {searchResults.map((record) => {
+                  const recordId = record.id || (record as any)._id || record.rollNumber;
                   const currentReason =
-                    reasonInputs[record.id] !== undefined
-                      ? reasonInputs[record.id]
+                    reasonInputs[recordId] !== undefined
+                      ? reasonInputs[recordId]
                       : record.reason || "";
-                  const isSaving = savingId === record.id;
+                  const isSaving = savingId === recordId;
 
                   return (
-                    <Card key={record.id} className="border-rose-500/30 shadow-sm">
+                    <Card key={recordId} className="border-rose-500/30 shadow-sm">
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div>
@@ -354,7 +356,7 @@ function MentorAbsenteesPage() {
                             <Input
                               placeholder="e.g. Medical emergency, Family leave..."
                               value={currentReason}
-                              onChange={(e) => handleReasonChange(record.id, e.target.value)}
+                              onChange={(e) => handleReasonChange(recordId, e.target.value)}
                               className="text-xs"
                             />
                             <Button
@@ -574,14 +576,15 @@ function MentorAbsenteesPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {filteredSectionAbsentees.map((record) => {
+                  const recordId = record.id || (record as any)._id || record.rollNumber;
                   const currentReason =
-                    reasonInputs[record.id] !== undefined
-                      ? reasonInputs[record.id]
+                    reasonInputs[recordId] !== undefined
+                      ? reasonInputs[recordId]
                       : record.reason || "";
-                  const isSaving = savingId === record.id;
+                  const isSaving = savingId === recordId;
 
                   return (
-                    <Card key={record.id} className="border-rose-500/25 shadow-sm">
+                    <Card key={recordId} className="border-rose-500/25 shadow-sm">
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div>
@@ -649,7 +652,7 @@ function MentorAbsenteesPage() {
                             <Input
                               placeholder="Enter reason (e.g., Medical leave, Sick, Family event)..."
                               value={currentReason}
-                              onChange={(e) => handleReasonChange(record.id, e.target.value)}
+                              onChange={(e) => handleReasonChange(recordId, e.target.value)}
                               className="text-xs"
                             />
                             <Button

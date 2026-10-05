@@ -18,6 +18,7 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
             {"email": email_clean},
             {"mentor_id": raw_ident},
             {"mentor_id": raw_ident.upper()},
+            {"roll_number": raw_ident},
             {"roll_number": raw_ident.upper()}
         ]
     })
@@ -34,7 +35,30 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
             detail="User account is disabled. Please contact administrator.",
         )
 
-    if not verify_password(login_data.password, user.get("password_hash", "")):
+    pwd_valid = verify_password(login_data.password, user.get("password_hash", ""))
+    
+    # Fallback check: CR/LR default password is their roll number
+    if not pwd_valid and user.get("roll_number"):
+        clean_user_roll = user.get("roll_number", "").strip().upper()
+        if clean_user_roll and login_data.password.strip().upper() == clean_user_roll:
+            pwd_valid = True
+            # Upgrade stored password hash to match their roll number
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"password_hash": hash_password(clean_user_roll)}}
+            )
+
+    # Fallback check for mentors: default password is their mentor_id
+    if not pwd_valid and user.get("mentor_id"):
+        clean_m_id = user.get("mentor_id", "").strip().upper()
+        if clean_m_id and login_data.password.strip().upper() == clean_m_id:
+            pwd_valid = True
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"password_hash": hash_password(clean_m_id)}}
+            )
+
+    if not pwd_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials.",

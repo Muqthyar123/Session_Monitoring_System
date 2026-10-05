@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ComboboxInput } from "@/components/ui/combobox-input";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import {
   createCRLRUser,
@@ -47,6 +48,7 @@ import {
   updateCRLRUser,
   uploadCRLRExcel,
 } from "@/services/userService";
+import { getTimetableUploads } from "@/services/timetableService";
 import { MOCK_SECTIONS, MOCK_YEARS, type CRLRUser } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/admin/cr-lr")({
@@ -81,6 +83,7 @@ const emptyForm: FormState = {
 
 function CRLRManagementPage() {
   const { data, loading, error, reload } = useAsyncData(() => getCRLRUsers(), []);
+  const timetableUploads = useAsyncData(() => getTimetableUploads(), []);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState(ALL);
   const [yearFilter, setYearFilter] = useState(ALL);
@@ -111,8 +114,45 @@ function CRLRManagementPage() {
 
   const availableSections = useMemo(() => {
     const fromData = (data ?? []).map((u) => u.section).filter(Boolean);
-    return Array.from(new Set([...DEFAULT_SECTIONS, ...fromData])).sort();
-  }, [data]);
+    const fromTimetable = (timetableUploads.data ?? []).map((t) => t.section).filter(Boolean);
+    return Array.from(new Set([...DEFAULT_SECTIONS, ...fromTimetable, ...fromData])).sort();
+  }, [data, timetableUploads.data]);
+
+  const formYearSections = useMemo(() => {
+    const curYear = (form.year || "").toLowerCase().trim();
+    const fromTimetable = (timetableUploads.data ?? [])
+      .filter((t) => {
+        if (!t.academicYear) return true;
+        const aYear = t.academicYear.toLowerCase().trim();
+        if (aYear === curYear) return true;
+        if (curYear.startsWith("2") && (aYear.startsWith("2") || aYear.includes("ii"))) return true;
+        if (curYear.startsWith("3") && (aYear.startsWith("3") || aYear.includes("iii"))) return true;
+        if (curYear.startsWith("4") && (aYear.startsWith("4") || aYear.includes("iv"))) return true;
+        if (curYear.startsWith("1") && (aYear.startsWith("1") || aYear.includes("i"))) return true;
+        return false;
+      })
+      .map((t) => t.section)
+      .filter(Boolean);
+
+    if (fromTimetable.length > 0) {
+      return Array.from(new Set(fromTimetable)).sort();
+    }
+
+    const fromData = (data ?? [])
+      .filter((u) => {
+        if (!u.year) return false;
+        const uYear = u.year.toLowerCase().trim();
+        return uYear === curYear || (curYear.startsWith("2") && uYear.includes("2"));
+      })
+      .map((u) => u.section)
+      .filter(Boolean);
+
+    if (fromData.length > 0) {
+      return Array.from(new Set(fromData)).sort();
+    }
+
+    return DEFAULT_SECTIONS;
+  }, [form.year, timetableUploads.data, data]);
 
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -418,22 +458,20 @@ function CRLRManagementPage() {
                 </Select>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>Section</Label>
-                <Select
+                <Label>Section *</Label>
+                <ComboboxInput
+                  placeholder="e.g. CSE-A, II-CSE-A, or II-A"
                   value={form.section}
-                  onValueChange={(value) => setForm({ ...form, section: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSections.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onChange={(val) => setForm({ ...form, section: val.toUpperCase() })}
+                  options={formYearSections}
+                  title={`Uploaded timetable sections for ${form.year}`}
+                />
+                {formErrors.section ? (
+                  <p className="text-xs text-destructive">{formErrors.section}</p>
+                ) : null}
+                <p className="text-xs text-muted-foreground mt-1">
+                  Default login password for CR/LR is their <strong>Roll Number</strong>.
+                </p>
               </div>
             </div>
             <DialogFooter>

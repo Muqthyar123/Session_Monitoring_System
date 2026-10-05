@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Any
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, computed_field
 
 
 class AbsenteeItem(BaseModel):
@@ -57,6 +57,16 @@ class StudentAttendanceRecordResponse(BaseModel):
                 data["id"] = str_val
                 data["_id"] = str_val
         return data
+
+    @computed_field(alias="id")
+    @property
+    def id_prop(self) -> str:
+        return self.id
+
+    @computed_field(alias="_id")
+    @property
+    def underscore_id_prop(self) -> str:
+        return self.id
 
 
 class StudentAnalyticsItem(BaseModel):
