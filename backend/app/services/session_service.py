@@ -266,7 +266,11 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
 
 
 async def get_sessions(
-    section: Optional[str] = None, date_str: Optional[str] = None
+    section: Optional[str] = None,
+    year: Optional[str] = None,
+    branch: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    date_str: Optional[str] = None,
 ) -> List[ClassSessionResponse]:
     db = get_database()
     now_local = datetime.now(tz_kolkata)
@@ -278,20 +282,73 @@ async def get_sessions(
     await generate_and_sync_sessions_for_date(now_local, section_filter=section)
 
     query = {"date": date_str}
-    if section:
+    and_clauses = [{"date": date_str}]
+
+    if section and section.upper() != "ALL":
         sec_clean = section.strip().upper()
-        query["$or"] = [
-            {"section": section},
-            {"section": sec_clean},
-            {"section": f"II-{sec_clean}"},
-            {"section": {"$regex": f"^{sec_clean}$", "$options": "i"}},
-        ]
+        sec_clause = {
+            "$or": [
+                {"section": section},
+                {"section": sec_clean},
+                {"section": f"II-{sec_clean}"},
+                {"section": {"$regex": f"^{sec_clean}$", "$options": "i"}},
+            ]
+        }
+        and_clauses.append(sec_clause)
+
+    if year and year.upper() != "ALL":
+        yr_clean = year.replace("Year", "").strip()
+        and_clauses.append({
+            "$or": [
+                {"year": year},
+                {"year": {"$regex": yr_clean, "$options": "i"}},
+            ]
+        })
+
+    if branch and branch.upper() != "ALL":
+        b_clean = branch.strip().upper()
+        and_clauses.append({
+            "$or": [
+                {"branch": b_clean},
+                {"department": b_clean},
+                {"section": {"$regex": b_clean, "$options": "i"}},
+            ]
+        })
+
+    query = {"$and": and_clauses} if len(and_clauses) > 1 else and_clauses[0]
 
     cursor = db.sessions.find(query).sort("start_time", 1)
     results = []
     async for s in cursor:
         s["_id"] = str(s["_id"])
         computed = calculate_session_dynamic_state(s, now_local)
+
+        # Apply status filter if provided
+        if status_filter and status_filter.upper() != "ALL":
+            sf = status_filter.strip().upper()
+            curr_status = str(computed.get("session_status", "")).upper()
+            curr_resp = str(computed.get("faculty_response", "")).upper()
+
+            if sf == "COMPLETED":
+                is_completed = (
+                    curr_status == "COMPLETED"
+                    or curr_resp in ["PRESENT", "ABSENT", "NOT PRESENT", "NOT_PRESENT", "SUBSTITUTE", "SUBSTITUTE_FACULTY"]
+                )
+                if not is_completed:
+                    continue
+            elif sf == "ACTIVE" or sf == "LIVE":
+                if curr_status != "ACTIVE":
+                    continue
+            elif sf == "UPCOMING":
+                if curr_status != "UPCOMING":
+                    continue
+            elif sf == "EXPIRED":
+                if curr_status != "EXPIRED":
+                    continue
+            elif sf == "PENDING":
+                if curr_resp not in ["PENDING", ""] or curr_status == "COMPLETED":
+                    continue
+
         results.append(ClassSessionResponse(**computed))
 
     results.sort(key=lambda s: min(s.periods_included) if s.periods_included else 99)

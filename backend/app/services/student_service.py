@@ -257,19 +257,32 @@ async def get_students(
     year: Optional[str] = None,
     section: Optional[str] = None,
     search: Optional[str] = None,
+    branch: Optional[str] = None,
     skip: int = 0,
     limit: int = 500,
 ) -> List[StudentResponse]:
     db = get_database()
     query = {}
 
+    if branch and branch.upper() != "ALL":
+        b_clean = branch.strip().upper()
+        branch_clause = {
+            "$or": [
+                {"branch": b_clean},
+                {"branch": {"$regex": f"^{b_clean}$", "$options": "i"}},
+                {"department": b_clean},
+                {"department": {"$regex": f"^{b_clean}$", "$options": "i"}},
+            ]
+        }
+        query["$and"] = [branch_clause]
+
     if year and year.upper() != "ALL":
         year_clause = build_year_filter_clause(year)
-        if "$or" in query:
+        if "$and" in query:
+            query["$and"].append(year_clause)
+        elif "$or" in query:
             existing_or = query.pop("$or")
             query["$and"] = [{"$or": existing_or}, year_clause]
-        elif "$and" in query:
-            query["$and"].append(year_clause)
         else:
             query.update(year_clause)
 

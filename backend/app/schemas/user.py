@@ -9,6 +9,8 @@ class UserRole(str, Enum):
     CR = "CR"
     LR = "LR"
     MENTOR = "MENTOR"
+    DEPARTMENT_COORDINATOR = "DEPARTMENT_COORDINATOR"
+    COORDINATOR = "COORDINATOR"
 
 
 class UserBase(BaseModel):

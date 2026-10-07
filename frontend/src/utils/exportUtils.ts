@@ -92,3 +92,6 @@ export function exportToCSV<T = any>(
     toast.error("Failed to export data.");
   }
 }
+
+export const exportToExcel = exportToCSV;
+

@@ -11,6 +11,8 @@ import {
   Menu,
   GraduationCap,
   History,
+  Building2,
+  Layers,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,8 @@ const NAV_ITEMS = [
   { to: "/admin/analytics", label: "Faculty Analytics", icon: BarChart3 },
   { to: "/admin/student-analytics", label: "Student Analytics", icon: BarChart3 },
   { to: "/admin/student-history", label: "Student History", icon: History },
+  { to: "/admin/departments", label: "Departments", icon: Building2 },
+  { to: "/admin/sections", label: "Manage Sections", icon: Layers },
   { to: "/admin/mentors", label: "Manage Mentors", icon: Users },
   { to: "/admin/students", label: "Manage Students", icon: GraduationCap },
   { to: "/admin/timetable", label: "Timetable Management", icon: CalendarDays },
@@ -62,7 +66,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <RoleGuard allow={["ADMIN"]} redirectTo="/admin/login">
+    <RoleGuard allow={["ADMIN", "DEPARTMENT_COORDINATOR", "COORDINATOR"]} redirectTo="/admin/login">
       <div className="flex h-screen w-full overflow-hidden bg-background">
         {/* Sticky Left Navigation Sidebar */}
         <aside className="hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex sticky top-0">

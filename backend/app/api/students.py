@@ -23,10 +23,17 @@ router = APIRouter(prefix="/admin/students", tags=["Admin Student Management"])
 async def list_students_api(
     year: Optional[str] = Query(None),
     section: Optional[str] = Query(None),
+    branch: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
 ):
-    students = await get_students(year=year, section=section, search=search, limit=500)
+    user_role = current_user.get("role")
+    if user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
+        user_dept = current_user.get("department") or current_user.get("branch")
+        if user_dept:
+            branch = user_dept
+
+    students = await get_students(year=year, section=section, search=search, branch=branch, limit=500)
     return ApiResponse(success=True, data=students)
 
 

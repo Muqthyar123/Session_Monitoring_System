@@ -65,3 +65,22 @@ def require_roles(allowed_roles: List[UserRole]):
         return current_user
 
     return role_checker
+
+
+def get_department_filter(current_user: dict, requested_dept: Optional[str] = None) -> Optional[str]:
+    """
+    Returns the department code to filter by:
+    - If user is DEPARTMENT_COORDINATOR, strictly forces their assigned department.
+    - If user is ADMIN, returns requested_dept if specified.
+    """
+    user_role = current_user.get("role")
+    if user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
+        assigned_dept = current_user.get("department") or current_user.get("branch")
+        if not assigned_dept:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Department Coordinator has no assigned department.",
+            )
+        return assigned_dept.strip().upper()
+    return requested_dept.strip().upper() if requested_dept and requested_dept.upper() != "ALL" else None
+

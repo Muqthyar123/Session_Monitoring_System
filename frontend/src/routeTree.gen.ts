@@ -14,8 +14,10 @@ import { Route as AdminAlertsRouteImport } from './routes/admin.alerts'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
 import { Route as AdminCrLrRouteImport } from './routes/admin.cr-lr'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
+import { Route as AdminDepartmentsRouteImport } from './routes/admin.departments'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminMentorsRouteImport } from './routes/admin.mentors'
+import { Route as AdminSectionsRouteImport } from './routes/admin.sections'
 import { Route as AdminSessionsRouteImport } from './routes/admin.sessions'
 import { Route as AdminStudentAnalyticsRouteImport } from './routes/admin.student-analytics'
 import { Route as AdminStudentHistoryRouteImport } from './routes/admin.student-history'
@@ -59,6 +61,11 @@ const AdminDashboardRoute = AdminDashboardRouteImport.update({
   path: '/admin/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminDepartmentsRoute = AdminDepartmentsRouteImport.update({
+  id: '/admin/departments',
+  path: '/admin/departments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
   id: '/admin/login',
   path: '/admin/login',
@@ -67,6 +74,11 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
 const AdminMentorsRoute = AdminMentorsRouteImport.update({
   id: '/admin/mentors',
   path: '/admin/mentors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminSectionsRoute = AdminSectionsRouteImport.update({
+  id: '/admin/sections',
+  path: '/admin/sections',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminSessionsRoute = AdminSessionsRouteImport.update({
@@ -161,8 +173,10 @@ export interface FileRoutesByFullPath {
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/cr-lr': typeof AdminCrLrRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/departments': typeof AdminDepartmentsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/mentors': typeof AdminMentorsRoute
+  '/admin/sections': typeof AdminSectionsRoute
   '/admin/sessions': typeof AdminSessionsRoute
   '/admin/student-analytics': typeof AdminStudentAnalyticsRoute
   '/admin/student-history': typeof AdminStudentHistoryRoute
@@ -187,8 +201,10 @@ export interface FileRoutesByTo {
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/cr-lr': typeof AdminCrLrRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/departments': typeof AdminDepartmentsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/mentors': typeof AdminMentorsRoute
+  '/admin/sections': typeof AdminSectionsRoute
   '/admin/sessions': typeof AdminSessionsRoute
   '/admin/student-analytics': typeof AdminStudentAnalyticsRoute
   '/admin/student-history': typeof AdminStudentHistoryRoute
@@ -214,8 +230,10 @@ export interface FileRoutesById {
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/cr-lr': typeof AdminCrLrRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/departments': typeof AdminDepartmentsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/mentors': typeof AdminMentorsRoute
+  '/admin/sections': typeof AdminSectionsRoute
   '/admin/sessions': typeof AdminSessionsRoute
   '/admin/student-analytics': typeof AdminStudentAnalyticsRoute
   '/admin/student-history': typeof AdminStudentHistoryRoute
@@ -242,8 +260,10 @@ export interface FileRouteTypes {
     | '/admin/analytics'
     | '/admin/cr-lr'
     | '/admin/dashboard'
+    | '/admin/departments'
     | '/admin/login'
     | '/admin/mentors'
+    | '/admin/sections'
     | '/admin/sessions'
     | '/admin/student-analytics'
     | '/admin/student-history'
@@ -268,8 +288,10 @@ export interface FileRouteTypes {
     | '/admin/analytics'
     | '/admin/cr-lr'
     | '/admin/dashboard'
+    | '/admin/departments'
     | '/admin/login'
     | '/admin/mentors'
+    | '/admin/sections'
     | '/admin/sessions'
     | '/admin/student-analytics'
     | '/admin/student-history'
@@ -294,8 +316,10 @@ export interface FileRouteTypes {
     | '/admin/analytics'
     | '/admin/cr-lr'
     | '/admin/dashboard'
+    | '/admin/departments'
     | '/admin/login'
     | '/admin/mentors'
+    | '/admin/sections'
     | '/admin/sessions'
     | '/admin/student-analytics'
     | '/admin/student-history'
@@ -321,8 +345,10 @@ export interface RootRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminCrLrRoute: typeof AdminCrLrRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminDepartmentsRoute: typeof AdminDepartmentsRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminMentorsRoute: typeof AdminMentorsRoute
+  AdminSectionsRoute: typeof AdminSectionsRoute
   AdminSessionsRoute: typeof AdminSessionsRoute
   AdminStudentAnalyticsRoute: typeof AdminStudentAnalyticsRoute
   AdminStudentHistoryRoute: typeof AdminStudentHistoryRoute
@@ -379,6 +405,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/departments': {
+      id: '/admin/departments'
+      path: '/admin/departments'
+      fullPath: '/admin/departments'
+      preLoaderRoute: typeof AdminDepartmentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/login': {
       id: '/admin/login'
       path: '/admin/login'
@@ -391,6 +424,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/mentors'
       fullPath: '/admin/mentors'
       preLoaderRoute: typeof AdminMentorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/sections': {
+      id: '/admin/sections'
+      path: '/admin/sections'
+      fullPath: '/admin/sections'
+      preLoaderRoute: typeof AdminSectionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/sessions': {
@@ -521,8 +561,10 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
   AdminCrLrRoute: AdminCrLrRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  AdminDepartmentsRoute: AdminDepartmentsRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminMentorsRoute: AdminMentorsRoute,
+  AdminSectionsRoute: AdminSectionsRoute,
   AdminSessionsRoute: AdminSessionsRoute,
   AdminStudentAnalyticsRoute: AdminStudentAnalyticsRoute,
   AdminStudentHistoryRoute: AdminStudentHistoryRoute,

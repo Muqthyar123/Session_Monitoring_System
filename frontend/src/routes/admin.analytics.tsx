@@ -18,18 +18,35 @@ import {
   Calendar,
   ChevronRight,
   Download,
+  History,
+  Eye,
 } from "lucide-react";
-import { exportToCSV } from "@/utils/exportUtils";
+import { exportToCSV, exportToExcel } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
 import { ErrorState, LoadingState } from "@/components/common/States";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
 import { useAsyncData } from "@/hooks/useAsyncData";
-import { getAdminDashboard } from "@/services/sessionService";
+import { getAdminDashboard, getFacultyHistory } from "@/services/sessionService";
 
 export const Route = createFileRoute("/admin/analytics")({
   head: () => ({
@@ -148,6 +165,36 @@ function AdminAnalyticsPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Faculty History & Progress Modal State
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyFaculty, setHistoryFaculty] = useState<string>("");
+  const [historyPeriod, setHistoryPeriod] = useState<string>("this_month");
+  const [historyStartDate, setHistoryStartDate] = useState<string>("");
+  const [historyEndDate, setHistoryEndDate] = useState<string>("");
+  const [historyData, setHistoryData] = useState<any>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const fetchFacultyHistory = async (facName: string, period = historyPeriod, start = historyStartDate, end = historyEndDate) => {
+    try {
+      setHistoryLoading(true);
+      const res = await getFacultyHistory(facName, period, start, end, selectedSection || undefined, selectedYear || undefined);
+      setHistoryData(res);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load faculty history.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleOpenHistory = (facName: string) => {
+    setHistoryFaculty(facName);
+    setHistoryPeriod("this_month");
+    setHistoryStartDate("");
+    setHistoryEndDate("");
+    setHistoryOpen(true);
+    fetchFacultyHistory(facName, "this_month", "", "");
+  };
 
   const rawYearCards: YearCardItem[] = data?.yearCards ?? [];
   const rawSectionCards: SectionCardItem[] = data?.sectionsCards ?? [];
@@ -599,6 +646,7 @@ function AdminAnalyticsPage() {
                       <th className="px-4 py-3 text-center">Late</th>
                       <th className="px-4 py-3 text-center">Substitute</th>
                       <th className="px-4 py-3 text-right">Attendance %</th>
+                      <th className="px-4 py-3 text-right">History</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -630,11 +678,11 @@ function AdminAnalyticsPage() {
                           className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
                         >
                           <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-white">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 cursor-pointer" onClick={() => handleOpenHistory(fac.facultyName)}>
                               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
                                 {fac.facultyName.charAt(0).toUpperCase()}
                               </div>
-                              <span>{fac.facultyName}</span>
+                              <span className="hover:underline hover:text-indigo-600">{fac.facultyName}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3.5">
@@ -689,6 +737,17 @@ function AdminAnalyticsPage() {
                               </span>
                             </div>
                           </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenHistory(fac.facultyName)}
+                              className="h-8 px-2.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
+                            >
+                              <History className="size-3.5 mr-1" />
+                              History
+                            </Button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -699,6 +758,222 @@ function AdminAnalyticsPage() {
           </section>
         </div>
       )}
+
+      {/* Faculty History & Progress Dialog */}
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <History className="size-5 text-indigo-600" />
+                Faculty History &amp; Progress — {historyFaculty}
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Filter controls */}
+            <div className="flex flex-wrap items-end gap-3 bg-muted/40 p-3 rounded-lg border">
+              <div className="w-44">
+                <Label className="text-xs text-muted-foreground mb-1 block">Time Period</Label>
+                <Select
+                  value={historyPeriod}
+                  onValueChange={(val) => {
+                    setHistoryPeriod(val);
+                    if (val !== "custom") {
+                      fetchFacultyHistory(historyFaculty, val, "", "");
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Period" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="this_week">This Week</SelectItem>
+                    <SelectItem value="this_month">This Month</SelectItem>
+                    <SelectItem value="custom">Custom Date Range</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {historyPeriod === "custom" && (
+                <>
+                  <div className="w-36">
+                    <Label className="text-xs text-muted-foreground mb-1 block">Start Date</Label>
+                    <Input
+                      type="date"
+                      value={historyStartDate}
+                      onChange={(e) => setHistoryStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="w-36">
+                    <Label className="text-xs text-muted-foreground mb-1 block">End Date</Label>
+                    <Input
+                      type="date"
+                      value={historyEndDate}
+                      onChange={(e) => setHistoryEndDate(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => fetchFacultyHistory(historyFaculty, "custom", historyStartDate, historyEndDate)}
+                  >
+                    Apply Filter
+                  </Button>
+                </>
+              )}
+
+              <div className="ml-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!historyData?.history || historyData.history.length === 0) {
+                      toast.error("No records to export.");
+                      return;
+                    }
+                    const exportRows = historyData.history.map((h: any) => ({
+                      Date: h.date,
+                      Day: h.day,
+                      Period: h.period,
+                      Time: `${h.startTime} - ${h.endTime}`,
+                      Subject: h.subject,
+                      Section: h.section,
+                      Year: h.year,
+                      Status: h.status,
+                      "Late Arrival": h.isLate ? (h.arrivalTime || "Yes") : "No",
+                      Remarks: h.arrivalComment || "",
+                      "Reported By": h.crlrName || "",
+                      "Substitute Faculty": h.substituteName || "",
+                    }));
+                    exportToExcel(exportRows, `Faculty_History_${historyFaculty.replace(/\s+/g, "_")}`);
+                    toast.success("Faculty history exported successfully.");
+                  }}
+                  disabled={!historyData?.history?.length}
+                  className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 border-emerald-500/30"
+                >
+                  <Download className="size-4 mr-1.5" />
+                  Export History
+                </Button>
+              </div>
+            </div>
+
+            {/* Summary statistics */}
+            {historyData?.summary && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+                <div className="rounded-lg border bg-card p-3 text-center">
+                  <p className="text-[11px] font-medium text-muted-foreground">Total Classes</p>
+                  <p className="text-xl font-bold">{historyData.summary.totalClasses}</p>
+                </div>
+                <div className="rounded-lg border bg-emerald-500/10 p-3 text-center">
+                  <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">Attended</p>
+                  <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{historyData.summary.attendedClasses}</p>
+                </div>
+                <div className="rounded-lg border bg-rose-500/10 p-3 text-center">
+                  <p className="text-[11px] font-medium text-rose-700 dark:text-rose-400">Absent</p>
+                  <p className="text-xl font-bold text-rose-700 dark:text-rose-400">{historyData.summary.absentClasses}</p>
+                </div>
+                <div className="rounded-lg border bg-amber-500/10 p-3 text-center">
+                  <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">Late</p>
+                  <p className="text-xl font-bold text-amber-700 dark:text-amber-400">{historyData.summary.lateClasses}</p>
+                </div>
+                <div className="rounded-lg border bg-blue-500/10 p-3 text-center">
+                  <p className="text-[11px] font-medium text-blue-700 dark:text-blue-400">Substitute</p>
+                  <p className="text-xl font-bold text-blue-700 dark:text-blue-400">{historyData.summary.substitutedClasses}</p>
+                </div>
+                <div className="rounded-lg border bg-indigo-500/10 p-3 text-center">
+                  <p className="text-[11px] font-medium text-indigo-700 dark:text-indigo-400">Attendance %</p>
+                  <p className="text-xl font-bold text-indigo-700 dark:text-indigo-400">{historyData.summary.attendancePercentage}%</p>
+                </div>
+              </div>
+            )}
+
+            {/* History Table */}
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-muted text-muted-foreground uppercase font-semibold">
+                  <tr>
+                    <th className="p-2.5">Date &amp; Day</th>
+                    <th className="p-2.5">Period / Time</th>
+                    <th className="p-2.5">Subject</th>
+                    <th className="p-2.5">Section</th>
+                    <th className="p-2.5">Status</th>
+                    <th className="p-2.5">Late / Remarks</th>
+                    <th className="p-2.5">Reported By</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {historyLoading ? (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                        Loading history records...
+                      </td>
+                    </tr>
+                  ) : !historyData?.history || historyData.history.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                        No session records found for this faculty in the selected period.
+                      </td>
+                    </tr>
+                  ) : (
+                    historyData.history.map((log: any) => (
+                      <tr key={log.id} className="hover:bg-muted/40">
+                        <td className="p-2.5 font-medium">
+                          {log.date} {log.day ? `(${log.day})` : ""}
+                        </td>
+                        <td className="p-2.5">
+                          <div>{log.period}</div>
+                          <div className="text-[11px] text-muted-foreground">{log.startTime} - {log.endTime}</div>
+                        </td>
+                        <td className="p-2.5 font-medium">{log.subject}</td>
+                        <td className="p-2.5">
+                          <Badge variant="outline" className="text-[11px]">
+                            {log.section}
+                          </Badge>
+                        </td>
+                        <td className="p-2.5">
+                          {log.status === "Present" ? (
+                            <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 border-emerald-500/30">
+                              Present
+                            </Badge>
+                          ) : log.status === "Absent" ? (
+                            <Badge className="bg-rose-500/15 text-rose-600 hover:bg-rose-500/25 border-rose-500/30">
+                              Absent
+                            </Badge>
+                          ) : log.status === "Substitute" ? (
+                            <Badge className="bg-blue-500/15 text-blue-600 hover:bg-blue-500/25 border-blue-500/30">
+                              Substitute: {log.substituteName || "Reported"}
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Pending</Badge>
+                          )}
+                        </td>
+                        <td className="p-2.5">
+                          {log.isLate ? (
+                            <div className="text-amber-600 font-medium">
+                              Late {log.arrivalTime ? `(${log.arrivalTime})` : ""}
+                              {log.arrivalComment ? `: ${log.arrivalComment}` : ""}
+                            </div>
+                          ) : log.arrivalComment ? (
+                            <div className="text-muted-foreground">{log.arrivalComment}</div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-muted-foreground">
+                          {log.crlrName || "System"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
+

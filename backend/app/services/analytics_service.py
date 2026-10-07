@@ -564,3 +564,152 @@ async def get_crlr_dashboard_analytics(section_name: str) -> dict:
         ],
         "facultyAnalytics": await get_faculty_analytics(sec_clean),
     }
+
+
+async def get_faculty_history(
+    faculty_name: str,
+    period: Optional[str] = "this_month",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    section: Optional[str] = None,
+    year: Optional[str] = None,
+) -> dict:
+    """
+    Retrieves chronological history and progress statistics for a specific faculty member,
+    filtered by time period (Today, This Week, This Month, Custom Date Range) with Asia/Kolkata timezone.
+    """
+    from datetime import timedelta
+    db = get_database()
+    now_local = datetime.now(tz_kolkata)
+    today_str = now_local.strftime("%Y-%m-%d")
+
+    target_start_date: Optional[str] = None
+    target_end_date: Optional[str] = None
+
+    period_clean = (period or "this_month").strip().lower()
+
+    if period_clean == "today":
+        target_start_date = today_str
+        target_end_date = today_str
+    elif period_clean in ["this_week", "week", "thisweek"]:
+        start_dt = now_local - timedelta(days=now_local.weekday())
+        target_start_date = start_dt.strftime("%Y-%m-%d")
+        target_end_date = today_str
+    elif period_clean in ["this_month", "month", "thismonth"]:
+        start_dt = now_local.replace(day=1)
+        target_start_date = start_dt.strftime("%Y-%m-%d")
+        target_end_date = today_str
+    elif period_clean == "custom" and start_date and end_date:
+        target_start_date = start_date.strip()
+        target_end_date = end_date.strip()
+    elif start_date or end_date:
+        target_start_date = start_date.strip() if start_date else None
+        target_end_date = end_date.strip() if end_date else None
+
+    norm_target_fac = normalize_faculty(faculty_name)
+
+    # Build sessions query
+    query: Dict[str, Any] = {}
+    if target_start_date and target_end_date:
+        query["date"] = {"$gte": target_start_date, "$lte": target_end_date}
+    elif target_start_date:
+        query["date"] = {"$gte": target_start_date}
+    elif target_end_date:
+        query["date"] = {"$lte": target_end_date}
+
+    if section and section.upper() != "ALL":
+        norm_sec = normalize_section(section)
+        query["$or"] = [
+            {"section": section},
+            {"section": norm_sec},
+            {"section": {"$regex": norm_sec, "$options": "i"}},
+        ]
+
+    if year and year.upper() != "ALL":
+        query["year"] = {"$regex": year.replace("Year", "").strip(), "$options": "i"}
+
+    cursor = db.sessions.find(query).sort([("date", -1), ("start_time", 1)])
+    sessions = await cursor.to_list(length=2000)
+
+    matched_logs = []
+    attended_cnt = 0
+    absent_cnt = 0
+    late_cnt = 0
+    sub_cnt = 0
+    pending_cnt = 0
+
+    for s in sessions:
+        s_subj, s_fac_list = extract_individual_faculties(s)
+        norm_facs = [normalize_faculty(f) for f in s_fac_list]
+
+        # Check if faculty matches
+        matches = False
+        if norm_target_fac in norm_facs:
+            matches = True
+        else:
+            raw_f = str(s.get("faculty") or "")
+            if norm_target_fac and norm_target_fac in normalize_faculty(raw_f):
+                matches = True
+
+        if not matches:
+            continue
+
+        resp = s.get("faculty_response", "Pending")
+        arr_time = s.get("arrival_time")
+        arr_comment = s.get("arrival_comment") or s.get("remarks")
+        is_late = bool(s.get("is_late") or arr_time or arr_comment)
+
+        status_label = "Pending"
+        if is_present_status(resp):
+            status_label = "Present"
+            attended_cnt += 1
+            if is_late:
+                late_cnt += 1
+        elif is_absent_status(resp):
+            status_label = "Absent"
+            absent_cnt += 1
+        elif is_substitute_status(resp):
+            status_label = "Substitute"
+            sub_cnt += 1
+        else:
+            pending_cnt += 1
+
+        matched_logs.append({
+            "id": str(s["_id"]),
+            "date": s.get("date", today_str),
+            "day": s.get("day", ""),
+            "period": s.get("period", ""),
+            "startTime": s.get("start_time", ""),
+            "endTime": s.get("end_time", ""),
+            "subject": s_subj or s.get("subject", ""),
+            "section": s.get("section", ""),
+            "year": s.get("year", "2nd Year"),
+            "status": status_label,
+            "facultyResponse": resp,
+            "isLate": is_late,
+            "arrivalTime": arr_time,
+            "arrivalComment": arr_comment,
+            "crlrName": s.get("crlr_name"),
+            "substituteName": s.get("substitute_name"),
+        })
+
+    total_evaluated = attended_cnt + absent_cnt + sub_cnt
+    pct = round((attended_cnt / total_evaluated * 100), 1) if total_evaluated > 0 else 0.0
+
+    return {
+        "facultyName": faculty_name,
+        "period": period_clean,
+        "startDate": target_start_date,
+        "endDate": target_end_date,
+        "summary": {
+            "totalClasses": len(matched_logs),
+            "attendedClasses": attended_cnt,
+            "absentClasses": absent_cnt,
+            "lateClasses": late_cnt,
+            "substitutedClasses": sub_cnt,
+            "pendingClasses": pending_cnt,
+            "attendancePercentage": pct,
+        },
+        "history": matched_logs,
+    }
+

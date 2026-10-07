@@ -14,8 +14,13 @@ router = APIRouter(prefix="/sessions", tags=["Class Sessions"])
 
 
 @router.get("/today", response_model=ApiResponse[List[ClassSessionResponse]])
+@router.get("", response_model=ApiResponse[List[ClassSessionResponse]])
 async def get_today_sessions_api(
-    section: Optional[str] = Query(None),
+    year: Optional[str] = Query(None, description="Filter by Academic Year"),
+    section: Optional[str] = Query(None, description="Filter by Section"),
+    branch: Optional[str] = Query(None, description="Filter by Branch / Department"),
+    status: Optional[str] = Query(None, description="Filter by Session Status: ALL, ACTIVE, COMPLETED, UPCOMING, EXPIRED, PENDING"),
+    date: Optional[str] = Query(None, description="YYYY-MM-DD date string"),
     current_user: dict = Depends(get_current_user),
 ):
     user_role = current_user.get("role")
@@ -24,8 +29,12 @@ async def get_today_sessions_api(
     # If user is CR or LR, force section restriction
     if user_role in [UserRole.CR.value, UserRole.LR.value]:
         section = user_sec
+    elif user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
+        user_dept = current_user.get("department") or current_user.get("branch")
+        if user_dept:
+            branch = user_dept
 
-    data = await get_sessions(section=section)
+    data = await get_sessions(section=section, year=year, branch=branch, status_filter=status, date_str=date)
     return ApiResponse(success=True, data=data)
 
 
