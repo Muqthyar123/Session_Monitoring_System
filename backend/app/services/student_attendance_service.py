@@ -8,6 +8,7 @@ from app.db.mongodb import get_database
 from app.schemas.student_attendance import (
     StudentAttendanceSubmitRequest,
     StudentAttendanceRecordResponse,
+    StudentAttendanceCorrectRequest,
     StudentAnalyticsItem,
 )
 
@@ -264,6 +265,131 @@ async def save_absence_reason(record_id: str, reason: str, actor_name: str, acto
         {"_id": actual_id},
         {"$set": update_payload},
     )
+
+    updated = await db.student_attendance.find_one({"_id": actual_id})
+    updated["_id"] = str(updated["_id"])
+    return StudentAttendanceRecordResponse(**updated)
+
+
+async def correct_student_attendance(
+    record_id: Optional[str],
+    data: StudentAttendanceCorrectRequest,
+    current_user: dict,
+) -> StudentAttendanceRecordResponse:
+    """CR/LR and Admin can correct an absent student to Present with a mandatory audit reason."""
+    db = get_database()
+    now_local = datetime.now(tz_kolkata)
+    now_utc = datetime.now(timezone.utc)
+    user_role = current_user.get("role")
+    user_sec = (current_user.get("section") or "").strip().upper()
+    user_name = current_user.get("name", "Class Representative")
+    user_id = str(current_user.get("_id", ""))
+
+    # 1. Validate mandatory reason (reject empty or whitespace-only, min length 5)
+    reason_str = (data.reason or "").strip()
+    if len(reason_str) < 5:
+        raise HTTPException(
+            status_code=400,
+            detail="A detailed mandatory reason is required to correct attendance (minimum 5 characters).",
+        )
+
+    # 2. Locate record by record_id or roll_number + date
+    clean_id = (record_id or "").strip()
+    doc = None
+    if clean_id and ObjectId.is_valid(clean_id):
+        doc = await db.student_attendance.find_one({"_id": ObjectId(clean_id)})
+    if not doc and clean_id:
+        doc = await db.student_attendance.find_one({"_id": clean_id})
+    if not doc and data.roll_number:
+        r_clean = data.roll_number.strip().upper()
+        target_date = data.date or now_local.strftime("%Y-%m-%d")
+        doc = await db.student_attendance.find_one({
+            "roll_number": r_clean,
+            "date": target_date,
+        })
+    if not doc and clean_id:
+        r_clean = clean_id.upper()
+        target_date = data.date or now_local.strftime("%Y-%m-%d")
+        doc = await db.student_attendance.find_one({
+            "roll_number": r_clean,
+            "date": target_date,
+        })
+    if not doc and data.roll_number:
+        r_clean = data.roll_number.strip().upper()
+        doc = await db.student_attendance.find_one({
+            "roll_number": r_clean,
+        }, sort=[("date", -1), ("created_at", -1)])
+
+    if not doc:
+        raise HTTPException(status_code=404, detail="Student attendance record not found for correction.")
+
+    # 3. RBAC & Section Authorization
+    rec_sec = (doc.get("section") or "").strip().upper()
+    rec_year = (doc.get("year") or "").strip()
+    rec_date = doc.get("date") or now_local.strftime("%Y-%m-%d")
+    roll_number = doc.get("roll_number")
+
+    if user_role in ["CR", "LR"]:
+        if user_sec and rec_sec != user_sec:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access forbidden: You can only correct attendance for your assigned section ({user_sec}).",
+            )
+
+    # 4. Status update & Audit preservation
+    new_status = data.new_status.strip().title() if data.new_status else "Present"
+    old_status = doc.get("status", "Absent")
+
+    actual_id = doc["_id"]
+    update_payload = {
+        "status": new_status,
+        "original_status": doc.get("original_status") or old_status,
+        "correction_reason": reason_str,
+        "corrected_by": f"{user_name} ({user_role})",
+        "corrected_by_role": user_role,
+        "corrected_by_id": user_id,
+        "corrected_at": now_utc,
+        "updated_at": now_utc,
+    }
+
+    await db.student_attendance.update_one(
+        {"_id": actual_id},
+        {"$set": update_payload},
+    )
+
+    # 5. Update student_attendance_submissions aggregate counts for the section
+    if new_status == "Present" and old_status == "Absent":
+        # Decrement absent count and remove roll number from absent_rolls
+        await db.student_attendance_submissions.update_one(
+            {"year": rec_year, "section": rec_sec, "date": rec_date},
+            {
+                "$pull": {"absent_rolls": roll_number},
+                "$inc": {"absent_count": -1},
+                "$set": {"updated_at": now_utc},
+            },
+        )
+        # Ensure absent_count doesn't drop below 0
+        await db.student_attendance_submissions.update_one(
+            {"year": rec_year, "section": rec_sec, "date": rec_date, "absent_count": {"$lt": 0}},
+            {"$set": {"absent_count": 0}},
+        )
+
+    # 6. Record Audit Log
+    await db.audit_logs.insert_one({
+        "actor_id": user_id,
+        "actor_name": user_name,
+        "actor_role": user_role,
+        "action": "CORRECT_STUDENT_ATTENDANCE",
+        "attendance_record_id": str(actual_id),
+        "roll_number": roll_number,
+        "year": rec_year,
+        "section": rec_sec,
+        "date": rec_date,
+        "old_status": old_status,
+        "new_status": new_status,
+        "reason": reason_str,
+        "created_at": now_utc,
+    })
 
     updated = await db.student_attendance.find_one({"_id": actual_id})
     updated["_id"] = str(updated["_id"])

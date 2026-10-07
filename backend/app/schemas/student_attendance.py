@@ -25,6 +25,15 @@ class AbsenteeReasonSaveRequest(BaseModel):
     reason: str
 
 
+class StudentAttendanceCorrectRequest(BaseModel):
+    roll_number: Optional[str] = Field(None, alias="rollNumber")
+    new_status: str = Field("Present", alias="newStatus")
+    reason: str = Field(..., description="Mandatory reason explaining attendance correction")
+    date: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class StudentAttendanceRecordResponse(BaseModel):
     id: str = Field(..., alias="_id")
     date: str
@@ -37,11 +46,16 @@ class StudentAttendanceRecordResponse(BaseModel):
     parent_phone: Optional[str] = Field(None, alias="parentPhone")
     submitted_by: Optional[str] = Field(None, alias="submittedBy")
     status: str = "Absent"
+    original_status: Optional[str] = Field(None, alias="originalStatus")
     subject: Optional[str] = "Academic Session"
     faculty: Optional[str] = "Assigned Faculty"
     session: Optional[str] = "Daily Session"
     reason: Optional[str] = None
     reason_updated_by: Optional[str] = Field(None, alias="reasonUpdatedBy")
+    correction_reason: Optional[str] = Field(None, alias="correctionReason")
+    corrected_by: Optional[str] = Field(None, alias="correctedBy")
+    corrected_by_role: Optional[str] = Field(None, alias="correctedByRole")
+    corrected_at: Optional[datetime] = Field(None, alias="correctedAt")
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -89,6 +89,25 @@ async def submit_attendance(
             detail="Access forbidden: You can only submit attendance for your assigned section.",
         )
 
+    # Deadline enforcement: Faculty presence must be updated within the session hour/period
+    now_local = datetime.now(tz_kolkata)
+    now_utc = datetime.now(timezone.utc)
+    date_str = session.get("date", now_local.strftime("%Y-%m-%d"))
+    end_time_str = session.get("end_time", "17:00")
+    try:
+        end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
+        if end_dt.hour < 8:
+            end_dt = end_dt.replace(hour=end_dt.hour + 12)
+        if user_role in ["CR", "LR"] and now_local.timestamp() >= end_dt.timestamp():
+            raise HTTPException(
+                status_code=400,
+                detail="Faculty presence can no longer be updated for this session as the scheduled time has ended.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     # Validation: substitute_name rules
     if data.status == AttendanceStatus.PRESENT and data.substitute_name:
         raise HTTPException(
@@ -102,8 +121,6 @@ async def submit_attendance(
             detail="Substitute faculty name is required when status is SUBSTITUTE.",
         )
 
-    now_local = datetime.now(tz_kolkata)
-    now_utc = datetime.now(timezone.utc)
     response_time_str = now_local.strftime("%H:%M")
 
     arr_time = data.arrival_time.strip() if data.arrival_time else None
@@ -137,6 +154,7 @@ async def submit_attendance(
         "arrival_time": arr_time,
         "arrival_comment": arr_comment,
         "is_late": is_late,
+        "submitted_at": now_utc.isoformat(),
         "created_at": now_utc,
     }
     await db.attendance_records.insert_one(rec_doc)
@@ -159,6 +177,13 @@ async def submit_attendance(
         "arrival_comment": arr_comment,
         "is_late": is_late,
         "response_time": response_time_str,
+        "submitted_by_id": user_id,
+        "submitted_by_name": user_name,
+        "submitted_role": user_role,
+        "submitted_at": now_utc.isoformat(),
+        "auto_marked_absent": False,
+        "auto_absence_reason": None,
+        "session_status": "Completed",
         "updated_at": now_utc,
     }
     await db.sessions.update_one({"_id": session["_id"]}, {"$set": update_data})

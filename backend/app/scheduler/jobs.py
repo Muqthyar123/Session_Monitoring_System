@@ -85,5 +85,38 @@ async def process_scheduled_sessions_job():
                     session["_id"] = str(session["_id"])
                     await notify_10min_no_response(session)
 
+            # Check 3: Auto-mark faculty as Absent after scheduled session hour/period completion
+            end_time_str = session.get("end_time", "17:00")
+            try:
+                end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
+                if end_dt.hour < 8:
+                    end_dt = end_dt.replace(hour=end_dt.hour + 12)
+                end_ts = end_dt.timestamp()
+
+                if (
+                    now_ts >= end_ts
+                    and session.get("faculty_response") == FacultyResponseStatus.PENDING.value
+                ):
+                    result = await db.sessions.update_one(
+                        {
+                            "_id": s_id,
+                            "faculty_response": FacultyResponseStatus.PENDING.value,
+                        },
+                        {
+                            "$set": {
+                                "faculty_response": FacultyResponseStatus.ABSENT.value,
+                                "session_status": SessionStatus.COMPLETED.value,
+                                "auto_marked_absent": True,
+                                "auto_absence_reason": "Automatically marked absent after session completion",
+                                "response_time": end_time_str,
+                                "updated_at": now_utc,
+                            }
+                        },
+                    )
+                    if result.modified_count > 0:
+                        logger.info("Auto-marked session %s (%s) faculty absent after completion", s_id, session["subject"])
+            except Exception as auto_abs_err:
+                logger.debug("Failed checking end time for session %s: %s", s_id, str(auto_abs_err))
+
     except Exception as e:
         logger.error("Error running process_scheduled_sessions_job: %s", str(e), exc_info=True)

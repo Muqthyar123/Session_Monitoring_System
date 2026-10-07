@@ -45,15 +45,32 @@ def combine_continuous_periods(periods: List[dict]) -> List[dict]:
                 "periods_included": [p_num],
             }
         else:
-            # Check if continuous: matching subject & faculty, and start_time equals previous end_time
-            same_subj = current_session["subject"].lower() == subj.lower()
-            same_fac = current_session["faculty"].lower() == fac.lower()
-            is_adjacent = current_session["end_time"] == s_time
+            # Check if continuous: matching subject & faculty, and start_time equals previous end_time OR consecutive period numbers
+            curr_subj = current_session["subject"].lower().strip()
+            new_subj = subj.lower().strip()
+            same_subj = (
+                curr_subj == new_subj
+                or (("lab" in curr_subj or "practical" in curr_subj or "workshop" in curr_subj)
+                    and (curr_subj.split()[0] == new_subj.split()[0]))
+            )
+            same_fac = (
+                current_session["faculty"].lower().strip() == fac.lower().strip()
+                or not fac
+                or not current_session["faculty"]
+            )
+            is_adjacent = (
+                current_session["end_time"] == s_time
+                or p_num == (max(current_session["periods_included"]) + 1)
+            )
 
             if same_subj and same_fac and is_adjacent:
                 # Merge into continuous session
                 current_session["end_time"] = e_time
                 current_session["periods_included"].append(p_num)
+                if fac_names:
+                    for fn in fac_names:
+                        if fn not in current_session["faculty_names"]:
+                            current_session["faculty_names"].append(fn)
             else:
                 combined.append(current_session)
                 current_session = {
@@ -72,7 +89,7 @@ def combine_continuous_periods(periods: List[dict]) -> List[dict]:
     if current_session:
         combined.append(current_session)
 
-    # Format period representation (e.g. "Period 1" or "Period 1 - Period 3")
+    # Format period representation (e.g. "Period 1" or "Period 1 - Period 2")
     for s in combined:
         p_list = s["periods_included"]
         if len(p_list) == 1:
@@ -237,9 +254,11 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
 
     response_window_expired = False
     remaining_seconds = None
+    auto_marked_absent = session.get("auto_marked_absent", False)
+    auto_absence_reason = session.get("auto_absence_reason")
 
     if faculty_resp != FacultyResponseStatus.PENDING.value:
-        # Already responded
+        # Already responded or previously marked
         response_window_expired = False
         remaining_seconds = None
         status = SessionStatus.COMPLETED.value
@@ -253,15 +272,22 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
             remaining_seconds = max(0, int(window_end_dt - now_ts))
             response_window_expired = now_ts > window_end_dt
         else:
-            # Class period ended without response
+            # Class period ended without response -> automatically consider faculty absent
             remaining_seconds = 0
             response_window_expired = True
-            status = SessionStatus.EXPIRED.value
+            faculty_resp = FacultyResponseStatus.ABSENT.value
+            status = SessionStatus.COMPLETED.value
+            auto_marked_absent = True
+            auto_absence_reason = "Automatically marked absent after session completion"
 
     session_copy = dict(session)
     session_copy["session_status"] = status
+    session_copy["faculty_response"] = faculty_resp
     session_copy["response_window_seconds_remaining"] = remaining_seconds
     session_copy["response_window_expired"] = response_window_expired
+    session_copy["auto_marked_absent"] = auto_marked_absent
+    if auto_absence_reason:
+        session_copy["auto_absence_reason"] = auto_absence_reason
     return session_copy
 
 

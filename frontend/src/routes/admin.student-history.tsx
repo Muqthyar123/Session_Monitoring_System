@@ -583,9 +583,15 @@ function AdminStudentHistoryPage() {
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
                           <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1 font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded">
-                              <UserX className="size-3.5" /> Absent on {log.date}
-                            </span>
+                            {log.status === "Present" ? (
+                              <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded">
+                                <CheckCircle2 className="size-3.5" /> Corrected to Present on {log.date}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded">
+                                <UserX className="size-3.5" /> Absent on {log.date}
+                              </span>
+                            )}
                             <Badge variant="outline" className="text-[10px]">
                               {log.session || "Academic Session"}
                             </Badge>
@@ -607,6 +613,18 @@ function AdminStudentHistoryPage() {
                             {log.faculty || "Assigned Faculty"}
                           </div>
                         </div>
+
+                        {log.correctionReason && (
+                          <div className="rounded-md bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 p-2.5 text-xs space-y-1">
+                            <p className="text-emerald-900 dark:text-emerald-200">
+                              <strong className="font-semibold text-emerald-800 dark:text-emerald-300">CR/LR Correction:</strong> {log.correctionReason}
+                            </p>
+                            <p className="text-[10px] text-emerald-700 dark:text-emerald-400">
+                              Corrected by: <strong>{log.correctedBy || "Class Representative"}</strong>
+                              {log.correctedAt && ` on ${new Date(log.correctedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                            </p>
+                          </div>
+                        )}
 
                         <div className="rounded-md bg-muted/50 p-2.5 text-xs">
                           {log.reason ? (

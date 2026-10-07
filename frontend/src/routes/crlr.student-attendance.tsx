@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, UserX, Search, Send, GraduationCap, Calendar, Lock, AlertCircle, Download } from "lucide-react";
+import { CheckCircle2, UserX, Search, Send, GraduationCap, Calendar, Lock, AlertCircle, Download, Edit3, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/utils/exportUtils";
 import { CRLRLayout } from "@/layouts/CRLRLayout";
@@ -8,16 +8,26 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import {
   getCRLRStudents,
   getCRLRSubmissionStatus,
   submitStudentAttendance,
+  correctStudentAttendance,
 } from "@/services/studentAttendanceService";
+import type { StudentItem } from "@/services/studentService";
 import { getSessions } from "@/services/sessionService";
 
 export const Route = createFileRoute("/crlr/student-attendance")({
@@ -66,12 +76,47 @@ function CRLRStudentAttendancePage() {
   const [absentRolls, setAbsentRolls] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
 
+  // Attendance Correction state
+  const [correctionTarget, setCorrectionTarget] = useState<StudentItem | null>(null);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correcting, setCorrecting] = useState(false);
+
   // Auto-sync submitted absentees if attendance is already submitted
   useEffect(() => {
     if (subStatus?.isSubmittedToday && subStatus.absentRolls) {
       setAbsentRolls(new Set(subStatus.absentRolls));
     }
   }, [subStatus]);
+
+  const handleCorrectAttendance = async () => {
+    if (!correctionTarget) return;
+    const reasonTrimmed = correctionReason.trim();
+    if (!reasonTrimmed || reasonTrimmed.length < 5) {
+      toast.error("Reason is mandatory (minimum 5 characters).");
+      return;
+    }
+    setCorrecting(true);
+    try {
+      await correctStudentAttendance({
+        rollNumber: correctionTarget.rollNumber,
+        newStatus: "Present",
+        reason: reasonTrimmed,
+      });
+      toast.success(`Corrected attendance for ${correctionTarget.name} to PRESENT.`);
+      setAbsentRolls((prev) => {
+        const next = new Set(prev);
+        next.delete(correctionTarget.rollNumber);
+        return next;
+      });
+      setCorrectionTarget(null);
+      setCorrectionReason("");
+      if (reloadStatus) reloadStatus();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to correct attendance.");
+    } finally {
+      setCorrecting(false);
+    }
+  };
 
   const filteredStudents = useMemo(() => {
     if (!students) return [];
@@ -338,9 +383,26 @@ function CRLRStudentAttendancePage() {
 
                           <div>
                             {isAbsent ? (
-                              <Badge variant="destructive" className="gap-1">
-                                <UserX className="size-3" /> ABSENT
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="destructive" className="gap-1">
+                                  <UserX className="size-3" /> ABSENT
+                                </Badge>
+                                {isSubmittedToday && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs px-2 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-300 dark:border-emerald-800"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCorrectionTarget(s);
+                                      setCorrectionReason("");
+                                    }}
+                                    title="Correct status to Present with mandatory reason"
+                                  >
+                                    <Edit3 className="size-3" /> Update
+                                  </Button>
+                                )}
+                              </div>
                             ) : (
                               <Badge variant="outline" className="gap-1 border-emerald-500/40 text-emerald-600">
                                 <CheckCircle2 className="size-3" /> PRESENT
@@ -421,12 +483,89 @@ function CRLRStudentAttendancePage() {
 
                 {isSubmittedToday && (
                   <p className="text-[11px] text-center text-muted-foreground">
-                    Only one attendance submission is permitted per section each day. Next submission opens tomorrow.
+                    Only one attendance submission is permitted per section each day. Use <strong>Update</strong> button next to an absent student to correct their status with a mandatory audit reason.
                   </p>
                 )}
               </CardContent>
             </Card>
           </div>
+
+          {/* Attendance Correction Modal */}
+          <Dialog open={!!correctionTarget} onOpenChange={(open) => !open && setCorrectionTarget(null)}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Edit3 className="size-5 text-emerald-600" />
+                  Update Student Attendance
+                </DialogTitle>
+                <DialogDescription>
+                  Correct an absent student to Present. A detailed mandatory reason is required for the audit trail.
+                </DialogDescription>
+              </DialogHeader>
+
+              {correctionTarget && (
+                <div className="space-y-4 pt-2">
+                  <div className="rounded-lg bg-muted/60 p-3 text-xs space-y-1.5 border">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Student Name:</span>
+                      <span className="font-bold text-foreground">{correctionTarget.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Roll Number:</span>
+                      <span className="font-mono font-semibold text-foreground">{correctionTarget.rollNumber}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Academic Year & Section:</span>
+                      <span>{user?.year} &bull; Section {user?.section}</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t">
+                      <span className="text-muted-foreground">Status Change:</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">ABSENT &rarr; PRESENT</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="correction-reason" className="text-xs font-semibold flex items-center justify-between">
+                      <span>Reason for Attendance Correction *</span>
+                      <span className="text-[10px] text-muted-foreground">(Mandatory, min 5 chars)</span>
+                    </Label>
+                    <textarea
+                      id="correction-reason"
+                      rows={3}
+                      value={correctionReason}
+                      onChange={(e) => setCorrectionReason(e.target.value)}
+                      placeholder="e.g. Student arrived late with official permission from HOD, marked present after roll call."
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    {correctionReason.trim().length > 0 && correctionReason.trim().length < 5 && (
+                      <p className="text-[11px] text-rose-500">Reason must be at least 5 characters long.</p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCorrectionTarget(null)}
+                      disabled={correcting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={handleCorrectAttendance}
+                      disabled={correcting || correctionReason.trim().length < 5}
+                    >
+                      {correcting ? "Saving Correction..." : "Confirm & Mark Present"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </CRLRLayout>

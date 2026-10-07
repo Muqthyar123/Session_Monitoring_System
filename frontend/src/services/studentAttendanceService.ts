@@ -13,11 +13,16 @@ export interface AbsenteeStudentItem {
   parentPhone?: string;
   submittedBy?: string;
   status: string;
+  originalStatus?: string;
   subject?: string;
   faculty?: string;
   session?: string;
   reason?: string;
   reasonUpdatedBy?: string;
+  correctionReason?: string;
+  correctedBy?: string;
+  correctedByRole?: string;
+  correctedAt?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -108,4 +113,20 @@ export async function getStudentCompleteHistory(rollNumber: string): Promise<Abs
   return request<AbsenteeStudentItem[]>(
     `/analytics/student-history?rollNumber=${encodeURIComponent(rollNumber)}`
   );
+}
+
+export async function correctStudentAttendance(payload: {
+  recordId?: string;
+  rollNumber?: string;
+  date?: string;
+  newStatus?: string;
+  reason: string;
+}): Promise<AbsenteeStudentItem> {
+  const url = payload.recordId
+    ? `/crlr/student-attendance/${encodeURIComponent(payload.recordId)}/correct`
+    : `/crlr/student-attendance/correct`;
+  return request<AbsenteeStudentItem>(url, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }

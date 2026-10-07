@@ -45,6 +45,12 @@ class ClassSessionResponse(BaseModel):
         None, alias="responseWindowSecondsRemaining"
     )
     response_window_expired: bool = Field(False, alias="responseWindowExpired")
+    submitted_by_id: Optional[str] = None
+    submitted_by_name: Optional[str] = Field(None, alias="submittedByName")
+    submitted_role: Optional[str] = Field(None, alias="submittedRole")
+    submitted_at: Optional[str] = Field(None, alias="submittedAt")
+    auto_marked_absent: Optional[bool] = Field(False, alias="autoMarkedAbsent")
+    auto_absence_reason: Optional[str] = Field(None, alias="autoAbsenceReason")
 
     model_config = ConfigDict(populate_by_name=True)
 

@@ -8,6 +8,7 @@ from app.schemas.student_attendance import (
     StudentAnalyticsItem,
     StudentAttendanceRecordResponse,
     StudentAttendanceSubmitRequest,
+    StudentAttendanceCorrectRequest,
 )
 from app.schemas.user import UserRole
 from app.services.student_attendance_service import (
@@ -19,6 +20,7 @@ from app.services.student_attendance_service import (
     get_students_analytics_summary,
     save_absence_reason,
     submit_student_attendance,
+    correct_student_attendance,
 )
 from app.services.student_service import get_students
 
@@ -69,6 +71,29 @@ async def submit_student_attendance_api(
     """Submit today's student attendance absentees list for CRLR's assigned year & section."""
     res = await submit_student_attendance(data, current_user)
     return ApiResponse(success=True, data=res, message=res["message"])
+
+
+@router.patch("/crlr/student-attendance/correct", response_model=ApiResponse[StudentAttendanceRecordResponse])
+@router.post("/crlr/student-attendance/correct", response_model=ApiResponse[StudentAttendanceRecordResponse])
+async def correct_student_attendance_direct_api(
+    data: StudentAttendanceCorrectRequest,
+    current_user: dict = Depends(require_roles([UserRole.CR, UserRole.LR, UserRole.ADMIN])),
+):
+    """Correct an absent student to Present with a mandatory reason."""
+    updated = await correct_student_attendance(None, data, current_user)
+    return ApiResponse(success=True, data=updated, message="Student attendance corrected successfully.")
+
+
+@router.patch("/crlr/student-attendance/{record_id}/correct", response_model=ApiResponse[StudentAttendanceRecordResponse])
+@router.patch("/student-attendance/{record_id}/correct", response_model=ApiResponse[StudentAttendanceRecordResponse])
+async def correct_student_attendance_by_id_api(
+    record_id: str,
+    data: StudentAttendanceCorrectRequest,
+    current_user: dict = Depends(require_roles([UserRole.CR, UserRole.LR, UserRole.ADMIN])),
+):
+    """Correct an absent student record to Present with a mandatory reason."""
+    updated = await correct_student_attendance(record_id, data, current_user)
+    return ApiResponse(success=True, data=updated, message="Student attendance corrected successfully.")
 
 
 # ----------------------------------------------------

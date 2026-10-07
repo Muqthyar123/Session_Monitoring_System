@@ -140,33 +140,50 @@ export function AttendanceForm({
         <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
           {answered && !isEditing ? (
             /* Completed & Marked Period -> Read-Only Badge + Re-mark Option */
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
-              {session.facultyResponse === "Present" ? (
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                  <CheckCircle2 className="size-4" /> Attended (Faculty Present)
-                </span>
-              ) : session.facultyResponse === "Not Present" || session.facultyResponse === "Absent" ? (
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
-                  <UserX className="size-4" /> Not Attended (Faculty Absent)
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                  <UserCheck className="size-4" /> Substitute: {session.substituteName || "Assigned"}
-                </span>
-              )}
-              <div className="flex items-center gap-2 ml-auto">
-                {session.responseTime ? (
-                  <span className="text-xs text-slate-400">Responded: {session.responseTime}</span>
-                ) : null}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
-                  onClick={() => setIsEditing(true)}
-                >
-                  Change Response
-                </Button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
+                {session.facultyResponse === "Present" ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                    <CheckCircle2 className="size-4" /> Attended (Faculty Present)
+                  </span>
+                ) : session.facultyResponse === "Not Present" || session.facultyResponse === "Absent" ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+                    <UserX className="size-4" /> Not Attended (Faculty Absent)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                    <UserCheck className="size-4" /> Substitute: {session.substituteName || "Assigned"}
+                  </span>
+                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  {session.responseTime ? (
+                    <span className="text-xs text-slate-400">Responded: {session.responseTime}</span>
+                  ) : null}
+                  {!session.autoMarkedAbsent && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
+                      onClick={() => setIsEditing(true)}
+                    >
+                      Change Response
+                    </Button>
+                  )}
+                </div>
               </div>
+
+              {/* Submitter details / Auto-absent note */}
+              {session.submittedByName ? (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                  <UserCheck className="size-3 text-emerald-600 shrink-0" />
+                  Recorded by: <span className="font-semibold text-foreground">{session.submittedByName} ({session.submittedRole || "CR/LR"})</span>
+                  {session.responseTime ? ` at ${session.responseTime}` : ""}
+                </p>
+              ) : session.autoMarkedAbsent || session.facultyResponse === "Not Present" ? (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-1 rounded border border-amber-200 dark:border-amber-900/60">
+                  ⚠️ Automatically marked absent after scheduled session completion (no response submitted within hour).
+                </p>
+              ) : null}
             </div>
           ) : step === "choose" ? (
             /* Active Class Period -> Interactive Present / Not Present Buttons */
