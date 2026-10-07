@@ -1,53 +1,131 @@
-# College Faculty Attendance & Session Monitoring System — Frontend
+# College Session Monitoring System — Frontend Application
 
-Production-ready **React + TypeScript** frontend for the **College Faculty Attendance & Session Monitoring System**, fully integrated with the **Python FastAPI Backend** and **MongoDB Atlas**.
+Production-ready **React 19 + TypeScript** frontend for the **College Faculty & Student Session Monitoring System**, fully integrated with the **Python FastAPI Backend** and **MongoDB Atlas**.
 
 ---
 
-## 🚀 Tech Stack
+## 🚀 Tech Stack & Core Libraries
 
 - **Framework**: React 19 + TypeScript
-- **Routing**: TanStack Router (File-based routing)
-- **Styling**: Tailwind CSS v4 + shadcn/ui
+- **Bundler & Build Tool**: Vite v8 + Nitro
+- **Routing**: TanStack Router (Type-safe, file-based routing)
+- **Styling**: Tailwind CSS v4 + shadcn/ui component primitives
 - **Icons**: Lucide React
-- **Charts**: Recharts
-- **HTTP Client**: Centralized Fetch API Client with JWT Bearer Authentication
+- **Charts & Visualizations**: Recharts
+- **Toast Notifications**: Sonner
+- **Data Exporting**: Custom CSV/Excel exporter with header transformations
+- **HTTP Client**: Centralized Fetch API Client with automatic JWT Bearer authentication interceptor and binary file download handler
 
 ---
 
-## 🔑 Login Credentials
+## 🔑 Role Login Credentials & Portals
 
-| Role | Login Portal | Email | Password | Section / Scope |
-| --- | --- | --- | --- | --- |
-| **ADMIN** | `/admin/login` | `admin@example.com` | `demo1234` | System-wide Administration |
-| **CR** | `/auth/login` | `cr@example.com` | `demo1234` | Assigned Section (`II-A`) |
-| **LR** | `/auth/login` | `lr@example.com` | `demo1234` | Assigned Section (`II-A`) |
+| Role | Portal Login URL | Default Identifier / Email | Default Password | Monitored Scope |
+|---|---|---|---|---|
+| **ADMIN** | `/admin/login` | `admin@example.com` | `demo1234` | System-wide Administrative Management |
+| **MENTOR** | `/mentor/login` | `605101` (or `mentor@example.com`) | `demo1234` | Assigned Students & Sections |
+| **CR** | `/auth/login` | `cr@example.com` | `demo1234` | Assigned Section (`II-A` / `2nd Year`) |
+| **LR** | `/auth/login` | `lr@example.com` | `demo1234` | Assigned Section (`II-A` / `2nd Year`) |
 
 ---
 
-## 🗺️ Application Routes
+## 🗺️ Application Route Structure
+
+### 1. Root & Authentication Routes
+```text
+/                      Portal Directory Landing (Admin / CR-LR / Mentor)
+/auth/login            Student Representative (CR / LR) Login
+/admin/login           System Administrator Login
+/mentor/login          Faculty Mentor Login
+```
+
+### 2. Admin Portal Routes (`/admin/*`)
+```text
+/admin/dashboard            Executive Dashboard (Live Atlas metrics, quick actions & system summary)
+/admin/analytics            Faculty Analytics (Attendance rates, department breakdowns & session logs)
+/admin/student-analytics    Student Analytics (Section attendance percentages & frequent absentees)
+/admin/student-history      Student History (Longitudinal attendance search, date filters & audit records)
+/admin/departments          Department Management (Add, view, edit & deactivate academic branches)
+/admin/sections             Academic Sections (Add sections dynamically per year & department)
+/admin/mentors              Manage Mentors (CRUD faculty mentors, contact details & Excel bulk import)
+/admin/mentor-mapping       Mentor-Student Mapping (Excel import, serial range assignments & conflict preview)
+/admin/students             Manage Students (CRUD students, roll number indexing & Excel import)
+/admin/timetable            Timetable Management (Multi-sheet workbook upload, templates & schedule viewer)
+/admin/cr-lr                CR/LR Management (Manual creation & Excel import of student representatives)
+/admin/sessions             Session Monitoring (Continuous teaching sessions, active periods & lab merging)
+/admin/alerts               Notifications & Alerts (Immediate absence escalations & 10-min timeout alerts)
+```
+
+### 3. CR / LR Representative Portal Routes (`/crlr/*`)
+```text
+/crlr/dashboard             CR/LR Dashboard (Current continuous session & quick presence reporting)
+/crlr/attendance            Faculty Presence Response (Hourly presence deadline & lab merging)
+/crlr/student-attendance    Daily Student Attendance (Single submission per day with phone numbers)
+                            + Attendance Correction (Correct absent student to PRESENT with audit reason)
+/crlr/timetable             Class Timetable (Assigned section's weekly period schedule)
+/crlr/analytics             Section Attendance Trends & Weekly Analytics
+/crlr/notifications         In-App Notifications (Session start alerts & read/unread tracking)
+```
+
+### 4. Faculty Mentor Portal Routes (`/mentor/*`)
+```text
+/mentor/dashboard           Mentor Dashboard (Assigned student metrics, today's absentees & monitored years)
+/mentor/students            Enrolled Students Directory (Scoped assigned students, contact info & leave status)
+/mentor/absentees           Today's Absentees (Section-wise absentee lists, phone dialers, reason notes & CSV export)
+/mentor/planned-absences    Student Planned Absence Management (Record approved date ranges, edit & cancel)
+/mentor/analytics           Attendance Analytics (Longitudinal attendance percentages & frequent absentee tracking)
+```
+
+---
+
+## 📁 Frontend Directory Architecture
 
 ```text
-/                      Portal Selection (Admin / CR / LR)
-/admin/login           Administrator Login
-/admin/dashboard       Admin Dashboard (Live Atlas Analytics + System Summary)
-/admin/timetable       Timetable Management (Excel upload, template download, section timetables)
-/admin/cr-lr           CR/LR Management (Manual CRUD + Excel workbook import)
-/admin/sessions        Session Monitoring (Active, upcoming & completed continuous sessions)
-/admin/alerts          Admin Attendance Alerts (Immediate absence & 10-min escalation alerts)
-
-/auth/login            CR / LR Student Representative Login
-/crlr/dashboard        CR/LR Dashboard (Assigned section overview & active session)
-/crlr/attendance       Faculty Attendance Response (PRESENT, ABSENT, SUBSTITUTE reporting)
-/crlr/analytics        Section Attendance Analytics & Weekly Trends
-/crlr/notifications    Notification Panel (Unread counts & mark read status)
+frontend/src/
+├── components/
+│   ├── common/              # Reusable UI widgets:
+│   │   ├── DataTable.tsx    # Paginated data table with sorting and customizable column cells
+│   │   ├── StatCard.tsx     # KPI summary card with trend tones and icons
+│   │   ├── PageHeader.tsx   # Consistent top banner with breadcrumbs and action buttons
+│   │   ├── FileUpload.tsx   # Drag-and-drop Excel file uploader with validation
+│   │   ├── RoleGuard.tsx    # Client-side RBAC route protector
+│   │   └── States.tsx       # LoadingState, EmptyState, and ErrorState components
+│   ├── sessions/            # Attendance forms, hourly timer countdown & response windows
+│   ├── notifications/       # NotificationBell with unread badges
+│   └── ui/                  # Accessible UI primitives (Button, Card, Dialog, Select, Badge, Table, Input)
+├── layouts/
+│   ├── AdminLayout.tsx      # Admin portal left sidebar navigation with active route highlights
+│   ├── CRLRLayout.tsx       # CR/LR mobile-responsive navigation wrapper
+│   └── MentorLayout.tsx     # Mentor portal navigation wrapper
+├── routes/                  # TanStack Router file-based route definitions
+├── services/                # Backend API service integration layer:
+│   ├── apiClient.ts         # Centralized Fetch client with JWT interceptor & binary download handler
+│   ├── authService.ts       # Authentication, login state & user profile storage
+│   ├── mentorMappingService.ts # Excel template download, preview parsing, mapping commit & delete
+│   ├── plannedAbsenceService.ts # Planned absence CRUD, date filters & active state lookups
+│   ├── mentorService.ts     # Mentor dashboard, scoped students, absentees & follow-up notes
+│   ├── studentService.ts    # Student management, search, year/batch inference & Excel import
+│   ├── studentAttendanceService.ts # Daily attendance submission & audit-logged correction
+│   ├── sectionService.ts    # Dynamic section management per year and branch
+│   ├── departmentService.ts # Academic department management
+│   ├── timetableService.ts  # Timetable upload, section timetable retrieval & templates
+│   ├── sessionService.ts    # Continuous session engine viewer & faculty presence submitter
+│   ├── notificationService.ts # In-app notifications & unread counter
+│   └── analyticsService.ts  # Faculty and student analytics aggregations
+├── hooks/
+│   ├── useAsyncData.ts      # Automatic loading/error state handler with polling support
+│   └── useAuth.ts           # Authentication context hook
+├── utils/
+│   └── exportUtils.ts       # Universal CSV/Excel exporter with header transformers
+└── lib/
+    └── utils.ts             # Tailwind class merging utility (`cn`)
 ```
 
 ---
 
 ## ⚙️ Environment Configuration
 
-Create a `.env` file in the `frontend` root directory:
+Create a `.env` file in the `frontend/` directory:
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
@@ -55,53 +133,21 @@ VITE_API_BASE_URL=http://localhost:8000/api
 
 ---
 
-## 📁 Project Architecture
-
-```text
-frontend/src/
-├── components/
-│   ├── common/        # StatCard, StatusBadge, DataTable, FileUpload, Loading/Error States, RoleGuard
-│   ├── sessions/      # AttendanceForm (PRESENT/ABSENT/SUBSTITUTE), ResponseWindow Countdown
-│   ├── notifications/ # NotificationBell with unread counter
-│   └── ui/            # shadcn/ui component primitives
-├── layouts/           # AdminLayout & CRLRLayout navigation wrappers
-├── routes/            # File-based TanStack routes
-├── services/          # Real API Integration Layer (FastAPI REST Backend)
-│   ├── apiClient.ts   # Centralized HTTP request client & JWT bearer token interceptor
-│   ├── authService.ts # Login, logout, JWT persistence & profile fetching
-│   ├── userService.ts # CR/LR CRUD, section lookup, Excel import & template download
-│   ├── timetableService.ts # Timetable upload, section timetable retrieval & template download
-│   ├── sessionService.ts   # Session retrieval, attendance submission & admin alerts
-│   └── notificationService.ts # In-app notifications & read status updates
-└── data/mock/         # TypeScript DTO interfaces & type definitions
-```
-
----
-
-## 🌐 FastAPI Backend Integration
-
-All frontend service calls (`src/services/*`) interact directly with the FastAPI REST API backend:
-
-1. **Authentication**: Sends credentials to `/api/auth/login`, receives a signed JWT access token, and automatically attaches `Authorization: Bearer <token>` to all protected API calls.
-2. **Role & Section Authorization**: Client UI uses `RoleGuard.tsx` for navigation protection, while the backend strictly enforces role-based and section-based access control.
-3. **Continuous Session Display**: Renders continuous class sessions (e.g. 09:10–11:40 DBMS) calculated by the backend session engine.
-4. **Attendance Submission**: Submits `PRESENT`, `ABSENT`, or `SUBSTITUTE` with required substitute name validation. Triggers immediate Admin Alerts for absences.
-5. **Excel Workbooks**: Uploads `.xlsx` files using `multipart/form-data` and downloads binary template workbooks directly from backend API endpoints.
-
----
-
-## 💻 Development Setup & Running
+## 💻 Development & Build Commands
 
 ```bash
-# 1. Navigate to the frontend directory
-cd frontend
-
-# 2. Install dependencies (if not already installed)
+# 1. Install dependencies
 npm install
 
-# 3. Start the Vite development server
+# 2. Start Vite development server
 npm run dev
+
+# 3. Build for production (TypeScript check & bundling)
+npm run build
+
+# 4. Preview production build locally
+npm run preview
 ```
 
-- **Frontend Application URL**: `http://localhost:5173`
+- **Local Development URL**: `http://localhost:5173`
 - **FastAPI Backend URL**: `http://localhost:8000`
