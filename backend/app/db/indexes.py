@@ -108,6 +108,17 @@ async def create_db_indexes():
         except Exception:
             pass
 
+        # planned_absences collection
+        await db.planned_absences.create_index([("student_id", ASCENDING), ("status", ASCENDING)])
+        await db.planned_absences.create_index([("mentor_id", ASCENDING), ("status", ASCENDING)])
+        await db.planned_absences.create_index([("roll_number", ASCENDING), ("status", ASCENDING)])
+        await db.planned_absences.create_index([("start_date", ASCENDING), ("end_date", ASCENDING)])
+
+        # mentor_student_mappings collection
+        await db.mentor_student_mappings.create_index([("mentor_id", ASCENDING)])
+        await db.mentor_student_mappings.create_index([("year", ASCENDING), ("section", ASCENDING)])
+        await db.mentor_student_mappings.create_index([("student_ids", ASCENDING)])
+
         # audit_logs collection
         await db.audit_logs.create_index([("created_at", DESCENDING)])
         await db.audit_logs.create_index([("actor_id", ASCENDING)])

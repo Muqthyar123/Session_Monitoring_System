@@ -10,8 +10,10 @@ from app.api import (
     auth,
     departments,
     mentor,
+    mentor_mapping,
     mentors,
     notifications,
+    planned_absence,
     push,
     sections,
     sessions,
@@ -137,6 +139,8 @@ api_router_prefix = settings.API_V1_STR
 app.include_router(auth.router, prefix=api_router_prefix)
 app.include_router(users.router, prefix=api_router_prefix)
 app.include_router(mentors.router, prefix=api_router_prefix)
+app.include_router(mentor_mapping.router, prefix=api_router_prefix)
+app.include_router(planned_absence.router, prefix=api_router_prefix)
 app.include_router(departments.router, prefix=api_router_prefix)
 app.include_router(mentor.router, prefix=api_router_prefix)
 app.include_router(students.router, prefix=api_router_prefix)

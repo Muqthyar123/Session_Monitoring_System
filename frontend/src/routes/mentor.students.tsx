@@ -11,6 +11,7 @@ import {
   RotateCcw,
   X,
   Download,
+  CalendarClock,
 } from "lucide-react";
 import { exportToCSV } from "@/utils/exportUtils";
 import { MentorLayout } from "@/layouts/MentorLayout";
@@ -228,6 +229,21 @@ function MentorStudentsPage() {
           </a>
         ) : (
           <span className="text-muted-foreground font-mono text-xs">N/A</span>
+        ),
+    },
+    {
+      key: "isPlannedAbsence" as any,
+      header: "Leave Status",
+      cell: (r: any) =>
+        r.isPlannedAbsence ? (
+          <Badge className="bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border-amber-300 gap-1 text-[11px] font-medium" title={r.plannedAbsenceReason}>
+            <CalendarClock className="size-3" />
+            {r.plannedAbsenceRange || "Planned Leave"}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-[11px] text-muted-foreground font-normal">
+            Active
+          </Badge>
         ),
     },
     {

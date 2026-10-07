@@ -16,6 +16,7 @@ import { Route as AdminCrLrRouteImport } from './routes/admin.cr-lr'
 import { Route as AdminDashboardRouteImport } from './routes/admin.dashboard'
 import { Route as AdminDepartmentsRouteImport } from './routes/admin.departments'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AdminMentorMappingRouteImport } from './routes/admin.mentor-mapping'
 import { Route as AdminMentorsRouteImport } from './routes/admin.mentors'
 import { Route as AdminSectionsRouteImport } from './routes/admin.sections'
 import { Route as AdminSessionsRouteImport } from './routes/admin.sessions'
@@ -34,6 +35,7 @@ import { Route as MentorAbsenteesRouteImport } from './routes/mentor.absentees'
 import { Route as MentorAnalyticsRouteImport } from './routes/mentor.analytics'
 import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as MentorLoginRouteImport } from './routes/mentor.login'
+import { Route as MentorPlannedAbsencesRouteImport } from './routes/mentor.planned-absences'
 import { Route as MentorStudentsRouteImport } from './routes/mentor.students'
 
 const IndexRoute = IndexRouteImport.update({
@@ -69,6 +71,11 @@ const AdminDepartmentsRoute = AdminDepartmentsRouteImport.update({
 const AdminLoginRoute = AdminLoginRouteImport.update({
   id: '/admin/login',
   path: '/admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminMentorMappingRoute = AdminMentorMappingRouteImport.update({
+  id: '/admin/mentor-mapping',
+  path: '/admin/mentor-mapping',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminMentorsRoute = AdminMentorsRouteImport.update({
@@ -161,6 +168,11 @@ const MentorLoginRoute = MentorLoginRouteImport.update({
   path: '/mentor/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MentorPlannedAbsencesRoute = MentorPlannedAbsencesRouteImport.update({
+  id: '/mentor/planned-absences',
+  path: '/mentor/planned-absences',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MentorStudentsRoute = MentorStudentsRouteImport.update({
   id: '/mentor/students',
   path: '/mentor/students',
@@ -175,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/departments': typeof AdminDepartmentsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mentor-mapping': typeof AdminMentorMappingRoute
   '/admin/mentors': typeof AdminMentorsRoute
   '/admin/sections': typeof AdminSectionsRoute
   '/admin/sessions': typeof AdminSessionsRoute
@@ -193,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/mentor/analytics': typeof MentorAnalyticsRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/mentor/login': typeof MentorLoginRoute
+  '/mentor/planned-absences': typeof MentorPlannedAbsencesRoute
   '/mentor/students': typeof MentorStudentsRoute
 }
 export interface FileRoutesByTo {
@@ -203,6 +217,7 @@ export interface FileRoutesByTo {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/departments': typeof AdminDepartmentsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mentor-mapping': typeof AdminMentorMappingRoute
   '/admin/mentors': typeof AdminMentorsRoute
   '/admin/sections': typeof AdminSectionsRoute
   '/admin/sessions': typeof AdminSessionsRoute
@@ -221,6 +236,7 @@ export interface FileRoutesByTo {
   '/mentor/analytics': typeof MentorAnalyticsRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/mentor/login': typeof MentorLoginRoute
+  '/mentor/planned-absences': typeof MentorPlannedAbsencesRoute
   '/mentor/students': typeof MentorStudentsRoute
 }
 export interface FileRoutesById {
@@ -232,6 +248,7 @@ export interface FileRoutesById {
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/departments': typeof AdminDepartmentsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/mentor-mapping': typeof AdminMentorMappingRoute
   '/admin/mentors': typeof AdminMentorsRoute
   '/admin/sections': typeof AdminSectionsRoute
   '/admin/sessions': typeof AdminSessionsRoute
@@ -250,6 +267,7 @@ export interface FileRoutesById {
   '/mentor/analytics': typeof MentorAnalyticsRoute
   '/mentor/dashboard': typeof MentorDashboardRoute
   '/mentor/login': typeof MentorLoginRoute
+  '/mentor/planned-absences': typeof MentorPlannedAbsencesRoute
   '/mentor/students': typeof MentorStudentsRoute
 }
 export interface FileRouteTypes {
@@ -262,6 +280,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/departments'
     | '/admin/login'
+    | '/admin/mentor-mapping'
     | '/admin/mentors'
     | '/admin/sections'
     | '/admin/sessions'
@@ -280,6 +299,7 @@ export interface FileRouteTypes {
     | '/mentor/analytics'
     | '/mentor/dashboard'
     | '/mentor/login'
+    | '/mentor/planned-absences'
     | '/mentor/students'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -290,6 +310,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/departments'
     | '/admin/login'
+    | '/admin/mentor-mapping'
     | '/admin/mentors'
     | '/admin/sections'
     | '/admin/sessions'
@@ -308,6 +329,7 @@ export interface FileRouteTypes {
     | '/mentor/analytics'
     | '/mentor/dashboard'
     | '/mentor/login'
+    | '/mentor/planned-absences'
     | '/mentor/students'
   id:
     | '__root__'
@@ -318,6 +340,7 @@ export interface FileRouteTypes {
     | '/admin/dashboard'
     | '/admin/departments'
     | '/admin/login'
+    | '/admin/mentor-mapping'
     | '/admin/mentors'
     | '/admin/sections'
     | '/admin/sessions'
@@ -336,6 +359,7 @@ export interface FileRouteTypes {
     | '/mentor/analytics'
     | '/mentor/dashboard'
     | '/mentor/login'
+    | '/mentor/planned-absences'
     | '/mentor/students'
   fileRoutesById: FileRoutesById
 }
@@ -347,6 +371,7 @@ export interface RootRouteChildren {
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminDepartmentsRoute: typeof AdminDepartmentsRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminMentorMappingRoute: typeof AdminMentorMappingRoute
   AdminMentorsRoute: typeof AdminMentorsRoute
   AdminSectionsRoute: typeof AdminSectionsRoute
   AdminSessionsRoute: typeof AdminSessionsRoute
@@ -365,6 +390,7 @@ export interface RootRouteChildren {
   MentorAnalyticsRoute: typeof MentorAnalyticsRoute
   MentorDashboardRoute: typeof MentorDashboardRoute
   MentorLoginRoute: typeof MentorLoginRoute
+  MentorPlannedAbsencesRoute: typeof MentorPlannedAbsencesRoute
   MentorStudentsRoute: typeof MentorStudentsRoute
 }
 
@@ -417,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/login'
       fullPath: '/admin/login'
       preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/mentor-mapping': {
+      id: '/admin/mentor-mapping'
+      path: '/admin/mentor-mapping'
+      fullPath: '/admin/mentor-mapping'
+      preLoaderRoute: typeof AdminMentorMappingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/mentors': {
@@ -545,6 +578,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MentorLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mentor/planned-absences': {
+      id: '/mentor/planned-absences'
+      path: '/mentor/planned-absences'
+      fullPath: '/mentor/planned-absences'
+      preLoaderRoute: typeof MentorPlannedAbsencesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/mentor/students': {
       id: '/mentor/students'
       path: '/mentor/students'
@@ -563,6 +603,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminDashboardRoute: AdminDashboardRoute,
   AdminDepartmentsRoute: AdminDepartmentsRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminMentorMappingRoute: AdminMentorMappingRoute,
   AdminMentorsRoute: AdminMentorsRoute,
   AdminSectionsRoute: AdminSectionsRoute,
   AdminSessionsRoute: AdminSessionsRoute,
@@ -581,6 +622,7 @@ const rootRouteChildren: RootRouteChildren = {
   MentorAnalyticsRoute: MentorAnalyticsRoute,
   MentorDashboardRoute: MentorDashboardRoute,
   MentorLoginRoute: MentorLoginRoute,
+  MentorPlannedAbsencesRoute: MentorPlannedAbsencesRoute,
   MentorStudentsRoute: MentorStudentsRoute,
 }
 export const routeTree = rootRouteImport

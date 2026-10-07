@@ -18,17 +18,17 @@ from app.services.mentor_service import (
     get_mentor_absentee_sections_summary,
     get_mentor_absentee_years_summary,
     get_mentor_dashboard_data,
+    get_mentor_scoped_absentees,
     get_mentor_sections_summary,
+    get_mentor_students_list,
     get_mentor_years_summary,
     search_absentees_global,
     search_students_global,
     update_absence_comment,
 )
 from app.services.student_attendance_service import (
-    get_absentee_students_for_section,
     save_absence_reason,
 )
-from app.services.student_service import get_students
 
 router = APIRouter(prefix="/mentor", tags=["Mentor Portal Endpoints"])
 
@@ -37,7 +37,7 @@ router = APIRouter(prefix="/mentor", tags=["Mentor Portal Endpoints"])
 async def get_mentor_dashboard_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Retrieve complete overview statistics for Mentor Dashboard."""
+    """Retrieve complete overview statistics for Mentor Dashboard scoped by mentor assignments."""
     data = await get_mentor_dashboard_data(current_user)
     return ApiResponse(success=True, data=data)
 
@@ -50,8 +50,8 @@ async def get_mentor_dashboard_api(
 async def get_mentor_students_years_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Retrieve dynamic list of academic years with student and absentee counts."""
-    data = await get_mentor_years_summary()
+    """Retrieve list of academic years scoped by mentor assignments."""
+    data = await get_mentor_years_summary(current_user)
     return ApiResponse(success=True, data=data)
 
 
@@ -60,8 +60,8 @@ async def get_mentor_students_sections_api(
     year: str = Query(..., description="Academic Year"),
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Retrieve sections belonging to a year with student count."""
-    data = await get_mentor_sections_summary(year)
+    """Retrieve sections belonging to a year scoped by mentor assignments."""
+    data = await get_mentor_sections_summary(year, current_user)
     return ApiResponse(success=True, data=data)
 
 
@@ -72,8 +72,8 @@ async def get_mentor_students_api(
     search: Optional[str] = Query(None),
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Retrieve students filtered by year and section."""
-    students = await get_students(year=year, section=section, search=search, limit=1000)
+    """Retrieve students filtered by year and section, scoped by mentor assignments and enriched with planned absences."""
+    students = await get_mentor_students_list(year=year, section=section, search=search, current_user=current_user)
     return ApiResponse(success=True, data=students)
 
 
@@ -82,8 +82,8 @@ async def search_mentor_students_global_api(
     q: str = Query(..., min_length=1, description="Search term for name or roll number"),
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Global search across all years and sections by student name or roll number."""
-    results = await search_students_global(q)
+    """Global search across assigned students by name or roll number."""
+    results = await search_students_global(q, current_user=current_user)
     return ApiResponse(success=True, data=results)
 
 
@@ -95,8 +95,8 @@ async def search_mentor_students_global_api(
 async def get_mentor_absentees_years_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Retrieve academic years with today's absentee counts."""
-    data = await get_mentor_absentee_years_summary()
+    """Retrieve academic years with today's absentee counts scoped by mentor assignments."""
+    data = await get_mentor_absentee_years_summary(current_user)
     return ApiResponse(success=True, data=data)
 
 
@@ -105,8 +105,8 @@ async def get_mentor_absentees_sections_api(
     year: str = Query(...),
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Retrieve sections belonging to a year with today's absentee counts."""
-    data = await get_mentor_absentee_sections_summary(year)
+    """Retrieve sections belonging to a year with today's absentee counts scoped by mentor assignments."""
+    data = await get_mentor_absentee_sections_summary(year, current_user)
     return ApiResponse(success=True, data=data)
 
 
@@ -117,8 +117,8 @@ async def get_mentor_absentees_api(
     date: Optional[str] = Query(None),
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Retrieve today's absentee students for a specific year and section."""
-    records = await get_absentee_students_for_section(year, section, date)
+    """Retrieve today's absentee students for a specific year and section, scoped by mentor assignments."""
+    records = await get_mentor_scoped_absentees(year, section, date, current_user=current_user)
     return ApiResponse(success=True, data=records)
 
 
@@ -128,8 +128,8 @@ async def search_mentor_absentees_global_api(
     date: Optional[str] = Query(None),
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
-    """Global search across today's absentees by name or roll number."""
-    results = await search_absentees_global(q, date=date)
+    """Global search across today's absentees by name or roll number scoped by mentor assignments."""
+    results = await search_absentees_global(q, date=date, current_user=current_user)
     return ApiResponse(success=True, data=results)
 
 

@@ -12,6 +12,7 @@ import {
   Building,
   UserCheck,
   RotateCcw,
+  CalendarClock,
 } from "lucide-react";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -132,7 +133,7 @@ function MentorDashboardPage() {
           </section>
 
           {/* Primary Quick Access Hub */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Link to="/mentor/students" className="block group">
               <Card className="h-full transition-all hover:border-primary hover:shadow-md">
                 <CardHeader className="pb-2">
@@ -172,6 +173,28 @@ function MentorDashboardPage() {
                   <div className="flex items-center justify-between text-xs font-semibold text-rose-600 dark:text-rose-400">
                     <span>{data.totalAbsenteesToday} Reported Absent</span>
                     <span className="flex items-center">Inspect Absentees <ChevronRight className="size-3.5 ml-0.5" /></span>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link to="/mentor/planned-absences" className="block group">
+              <Card className="h-full transition-all hover:border-amber-500 hover:shadow-md">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base font-bold flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <CalendarClock className="size-5" /> Planned Absences
+                    </CardTitle>
+                    <ChevronRight className="size-4 text-muted-foreground group-hover:text-amber-500 transition-colors" />
+                  </div>
+                  <CardDescription className="text-xs">
+                    Record and manage approved absence date ranges to suppress repetitive daily calling prompts.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-amber-600 dark:text-amber-400">
+                    <span>Pre-Approved Leave</span>
+                    <span className="flex items-center">Manage Leave <ChevronRight className="size-3.5 ml-0.5" /></span>
                   </div>
                 </CardContent>
               </Card>

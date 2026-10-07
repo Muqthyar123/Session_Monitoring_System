@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { to: "/admin/departments", label: "Departments", icon: Building2 },
   { to: "/admin/sections", label: "Manage Sections", icon: Layers },
   { to: "/admin/mentors", label: "Manage Mentors", icon: Users },
+  { to: "/admin/mentor-mapping", label: "Mentor Mapping", icon: Users },
   { to: "/admin/students", label: "Manage Students", icon: GraduationCap },
   { to: "/admin/timetable", label: "Timetable Management", icon: CalendarDays },
   { to: "/admin/cr-lr", label: "CR/LR Management", icon: Users },

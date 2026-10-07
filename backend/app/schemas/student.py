@@ -14,6 +14,12 @@ class StudentBase(BaseModel):
     parent_phone: Optional[str] = Field(None, alias="parentPhone")
     crlr_id: Optional[str] = Field(None, alias="crlrId")
     crlr_name: Optional[str] = Field(None, alias="crlrName")
+    mentor_id: Optional[str] = Field(None, alias="mentorId")
+    mentor_name: Optional[str] = Field(None, alias="mentorName")
+    is_planned_absence: Optional[bool] = Field(False, alias="isPlannedAbsence")
+    planned_absence_reason: Optional[str] = Field(None, alias="plannedAbsenceReason")
+    planned_absence_range: Optional[str] = Field(None, alias="plannedAbsenceRange")
+    planned_absence_id: Optional[str] = Field(None, alias="plannedAbsenceId")
 
     model_config = ConfigDict(populate_by_name=True)
 

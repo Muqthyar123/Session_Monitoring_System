@@ -15,6 +15,7 @@ import {
   X,
   Layers,
   Download,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/utils/exportUtils";
@@ -299,12 +300,25 @@ function MentorAbsenteesPage() {
                               </Badge>
                             </div>
                           </div>
-                          <Badge variant="destructive" className="gap-1">
-                            <UserX className="size-3" /> Absent
-                          </Badge>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge variant="destructive" className="gap-1">
+                              <UserX className="size-3" /> Absent
+                            </Badge>
+                            {record.isPlannedAbsence && (
+                              <Badge className="bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border-amber-300 gap-1 text-[10px]">
+                                <CalendarClock className="size-3" /> Planned ({record.plannedAbsenceRange})
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4 text-sm">
+                        {record.isPlannedAbsence && (
+                          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                            <span className="font-semibold">Approved Leave:</span> {record.plannedAbsenceReason} (Daily calls suppressed).
+                          </div>
+                        )}
+
                         <div className="flex items-center gap-4 text-xs text-muted-foreground border-y py-2">
                           <div className="flex items-center gap-1">
                             <Calendar className="size-3.5" />
@@ -593,12 +607,25 @@ function MentorAbsenteesPage() {
                               Roll No: <strong className="text-primary font-bold">{record.rollNumber}</strong>
                             </p>
                           </div>
-                          <Badge variant="destructive" className="gap-1">
-                            <UserX className="size-3" /> Absent
-                          </Badge>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge variant="destructive" className="gap-1">
+                              <UserX className="size-3" /> Absent
+                            </Badge>
+                            {record.isPlannedAbsence && (
+                              <Badge className="bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border-amber-300 gap-1 text-[10px]">
+                                <CalendarClock className="size-3" /> Planned ({record.plannedAbsenceRange})
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4 text-sm">
+                        {record.isPlannedAbsence && (
+                          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-2.5 text-xs text-amber-900 dark:text-amber-200">
+                            <span className="font-semibold">Approved Leave:</span> {record.plannedAbsenceReason} (Daily calls suppressed).
+                          </div>
+                        )}
+
                         <div className="flex items-center gap-4 text-xs text-muted-foreground border-y py-2">
                           <div className="flex items-center gap-1">
                             <Calendar className="size-3.5" />

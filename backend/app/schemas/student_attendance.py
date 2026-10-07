@@ -56,6 +56,10 @@ class StudentAttendanceRecordResponse(BaseModel):
     corrected_by: Optional[str] = Field(None, alias="correctedBy")
     corrected_by_role: Optional[str] = Field(None, alias="correctedByRole")
     corrected_at: Optional[datetime] = Field(None, alias="correctedAt")
+    is_planned_absence: Optional[bool] = Field(False, alias="isPlannedAbsence")
+    planned_absence_reason: Optional[str] = Field(None, alias="plannedAbsenceReason")
+    planned_absence_range: Optional[str] = Field(None, alias="plannedAbsenceRange")
+    planned_absence_id: Optional[str] = Field(None, alias="plannedAbsenceId")
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

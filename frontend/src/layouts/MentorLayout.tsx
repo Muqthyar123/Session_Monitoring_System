@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Users,
   UserX,
+  CalendarClock,
   BarChart3,
   LogOut,
   Menu,
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { to: "/mentor/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/mentor/students", label: "All Students", icon: Users },
   { to: "/mentor/absentees", label: "Today's Absentees", icon: UserX },
+  { to: "/mentor/planned-absences", label: "Planned Absences", icon: CalendarClock },
   { to: "/mentor/analytics", label: "Attendance Analytics", icon: BarChart3 },
 ] as const;
 
