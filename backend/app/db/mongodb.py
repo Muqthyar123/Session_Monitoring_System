@@ -1,12 +1,29 @@
+import asyncio
+import atexit
 import logging
-import certifi
 from datetime import datetime, timezone
+import os
+from pathlib import Path
+import threading
+from typing import Optional
+
+import certifi
+from bson import json_util
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from mongomock_motor import AsyncMongoMockClient
+
 from app.core.config import settings
 from app.core.security import hash_password
 
 logger = logging.getLogger("fams.db")
+
+DATA_DIR = Path(settings.DATA_DIR)
+DB_STORE_PATH = Path(settings.DB_STORE_FILE)
+UPLOAD_DIR = Path(settings.UPLOAD_DIR)
+
+_save_timer: Optional[threading.Timer] = None
+_save_lock = threading.Lock()
+_is_persistence_installed = False
 
 
 class MongoManager:
@@ -18,10 +35,244 @@ class MongoManager:
 db_manager = MongoManager()
 
 
+def save_mock_db_to_disk_sync():
+    """Synchronously serializes all in-memory collections and writes them atomically to DB_STORE_PATH."""
+    if db_manager.db is None or not db_manager.is_mock_mode:
+        return
+
+    try:
+        sync_db = getattr(db_manager.db, "delegate", None)
+        if sync_db is None:
+            return
+
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+        data = {}
+        for cname in sync_db.list_collection_names():
+            data[cname] = list(sync_db[cname].find())
+
+        json_bytes = json_util.dumps(data, indent=2).encode("utf-8")
+        tmp_path = DB_STORE_PATH.with_suffix(".tmp")
+
+        with open(tmp_path, "wb") as f:
+            f.write(json_bytes)
+            f.flush()
+            os.fsync(f.fileno())
+
+        if tmp_path.exists():
+            tmp_path.replace(DB_STORE_PATH)
+
+        logger.debug(
+            "Persisted mock database to %s (%d collections, %d bytes)",
+            DB_STORE_PATH.name,
+            len(data),
+            len(json_bytes),
+        )
+    except Exception as e:
+        logger.error("Failed to persist mock database to disk: %s", str(e), exc_info=True)
+
+
+async def save_mock_db_to_disk():
+    """Asynchronous wrapper around save_mock_db_to_disk_sync to prevent blocking the event loop."""
+    await asyncio.to_thread(save_mock_db_to_disk_sync)
+
+
+def schedule_db_save(delay: float = 0.5):
+    """Debounces disk persistence across rapid burst operations."""
+    global _save_timer
+    if db_manager.db is None or not db_manager.is_mock_mode:
+        return
+
+    with _save_lock:
+        if _save_timer is not None:
+            try:
+                _save_timer.cancel()
+            except Exception:
+                pass
+        _save_timer = threading.Timer(delay, save_mock_db_to_disk_sync)
+        _save_timer.daemon = True
+        _save_timer.start()
+
+
+def load_mock_db_from_disk_sync(db) -> bool:
+    """Restores database collections and documents from DB_STORE_PATH if the file exists."""
+    if not DB_STORE_PATH.exists():
+        return False
+
+    try:
+        sync_db = getattr(db, "delegate", None)
+        if sync_db is None:
+            return False
+
+        with open(DB_STORE_PATH, "rb") as f:
+            raw = f.read()
+
+        if not raw.strip():
+            return False
+
+        data = json_util.loads(raw.decode("utf-8"))
+        if not isinstance(data, dict):
+            return False
+
+        for cname, docs in data.items():
+            sync_db[cname].delete_many({})
+            if docs and isinstance(docs, list):
+                sync_db[cname].insert_many(docs)
+
+        logger.info(
+            "Restored mock database successfully from %s (%d collections)",
+            DB_STORE_PATH,
+            len(data),
+        )
+        return True
+    except Exception as e:
+        logger.error("Failed to load mock database from %s: %s", DB_STORE_PATH, str(e), exc_info=True)
+        return False
+
+
+def install_mock_db_persistence():
+    """Monkey-patches mongomock collection mutation methods so all writes trigger scheduled persistence."""
+    global _is_persistence_installed
+    if _is_persistence_installed:
+        return
+
+    try:
+        import mongomock.collection
+
+        write_methods = [
+            "insert_one",
+            "insert_many",
+            "update_one",
+            "update_many",
+            "replace_one",
+            "delete_one",
+            "delete_many",
+            "find_one_and_update",
+            "find_one_and_delete",
+            "find_one_and_replace",
+            "drop",
+            "drop_indexes",
+            "bulk_write",
+        ]
+
+        for method_name in write_methods:
+            orig = getattr(mongomock.collection.Collection, method_name, None)
+            if not orig or getattr(orig, "_is_persisted_wrapped", False):
+                continue
+
+            def make_wrapper(orig_fn):
+                def wrapper(self, *args, **kwargs):
+                    res = orig_fn(self, *args, **kwargs)
+                    schedule_db_save()
+                    return res
+
+                wrapper._is_persisted_wrapped = True
+                return wrapper
+
+            setattr(mongomock.collection.Collection, method_name, make_wrapper(orig))
+
+        _is_persistence_installed = True
+        logger.info("Installed mock database disk persistence hooks.")
+    except Exception as e:
+        logger.warning("Failed to install mock persistence hooks: %s", str(e))
+
+
+async def seed_from_uploaded_files_if_needed(db):
+    """If database is empty and files exist in UPLOAD_DIR or Downloads, import them immediately."""
+    from app.services.excel_service import (
+        parse_and_import_mentor_excel,
+        parse_and_import_student_excel,
+        parse_and_import_timetable_excel,
+    )
+    from app.services.mentor_mapping_service import (
+        preview_mentor_mappings,
+        commit_mentor_mappings,
+    )
+    from app.schemas.mentor_mapping import MentorMappingConfirmRequest
+
+    # Check if we already have timetables or students
+    tt_count = await db.timetables.count_documents({})
+    stu_count = await db.students.count_documents({})
+    if tt_count > 0 or stu_count > 0:
+        return
+
+    admin_user = await db.users.find_one({"role": "ADMIN"})
+    admin_id = str(admin_user["_id"]) if admin_user else "system-root"
+
+    upload_dir = Path(settings.UPLOAD_DIR)
+    downloads_dir = Path.home() / "Downloads"
+
+    def find_file(filename: str) -> Optional[Path]:
+        p1 = upload_dir / filename
+        if p1.exists():
+            return p1
+        p2 = downloads_dir / filename
+        if p2.exists():
+            return p2
+        return None
+
+    # 1. Faculty / Mentors
+    fac_path = find_file("CSE FACULTY LIST.xls")
+    if fac_path:
+        try:
+            with open(fac_path, "rb") as f:
+                content = f.read()
+            res = await parse_and_import_mentor_excel(content, fac_path.name, admin_id)
+            logger.info("Auto-seeded mentors from %s: %s", fac_path.name, res)
+        except Exception as e:
+            logger.warning("Auto-seed mentors warning: %s", str(e))
+
+    # 2. Students
+    stu_path = find_file("Students_Roster.csv")
+    if stu_path:
+        try:
+            with open(stu_path, "rb") as f:
+                content = f.read()
+            res = await parse_and_import_student_excel(content, stu_path.name, admin_id)
+            logger.info("Auto-seeded students from %s: %s", stu_path.name, res)
+        except Exception as e:
+            logger.warning("Auto-seed students warning: %s", str(e))
+
+    # 3. Timetables
+    tt_names = [
+        "14-08-2026 MASTER  TIME TABLE  - 2 YEAR -Updated.xlsx",
+        "3  YEAR - TIME TABLES - 51026-26-1 SEM.xlsx",
+        "Updated 4th Master Time Tables - 05-10-2026.xlsx",
+    ]
+    for ttf in tt_names:
+        tt_path = find_file(ttf)
+        if tt_path:
+            try:
+                with open(tt_path, "rb") as f:
+                    content = f.read()
+                res = await parse_and_import_timetable_excel(content, tt_path.name, admin_id)
+                logger.info("Auto-seeded timetable from %s: %s inserted", tt_path.name, res.get("inserted", 0))
+            except Exception as e:
+                logger.warning("Auto-seed timetable warning for %s: %s", ttf, str(e))
+
+    # 4. Mentor Mappings
+    map_path = find_file("Mentor_Student_Mapping_Template.xlsx")
+    if map_path:
+        try:
+            with open(map_path, "rb") as f:
+                content = f.read()
+            prev = await preview_mentor_mappings(content, map_path.name)
+            if prev.valid_rows > 0:
+                req = MentorMappingConfirmRequest(
+                    mode="ADD_UPDATE",
+                    rows=[r.model_dump() for r in prev.rows if r.status == "VALID"],
+                )
+                res_map = await commit_mentor_mappings(req, {"id": admin_id, "email": "admin@example.com"})
+                logger.info("Auto-seeded mentor mappings from %s: %s", map_path.name, res_map)
+        except Exception as e:
+            logger.warning("Auto-seed mentor mappings warning: %s", str(e))
+
+
 async def seed_in_memory_db(db):
     """Seed initial Root Admin user into database, keeping all section, timetable, and CR/LR collections fresh."""
     now = datetime.now(timezone.utc)
     demo_pwd_hash = hash_password("demo1234")
+
     # Root System Administrator
     existing_admin = await db.users.find_one({"role": "ADMIN"})
     if not existing_admin:
@@ -41,8 +292,19 @@ async def seed_in_memory_db(db):
             }
         )
 
-    # Seed CR and LR dummy accounts for each section (II-CSE-A to II-CSE-J)
-    sections = ["II-CSE-A", "II-CSE-B", "II-CSE-C", "II-CSE-D", "II-CSE-E", "II-CSE-F", "II-CSE-G", "II-CSE-H", "II-CSE-I", "II-CSE-J"]
+    # Seed CR and LR accounts for sections (II-CSE-A to II-CSE-J) if not already present
+    sections = [
+        "II-CSE-A",
+        "II-CSE-B",
+        "II-CSE-C",
+        "II-CSE-D",
+        "II-CSE-E",
+        "II-CSE-F",
+        "II-CSE-G",
+        "II-CSE-H",
+        "II-CSE-I",
+        "II-CSE-J",
+    ]
 
     for sec in sections:
         clean_name = sec.replace("II-", "")
@@ -142,6 +404,9 @@ async def ensure_indexes(db):
 
 async def connect_to_mongo():
     db_name = settings.get_database_name()
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
     logger.info("Connecting to MongoDB at %s...", settings.MONGODB_URI)
 
     client_kwargs = {
@@ -180,29 +445,51 @@ async def connect_to_mongo():
             return
         except Exception as retry_err:
             logger.warning(
-                "Unable to reach external MongoDB Atlas (%s). Switching to In-Memory Mock Database Mode...",
+                "Unable to reach external MongoDB Atlas (%s). Switching to Persistent Mock Database Mode...",
                 str(retry_err),
             )
 
-    # In-Memory Fallback Mock Database
+    # In-Memory Fallback Mock Database with Durable File-Backed Persistence
     mock_client = AsyncMongoMockClient()
     db_manager.client = mock_client
     db_manager.db = mock_client[db_name]
     db_manager.is_mock_mode = True
 
+    # 1. Install mutation persistence hooks
+    install_mock_db_persistence()
+
+    # 2. Load stored collections from disk if db_store.json exists
+    loaded = load_mock_db_from_disk_sync(db_manager.db)
+
+    # 3. If no stored snapshot on disk yet, auto-seed from uploaded source files
+    if not loaded:
+        await seed_from_uploaded_files_if_needed(db_manager.db)
+
+    # 4. Ensure admin and base accounts are intact
     await seed_in_memory_db(db_manager.db)
     await ensure_indexes(db_manager.db)
+
+    # 5. Flush current database state to disk
+    save_mock_db_to_disk_sync()
+
     logger.info(
-        "Activated In-Memory Mock Database Mode. Database '%s' seeded with admin/CR/LR accounts.",
+        "Activated Persistent Mock Database Mode. Database '%s' backed by '%s'.",
         db_name,
+        DB_STORE_PATH,
     )
 
 
 async def close_mongo_connection():
+    if db_manager.is_mock_mode:
+        save_mock_db_to_disk_sync()
     if db_manager.client:
         logger.info("Closing MongoDB connection.")
         db_manager.client.close()
         logger.info("MongoDB connection closed.")
+
+
+# Ensure database state is saved on clean process exit
+atexit.register(save_mock_db_to_disk_sync)
 
 
 def get_database() -> AsyncIOMotorDatabase:

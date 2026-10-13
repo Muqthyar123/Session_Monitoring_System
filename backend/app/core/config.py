@@ -1,6 +1,10 @@
+import os
+from pathlib import Path
 from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -24,10 +28,12 @@ class Settings(BaseSettings):
     FIREBASE_PRIVATE_KEY: Optional[str] = None
     FIREBASE_CLIENT_EMAIL: Optional[str] = None
 
-    UPLOAD_DIR: str = "uploads"
+    DATA_DIR: str = str(BASE_DIR / "data")
+    DB_STORE_FILE: str = str(BASE_DIR / "data" / "db_store.json")
+    UPLOAD_DIR: str = str(BASE_DIR / "data" / "uploads")
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", str(BASE_DIR / ".env"), str(BASE_DIR.parent / ".env")),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -37,3 +43,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

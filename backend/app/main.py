@@ -42,6 +42,15 @@ async def lifespan(app: FastAPI):
     await connect_to_mongo()
     await create_db_indexes()
     logger.info("Database indexes created successfully.")
+    
+    # Generate / sync real-time sessions for current date
+    try:
+        from app.services.session_service import generate_and_sync_sessions_for_date
+        await generate_and_sync_sessions_for_date()
+        logger.info("Real-time sessions synchronized for current date.")
+    except Exception as e:
+        logger.warning("Session sync on startup warning: %s", str(e))
+
     start_scheduler()
     logger.info("Scheduler initialized.")
     logger.info("Application startup complete.")

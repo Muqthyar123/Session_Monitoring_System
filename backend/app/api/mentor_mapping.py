@@ -47,6 +47,18 @@ async def preview_mentor_mapping_api(
         )
 
     content = await file.read()
+    # Archive file to disk
+    try:
+        from pathlib import Path
+        from app.core.config import settings
+        upload_dir = Path(settings.UPLOAD_DIR)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        archive_path = upload_dir / (file.filename or "mentor_mappings.xlsx")
+        with open(archive_path, "wb") as f_out:
+            f_out.write(content)
+    except Exception:
+        pass
+
     preview = await preview_mentor_mapping_file(content, file.filename)
     return ApiResponse(
         success=True,
@@ -61,7 +73,9 @@ async def commit_mentor_mapping_api(
     current_user: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
     """Commit verified mentor-to-student mappings into MongoDB."""
+    from app.db.mongodb import save_mock_db_to_disk_sync
     result = await commit_mentor_mappings(data, current_user)
+    save_mock_db_to_disk_sync()
     return ApiResponse(
         success=True,
         data=result,
