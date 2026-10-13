@@ -166,10 +166,10 @@ function ManageSectionsPage() {
     const exportData = filteredSections.map((s) => ({
       "Academic Year": s.year,
       "Branch / Department": s.branch || s.department,
-      "Section Name": s.sectionName,
-      "Assigned CR": s.crName || "Unassigned",
-      "Assigned LR": s.lrName || "Unassigned",
-      "Enrolled Students": s.studentCount,
+      "Section Name": s.sectionName || (s as any).section_name,
+      "Assigned CR": s.crName || (s as any).cr_name || "Unassigned",
+      "Assigned LR": s.lrName || (s as any).lr_name || "Unassigned",
+      "Enrolled Students": s.studentCount ?? (s as any).student_count ?? 0,
       Status: s.isActive ? "Active" : "Inactive",
     }));
     exportToExcel(exportData, "Academic_Sections");
@@ -304,18 +304,18 @@ function ManageSectionsPage() {
                         {sec.branch || sec.department}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-bold text-primary">{sec.sectionName}</TableCell>
+                    <TableCell className="font-bold text-primary">{sec.sectionName || (sec as any).section_name}</TableCell>
                     <TableCell className="text-center font-medium">
                       <span className="inline-flex items-center gap-1">
                         <Users className="size-3.5 text-muted-foreground" />
-                        {sec.studentCount || 0}
+                        {sec.studentCount ?? (sec as any).student_count ?? 0}
                       </span>
                     </TableCell>
                     <TableCell>
                       <div className="text-xs space-y-0.5">
-                        {sec.crName && <div><span className="text-muted-foreground">CR:</span> {sec.crName}</div>}
-                        {sec.lrName && <div><span className="text-muted-foreground">LR:</span> {sec.lrName}</div>}
-                        {!sec.crName && !sec.lrName && <span className="text-muted-foreground">Unassigned</span>}
+                        {(sec.crName || (sec as any).cr_name) && <div><span className="text-muted-foreground">CR:</span> {sec.crName || (sec as any).cr_name}</div>}
+                        {(sec.lrName || (sec as any).lr_name) && <div><span className="text-muted-foreground">LR:</span> {sec.lrName || (sec as any).lr_name}</div>}
+                        {!(sec.crName || (sec as any).cr_name) && !(sec.lrName || (sec as any).lr_name) && <span className="text-muted-foreground">Unassigned</span>}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">

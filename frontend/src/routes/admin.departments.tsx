@@ -216,7 +216,7 @@ function ManageDepartmentsPage() {
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Total Enrolled Students</p>
                 <p className="text-2xl font-bold">
-                  {departments.reduce((acc, d) => acc + (d.studentCount || 0), 0)}
+                  {departments.reduce((acc, d) => acc + (d.studentCount ?? (d as any).student_count ?? 0), 0)}
                 </p>
               </div>
             </div>
@@ -229,7 +229,7 @@ function ManageDepartmentsPage() {
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Total Sections</p>
                 <p className="text-2xl font-bold">
-                  {departments.reduce((acc, d) => acc + (d.sectionCount || 0), 0)}
+                  {departments.reduce((acc, d) => acc + (d.sectionCount ?? (d as any).section_count ?? 0), 0)}
                 </p>
               </div>
             </div>
@@ -278,23 +278,28 @@ function ManageDepartmentsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredDepts.map((dept) => (
-                  <TableRow key={dept.id}>
-                    <TableCell className="font-semibold text-primary">{dept.code}</TableCell>
-                    <TableCell className="font-medium">{dept.name}</TableCell>
-                    <TableCell>
-                      {dept.coordinatorName ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-muted px-2 py-1 rounded">
-                          <Users className="size-3 text-muted-foreground" />
-                          {dept.coordinatorName}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Unassigned</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center font-medium">{dept.studentCount || 0}</TableCell>
-                    <TableCell className="text-center font-medium">{dept.sectionCount || 0}</TableCell>
-                    <TableCell className="text-center font-medium">{dept.facultyCount || 0}</TableCell>
+                filteredDepts.map((dept) => {
+                  const coord = dept.coordinatorName || (dept as any).coordinator_name;
+                  const stus = dept.studentCount ?? (dept as any).student_count ?? 0;
+                  const secs = dept.sectionCount ?? (dept as any).section_count ?? 0;
+                  const facs = dept.facultyCount ?? (dept as any).faculty_count ?? 0;
+                  return (
+                    <TableRow key={dept.id}>
+                      <TableCell className="font-semibold text-primary">{dept.code}</TableCell>
+                      <TableCell className="font-medium">{dept.name}</TableCell>
+                      <TableCell>
+                        {coord ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-muted px-2 py-1 rounded">
+                            <Users className="size-3 text-muted-foreground" />
+                            {coord}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center font-medium">{stus}</TableCell>
+                      <TableCell className="text-center font-medium">{secs}</TableCell>
+                      <TableCell className="text-center font-medium">{facs}</TableCell>
                     <TableCell className="text-center">
                       {dept.isActive ? (
                         <Badge variant="default" className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 border-emerald-500/30">
@@ -326,7 +331,8 @@ function ManageDepartmentsPage() {
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))
+                );
+              })
               )}
             </TableBody>
           </Table>

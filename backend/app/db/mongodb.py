@@ -363,6 +363,8 @@ async def seed_in_memory_db(db):
             {
                 "$set": {
                     "year": "2nd Year",
+                    "branch": "CSE",
+                    "department": "CSE",
                     "section_name": sec,
                     "assigned_cr_id": cr_id,
                     "assigned_lr_id": lr_id,
@@ -469,7 +471,26 @@ async def connect_to_mongo():
     await seed_in_memory_db(db_manager.db)
     await ensure_indexes(db_manager.db)
 
-    # 5. Flush current database state to disk
+    # 5. Ensure all existing sections have branch & department populated
+    try:
+        all_secs = await db_manager.db.sections.find({}).to_list(1000)
+        for s in all_secs:
+            s_name = s.get("section_name", "")
+            b = s.get("branch") or s.get("department")
+            if not b:
+                b = "CSE"
+                if "-" in s_name:
+                    parts = s_name.split("-")
+                    if len(parts) >= 2 and parts[1].isalpha():
+                        b = parts[1].upper()
+                await db_manager.db.sections.update_one(
+                    {"_id": s["_id"]},
+                    {"$set": {"branch": b, "department": b}}
+                )
+    except Exception as sec_sync_err:
+        logger.warning("Section branch sync warning: %s", str(sec_sync_err))
+
+    # 6. Flush current database state to disk
     save_mock_db_to_disk_sync()
 
     logger.info(

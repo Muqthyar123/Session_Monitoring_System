@@ -94,3 +94,28 @@ class SectionResponse(SectionBase):
     @property
     def underscore_id_prop(self) -> str:
         return self.id
+
+    @computed_field(alias="sectionName")
+    @property
+    def section_name_alias(self) -> str:
+        return self.section_name
+
+    @computed_field(alias="studentCount")
+    @property
+    def student_count_alias(self) -> int:
+        return self.student_count or 0
+
+    @computed_field(alias="crName")
+    @property
+    def cr_name_alias(self) -> Optional[str]:
+        return self.cr_name
+
+    @computed_field(alias="lrName")
+    @property
+    def lr_name_alias(self) -> Optional[str]:
+        return self.lr_name
+
+    @computed_field(alias="isActive")
+    @property
+    def is_active_alias(self) -> bool:
+        return self.is_active

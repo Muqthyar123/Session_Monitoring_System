@@ -66,3 +66,33 @@ class DepartmentResponse(DepartmentBase):
     @property
     def underscore_id_prop(self) -> str:
         return self.id
+
+    @computed_field(alias="studentCount")
+    @property
+    def student_count_alias(self) -> int:
+        return self.student_count or 0
+
+    @computed_field(alias="sectionCount")
+    @property
+    def section_count_alias(self) -> int:
+        return self.section_count or 0
+
+    @computed_field(alias="facultyCount")
+    @property
+    def faculty_count_alias(self) -> int:
+        return self.faculty_count or 0
+
+    @computed_field(alias="coordinatorName")
+    @property
+    def coordinator_name_alias(self) -> Optional[str]:
+        return self.coordinator_name
+
+    @computed_field(alias="coordinatorEmail")
+    @property
+    def coordinator_email_alias(self) -> Optional[str]:
+        return self.coordinator_email
+
+    @computed_field(alias="isActive")
+    @property
+    def is_active_alias(self) -> bool:
+        return self.is_active

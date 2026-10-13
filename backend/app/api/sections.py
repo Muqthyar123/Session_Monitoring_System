@@ -11,37 +11,51 @@ from app.schemas.user import UserRole
 router = APIRouter(prefix="/sections", tags=["Sections"])
 
 
+import re
+
 async def _enrich_section_details(doc: dict) -> dict:
     db = get_database()
     sec_id = str(doc["_id"])
     year = doc.get("year", "")
-    branch = doc.get("branch") or doc.get("department") or "CSE"
     sec_name = doc.get("section_name", "")
+    branch = doc.get("branch") or doc.get("department")
+    if not branch:
+        if "-" in sec_name:
+            parts = sec_name.split("-")
+            if len(parts) >= 2 and parts[1].isalpha():
+                branch = parts[1].upper()
+        if not branch:
+            branch = "CSE"
+
+    clean_sec = sec_name.split("-")[-1].strip() if "-" in sec_name else sec_name.strip()
 
     # Calculate real student count matching year + branch + section
+    sec_matchers = [
+        {"section": sec_name},
+        {"section": clean_sec},
+        {"section": f"{branch}-{sec_name}"},
+        {"section": f"{branch}-{clean_sec}"},
+        {"section": {"$regex": f"^{re.escape(sec_name)}$", "$options": "i"}},
+        {"section": {"$regex": f"^{re.escape(clean_sec)}$", "$options": "i"}},
+    ]
+
     stu_query = {
         "$and": [
-            {
-                "$or": [
-                    {"section": sec_name},
-                    {"section": f"{branch}-{sec_name}"},
-                    {"section": {"$regex": f"^{sec_name}$", "$options": "i"}},
-                ]
-            }
+            {"$or": sec_matchers}
         ]
     }
     if year:
         stu_query["$and"].append({
             "$or": [
                 {"year": year},
-                {"year": {"$regex": f"^{year}$", "$options": "i"}},
+                {"year": {"$regex": f"^{re.escape(year)}$", "$options": "i"}},
             ]
         })
     if branch:
         stu_query["$and"].append({
             "$or": [
                 {"branch": branch},
-                {"branch": {"$regex": f"^{branch}$", "$options": "i"}},
+                {"branch": {"$regex": f"^{re.escape(branch)}$", "$options": "i"}},
                 {"department": branch},
             ]
         })
@@ -90,7 +104,12 @@ async def list_sections_api(
         query["year"] = year
     if branch and branch != "ALL" and branch != "all":
         b_clean = branch.strip().upper()
-        query["$or"] = [{"branch": b_clean}, {"department": b_clean}, {"branch": {"$regex": f"^{b_clean}$", "$options": "i"}}]
+        query["$or"] = [
+            {"branch": b_clean},
+            {"department": b_clean},
+            {"branch": {"$regex": f"^{b_clean}$", "$options": "i"}},
+            {"section_name": {"$regex": f"-{b_clean}-|^{b_clean}-|{b_clean}", "$options": "i"}},
+        ]
     if is_active is not None:
         query["is_active"] = is_active
 

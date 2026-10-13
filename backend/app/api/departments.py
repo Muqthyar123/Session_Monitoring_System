@@ -39,20 +39,23 @@ async def _enrich_department_counts(doc: dict) -> dict:
             {"department": code},
         ]
     })
-    # Count sections
+    # Count sections matching branch/department or section_name containing branch code
     sec_count = await db.sections.count_documents({
         "$or": [
             {"branch": code},
             {"branch": {"$regex": f"^{code}$", "$options": "i"}},
             {"department": code},
+            {"section_name": {"$regex": f"-{code}-|^{code}-|{code}", "$options": "i"}},
         ]
     })
     # Count mentors/faculty
     fac_count = await db.users.count_documents({
-        "role": UserRole.MENTOR.value,
+        "role": {"$in": [UserRole.MENTOR.value, "FACULTY", UserRole.DEPARTMENT_COORDINATOR.value]},
         "$or": [
             {"department": code},
             {"department": {"$regex": f"^{code}$", "$options": "i"}},
+            {"branch": code},
+            {"branch": {"$regex": f"^{code}$", "$options": "i"}},
         ]
     })
 
@@ -65,6 +68,24 @@ async def _enrich_department_counts(doc: dict) -> dict:
         if coord_user:
             coord_name = coord_user.get("name")
             coord_email = coord_user.get("email")
+    elif not coord_name or coord_name == "Unassigned":
+        # Check if an HOD/Coordinator exists in users collection for this department
+        hod_user = await db.users.find_one({
+            "$or": [
+                {"department": code, "designation": {"$regex": "HOD|HEAD|COORDINATOR", "$options": "i"}},
+                {"department": code, "role": UserRole.DEPARTMENT_COORDINATOR.value},
+                {"email": f"{code.lower()}hod@nrtec.in"},
+            ]
+        })
+        if hod_user:
+            coord_id = str(hod_user["_id"])
+            coord_name = hod_user.get("name")
+            coord_email = hod_user.get("email")
+            doc_id = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+            await db.departments.update_one(
+                {"_id": doc_id},
+                {"$set": {"coordinator_id": coord_id, "coordinator_name": coord_name, "coordinator_email": coord_email}}
+            )
 
     doc["_id"] = str(doc["_id"])
     doc["student_count"] = stu_count

@@ -789,12 +789,20 @@ async def parse_and_import_timetable_excel(
 
     # Auto-upsert sections into db.sections so sessions can be generated
     for sec, yr in section_map.items():
+        branch = "CSE"
+        if "-" in sec:
+            parts = sec.split("-")
+            if len(parts) >= 2 and parts[1].isalpha():
+                branch = parts[1].upper()
+
         await db.sections.update_one(
             {"section_name": sec},
             {
                 "$set": {
                     "section_name": sec,
                     "year": yr,
+                    "branch": branch,
+                    "department": branch,
                     "is_active": True,
                     "updated_at": datetime.now(timezone.utc),
                 },
