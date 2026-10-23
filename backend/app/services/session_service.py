@@ -256,6 +256,7 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
     remaining_seconds = None
     auto_marked_absent = session.get("auto_marked_absent", False)
     auto_absence_reason = session.get("auto_absence_reason")
+    crlr_not_marked = session.get("crlr_not_marked", False)
 
     if faculty_resp != FacultyResponseStatus.PENDING.value:
         # Already responded or previously marked
@@ -272,13 +273,14 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
             remaining_seconds = max(0, int(window_end_dt - now_ts))
             response_window_expired = now_ts > window_end_dt
         else:
-            # Class period ended without response -> automatically consider faculty absent
+            # Class period ended without response -> CR/LR has not marked attendance for the faculty
             remaining_seconds = 0
             response_window_expired = True
-            faculty_resp = FacultyResponseStatus.ABSENT.value
-            status = SessionStatus.COMPLETED.value
-            auto_marked_absent = True
-            auto_absence_reason = "Automatically marked absent after session completion"
+            faculty_resp = FacultyResponseStatus.CRLR_NOT_MARKED.value
+            status = SessionStatus.EXPIRED.value
+            auto_marked_absent = False
+            crlr_not_marked = True
+            auto_absence_reason = "CR/LR has not marked the attendance for the faculty within scheduled time slot"
 
     session_copy = dict(session)
     session_copy["session_status"] = status
@@ -286,6 +288,7 @@ def calculate_session_dynamic_state(session: dict, now_local: datetime) -> dict:
     session_copy["response_window_seconds_remaining"] = remaining_seconds
     session_copy["response_window_expired"] = response_window_expired
     session_copy["auto_marked_absent"] = auto_marked_absent
+    session_copy["crlr_not_marked"] = crlr_not_marked
     if auto_absence_reason:
         session_copy["auto_absence_reason"] = auto_absence_reason
     return session_copy

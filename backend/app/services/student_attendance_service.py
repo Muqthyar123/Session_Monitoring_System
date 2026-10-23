@@ -442,10 +442,13 @@ async def get_students_analytics_summary(year: str, section: str) -> List[Studen
     if not students_docs:
         students_docs = await db.students.find({"section": {"$in": sec_candidates}}).sort("roll_number", 1).to_list(length=5000)
 
-    total_days_count = await db.student_attendance_submissions.count_documents({
-        "section": {"$in": sec_candidates}
-    })
-    total_days = max(total_days_count, 1)
+    distinct_dates = await db.student_attendance_submissions.distinct(
+        "date", {"section": {"$in": sec_candidates}}
+    )
+    total_days = len(distinct_dates) if distinct_dates else 0
+    if total_days == 0:
+        att_dates = await db.student_attendance.distinct("date", {"section": {"$in": sec_candidates}})
+        total_days = len(att_dates) if att_dates else 0
 
     abs_docs = await db.student_attendance.find({
         "status": "Absent",
@@ -465,9 +468,12 @@ async def get_students_analytics_summary(year: str, section: str) -> List[Studen
             continue
         abs_count = abs_counts.get(roll, 0)
 
-        pct = round(((total_days - abs_count) / total_days) * 100, 1) if total_days > 0 else 100.0
-        if pct < 0:
-            pct = 0.0
+        effective_days = max(total_days, abs_count, 1) if (total_days > 0 or abs_count > 0) else 0
+        if effective_days == 0:
+            pct = 100.0
+        else:
+            present_days = max(0, effective_days - abs_count)
+            pct = round((present_days / effective_days) * 100, 1)
 
         result.append(StudentAnalyticsItem(
             student_id=str(s.get("_id", roll)),
@@ -478,7 +484,7 @@ async def get_students_analytics_summary(year: str, section: str) -> List[Studen
             student_phone=s.get("student_phone"),
             parent_phone=s.get("parent_phone"),
             total_absences=abs_count,
-            total_days=total_days,
+            total_days=effective_days,
             attendance_percentage=pct,
         ))
 

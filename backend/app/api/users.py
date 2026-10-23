@@ -60,15 +60,20 @@ async def import_crlr_excel_api(
     file: UploadFile = File(...),
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
-    file_bytes = await file.read()
-    summary = await parse_and_import_crlr_excel(
-        file_bytes, filename=file.filename, actor_id=admin["id"]
-    )
-    return ApiResponse(
-        success=True,
-        data=summary,
-        message=f"Import complete: {summary['created']} created, {summary['updated']} updated, {summary['failed']} failed.",
-    )
+    try:
+        file_bytes = await file.read()
+        summary = await parse_and_import_crlr_excel(
+            file_bytes, filename=file.filename, actor_id=admin["id"]
+        )
+        return ApiResponse(
+            success=True,
+            data=summary,
+            message=f"Import complete: {summary['created']} created, {summary['updated']} updated, {summary['failed']} failed.",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process CR/LR file: {str(e)}")
 
 
 @router.get("/{user_id}", response_model=ApiResponse[UserResponse])

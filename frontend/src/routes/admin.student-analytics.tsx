@@ -12,6 +12,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   UserX,
+  UserCheck,
+  Building2,
   Download,
 } from "lucide-react";
 import { exportToCSV } from "@/utils/exportUtils";
@@ -31,33 +33,82 @@ import {
 } from "@/components/ui/dialog";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import {
+  getAbsenteeYears,
+  getAbsenteeSections,
   getStudentAnalyticsSummary,
   getStudentCompleteHistory,
   type StudentAnalyticsSummaryItem,
+  type AbsenteeStudentItem,
 } from "@/services/studentAttendanceService";
-import { MOCK_YEARS } from "@/data/mock/mockData";
+import { getStudents, type StudentItem } from "@/services/studentService";
 
 export const Route = createFileRoute("/admin/student-analytics")({
   head: () => ({
     meta: [
       { title: "Student Attendance Analytics — Admin Portal" },
-      { name: "description", content: "Comprehensive overview of student attendance metrics across all academic years and sections." },
+      { name: "description", content: "Comprehensive overview of dynamic student attendance metrics across all academic years and sections." },
     ],
   }),
   component: AdminStudentAnalyticsPage,
 });
 
-const SECTIONS = [
-  "CSE-A", "CSE-B", "CSE-C", "CSE-D", "CSE-E",
-  "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"
-];
+const DEFAULT_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+const DEFAULT_SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 function AdminStudentAnalyticsPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [globalSearch, setGlobalSearch] = useState("");
 
-  // Fetch summary when year & section selected
+  // Level 1: Dynamic Years
+  const {
+    data: dbYears,
+    loading: loadingYears,
+    error: errorYears,
+    reload: reloadYears,
+  } = useAsyncData(() => getAbsenteeYears().catch(() => DEFAULT_YEARS), []);
+
+  const normalizedYears: { year: string; studentCount?: number; absenteeCount?: number }[] = useMemo(() => {
+    if (!dbYears || !Array.isArray(dbYears)) {
+      return DEFAULT_YEARS.map((y) => ({ year: y }));
+    }
+    return dbYears.map((item: any) => {
+      if (typeof item === "string") return { year: item };
+      return {
+        year: item.year || "2nd Year",
+        studentCount: item.studentCount,
+        absenteeCount: item.absenteeCount,
+      };
+    });
+  }, [dbYears]);
+
+  // Level 2: Dynamic Sections for Selected Year
+  const {
+    data: dbSections,
+    loading: loadingSections,
+    error: errorSections,
+    reload: reloadSections,
+  } = useAsyncData(
+    () => (selectedYear ? getAbsenteeSections(selectedYear).catch(() => DEFAULT_SECTIONS) : Promise.resolve([])),
+    [selectedYear]
+  );
+
+  const normalizedSections: { section: string; studentCount?: number; absenteeCount?: number }[] = useMemo(() => {
+    if (!dbSections || !Array.isArray(dbSections)) {
+      return DEFAULT_SECTIONS.map((s) => ({ section: s }));
+    }
+    return dbSections.map((item: any) => {
+      if (typeof item === "string") return { section: item };
+      return {
+        section: item.section || "A",
+        studentCount: item.studentCount,
+        absenteeCount: item.absenteeCount,
+      };
+    });
+  }, [dbSections]);
+
+  // Level 3: Students list for selected Year + Section
   const {
     data: summaryList,
     loading: loadingSummary,
@@ -69,6 +120,18 @@ function AdminStudentAnalyticsPage() {
         ? getStudentAnalyticsSummary(selectedYear, selectedSection)
         : Promise.resolve([]),
     [selectedYear, selectedSection]
+  );
+
+  // Global Search results when searching across all students
+  const {
+    data: searchResults,
+    loading: loadingGlobalSearch,
+  } = useAsyncData(
+    () =>
+      globalSearch.trim().length >= 2
+        ? getStudents(undefined, undefined, globalSearch.trim())
+        : Promise.resolve([]),
+    [globalSearch]
   );
 
   // Selected student for complete history modal
@@ -94,80 +157,223 @@ function AdminStudentAnalyticsPage() {
     );
   }, [summaryList, search]);
 
+  const isGlobalSearchActive = !selectedSection && globalSearch.trim().length >= 2;
+
   return (
     <AdminLayout>
       <PageHeader
         title="Student Attendance Analytics"
-        description="Comprehensive breakdown of student attendance percentages, absence counts, and historical records across all sections."
+        description="Comprehensive real-time student attendance metrics, dynamic section drill-down, and absence records across academic years."
         actions={
-          selectedSection ? (
-            <Button variant="outline" size="sm" onClick={() => setSelectedSection(null)}>
-              <ArrowLeft className="size-4 mr-2" /> Back to Sections
-            </Button>
-          ) : selectedYear ? (
-            <Button variant="outline" size="sm" onClick={() => setSelectedYear(null)}>
-              <ArrowLeft className="size-4 mr-2" /> Back to Years
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {selectedSection ? (
+              <Button variant="outline" size="sm" onClick={() => setSelectedSection(null)}>
+                <ArrowLeft className="size-4 mr-2" /> Back to Sections
+              </Button>
+            ) : selectedYear ? (
+              <Button variant="outline" size="sm" onClick={() => setSelectedYear(null)}>
+                <ArrowLeft className="size-4 mr-2" /> Back to Years
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
-      {/* LEVEL 1: Select Academic Year */}
-      {!selectedYear && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold tracking-tight">Select Academic Year</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {MOCK_YEARS.map((year) => (
-              <Card
-                key={year}
-                onClick={() => setSelectedYear(year)}
-                className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-base font-bold">{year}</CardTitle>
-                  <GraduationCap className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <p className="text-xs text-muted-foreground">Inspect section analytics</p>
-                  <div className="mt-4 flex items-center justify-end text-xs font-semibold text-primary">
-                    View Sections <ChevronRight className="size-4 ml-1" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+      {/* Global Search Bar */}
+      {!selectedSection && (
+        <div className="relative max-w-lg mb-6">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search any student across the college by name or roll number..."
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            className="pl-9 bg-card"
+          />
+          {globalSearch && (
+            <button
+              onClick={() => setGlobalSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
         </div>
       )}
 
-      {/* LEVEL 2: Select Section */}
-      {selectedYear && !selectedSection && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-sm px-3 py-1">
-              {selectedYear}
-            </Badge>
-            <span className="text-sm text-muted-foreground">Select Section</span>
+      {/* GLOBAL SEARCH RESULTS VIEW */}
+      {isGlobalSearchActive && (
+        <div className="space-y-4 mb-8">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">
+              Global Search Results for &ldquo;{globalSearch}&rdquo;
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {searchResults?.length || 0} student(s) found
+            </span>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {SECTIONS.map((sec) => (
-              <Card
-                key={sec}
-                onClick={() => setSelectedSection(sec)}
-                className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-bold">{selectedYear} &bull; {sec}</CardTitle>
-                  <CardDescription>Section {sec}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-end text-xs font-semibold text-primary mt-2">
-                    Student Analytics <ChevronRight className="size-4 ml-1" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+          {loadingGlobalSearch ? (
+            <LoadingState label="Searching student directory..." />
+          ) : !searchResults || searchResults.length === 0 ? (
+            <EmptyState
+              title="No students matched search"
+              description={`Could not find any student matching "${globalSearch}".`}
+            />
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {searchResults.map((st) => (
+                <Card
+                  key={st.rollNumber}
+                  className="hover:border-primary transition-all cursor-pointer"
+                  onClick={() => {
+                    setActiveStudent({
+                      studentName: st.name,
+                      rollNumber: st.rollNumber,
+                      year: st.year || selectedYear || "2nd Year",
+                      section: st.section || "A",
+                      studentPhone: st.studentPhone,
+                      parentPhone: st.parentPhone,
+                      totalAbsences: 0,
+                      totalDays: 0,
+                      attendancePercentage: 100,
+                    });
+                  }}
+                >
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-sm font-bold">{st.name}</CardTitle>
+                        <p className="font-mono text-xs text-muted-foreground">{st.rollNumber}</p>
+                      </div>
+                      <Badge variant="outline">{st.section}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-xs">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>{st.year || "2nd Year"}</span>
+                      <span>{st.branch || "CSE"}</span>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-full text-xs h-7 mt-2">
+                      <History className="size-3 mr-1.5" /> View Absence History
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* LEVEL 1: Dynamic Academic Years */}
+      {!selectedYear && !isGlobalSearchActive && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold tracking-tight">Select Academic Year</h2>
+            <span className="text-xs text-muted-foreground">
+              {normalizedYears.length} Academic Years Active
+            </span>
           </div>
+
+          {loadingYears ? (
+            <LoadingState label="Loading academic years..." />
+          ) : errorYears ? (
+            <ErrorState title="Failed to load years" description={errorYears.message} retry={reloadYears} />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {normalizedYears.map((item) => (
+                <Card
+                  key={item.year}
+                  onClick={() => setSelectedYear(item.year)}
+                  className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
+                >
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-base font-bold">{item.year}</CardTitle>
+                    <GraduationCap className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </CardHeader>
+                  <CardContent className="pt-2 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Total Enrolled:</span>
+                      <strong className="text-foreground">{item.studentCount ?? "Registered"} Students</strong>
+                    </div>
+                    {item.absenteeCount !== undefined && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Today's Absences:</span>
+                        <Badge variant={item.absenteeCount > 0 ? "destructive" : "outline"} className="text-[10px]">
+                          {item.absenteeCount} absent
+                        </Badge>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-end text-xs font-semibold text-primary pt-2 border-t">
+                      View Sections <ChevronRight className="size-4 ml-1" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* LEVEL 2: Dynamic Sections for Selected Year */}
+      {selectedYear && !selectedSection && !isGlobalSearchActive && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-sm px-3 py-1 font-semibold">
+                {selectedYear}
+              </Badge>
+              <span className="text-sm text-muted-foreground">Choose Section</span>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {normalizedSections.length} Sections Available
+            </span>
+          </div>
+
+          {loadingSections ? (
+            <LoadingState label={`Loading sections for ${selectedYear}...`} />
+          ) : errorSections ? (
+            <ErrorState title="Failed to load sections" description={errorSections.message} retry={reloadSections} />
+          ) : normalizedSections.length === 0 ? (
+            <EmptyState
+              title="No Sections Found"
+              description={`No sections are currently mapped for ${selectedYear}.`}
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {normalizedSections.map((sec) => (
+                <Card
+                  key={sec.section}
+                  onClick={() => setSelectedSection(sec.section)}
+                  className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
+                >
+                  <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                    <div>
+                      <CardTitle className="text-lg font-bold">Section {sec.section}</CardTitle>
+                      <CardDescription>{selectedYear}</CardDescription>
+                    </div>
+                    <Building2 className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </CardHeader>
+                  <CardContent className="pt-2 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Students:</span>
+                      <strong className="text-foreground">{sec.studentCount ?? "Registered"}</strong>
+                    </div>
+                    {sec.absenteeCount !== undefined && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Today's Absences:</span>
+                        <Badge variant={sec.absenteeCount > 0 ? "destructive" : "outline"} className="text-[10px]">
+                          {sec.absenteeCount} absent
+                        </Badge>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-end text-xs font-semibold text-primary pt-2 border-t">
+                      Student Analytics <ChevronRight className="size-4 ml-1" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -182,16 +388,19 @@ function AdminStudentAnalyticsPage() {
               <Badge variant="default" className="text-sm font-semibold">
                 Section {selectedSection}
               </Badge>
+              <span className="text-xs text-muted-foreground ml-2">
+                {filteredSummary.length} student(s) tracked
+              </span>
             </div>
 
             <div className="flex items-center gap-3 flex-1 justify-end">
               <div className="relative max-w-xs w-full">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search student or roll number..."
+                  placeholder="Filter student or roll number..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 bg-card"
                 />
               </div>
               <Button
@@ -216,7 +425,7 @@ function AdminStudentAnalyticsPage() {
                   );
                 }}
                 disabled={filteredSummary.length === 0}
-                className="gap-1.5"
+                className="gap-1.5 bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 border-emerald-500/30"
                 title="Export student analytics to Excel/CSV"
               >
                 <Download className="size-4" /> Export Analytics
@@ -225,7 +434,7 @@ function AdminStudentAnalyticsPage() {
           </div>
 
           {loadingSummary ? (
-            <LoadingState label="Loading student analytics..." />
+            <LoadingState label="Calculating realtime student attendance analytics..." />
           ) : errorSummary ? (
             <ErrorState title="Failed to load summary" description={errorSummary.message} retry={reloadSummary} />
           ) : !summaryList || summaryList.length === 0 ? (
@@ -253,7 +462,7 @@ function AdminStudentAnalyticsPage() {
                   );
 
                 return (
-                  <Card key={st.rollNumber} className="flex flex-col justify-between">
+                  <Card key={st.rollNumber} className="flex flex-col justify-between hover:shadow-sm transition-shadow">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div>
@@ -272,7 +481,7 @@ function AdminStudentAnalyticsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full"
+                        className="w-full text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
                         onClick={() => setActiveStudent(st)}
                       >
                         <History className="size-3.5 mr-2" /> Complete History

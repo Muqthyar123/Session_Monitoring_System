@@ -238,9 +238,9 @@ async def test_auto_marked_absent_on_session_completion():
         "faculty_response": "Pending",
     }
     computed = calculate_session_dynamic_state(session_doc, now_local)
-    assert computed["faculty_response"] == "Not Present"
-    assert computed["auto_marked_absent"] is True
-    assert "Automatically marked absent" in computed["auto_absence_reason"]
+    assert computed["faculty_response"] == "CR/LR Not Marked"
+    assert computed["crlr_not_marked"] is True
+    assert "CR/LR has not marked" in computed["auto_absence_reason"]
 
 
 def test_lab_session_continuous_merging():
@@ -356,3 +356,113 @@ async def test_student_attendance_correction_with_mandatory_reason(client: Async
     sub = await db.student_attendance_submissions.find_one({"section": "II-CSE-A", "date": today_str})
     assert sub["absent_count"] == 0
     assert "22CSE099" not in sub["absent_rolls"]
+
+
+@pytest.mark.asyncio
+async def test_marking_attendance_strictly_within_class_hour_enforcement(client: AsyncClient):
+    """Test that CR/LR can mark attendance ONLY within class hour and cannot modify after completion."""
+    db = get_database()
+    now_local = datetime.now(tz_kolkata)
+    today_str = now_local.strftime("%Y-%m-%d")
+
+    cr_res = await db.users.insert_one({
+        "name": "Class Rep",
+        "email": "cr_window@test.com",
+        "role": UserRole.CR.value,
+        "section": "II-CSE-B",
+        "is_active": True,
+    })
+    token = create_access_token({"sub": str(cr_res.inserted_id), "role": "CR"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Upcoming session: scheduled in the future today (e.g. 23:58 - 23:59) if now is before that
+    future_start = "23:58"
+    future_end = "23:59"
+    if now_local.hour == 23 and now_local.minute >= 57:
+        future_start = "23:59"
+        future_end = "23:59"
+
+    # Only test before-start if current time is actually before future_start
+    if now_local.hour < 23 or (now_local.hour == 23 and now_local.minute < 58):
+        future_sess = await db.sessions.insert_one({
+            "section": "II-CSE-B",
+            "subject": "Cloud Computing",
+            "period": "Period 7",
+            "periods_included": [7],
+            "start_time": future_start,
+            "end_time": future_end,
+            "date": today_str,
+            "session_status": SessionStatus.UPCOMING.value,
+            "faculty_response": FacultyResponseStatus.PENDING.value,
+        })
+        res_future = await client.post(
+            "/api/attendance",
+            json={"session_id": str(future_sess.inserted_id), "status": "PRESENT"},
+            headers=headers,
+        )
+        assert res_future.status_code == 400
+        err_msg_future = res_future.json().get("error", {}).get("message", "") or str(res_future.json().get("detail", ""))
+        assert "only be marked during the assigned class hour" in err_msg_future
+
+    # 2. Completed session: scheduled in the past today (e.g. 06:00 - 07:00)
+    past_sess = await db.sessions.insert_one({
+        "section": "II-CSE-B",
+        "subject": "Theory of Computation",
+        "period": "Period 1",
+        "periods_included": [1],
+        "start_time": "06:00",
+        "end_time": "07:00",
+        "date": today_str,
+        "session_status": SessionStatus.EXPIRED.value,
+        "faculty_response": FacultyResponseStatus.PENDING.value,
+    })
+    res_past = await client.post(
+        "/api/attendance",
+        json={"session_id": str(past_sess.inserted_id), "status": "PRESENT"},
+        headers=headers,
+    )
+    assert res_past.status_code == 400
+    err_msg_past = res_past.json().get("error", {}).get("message", "") or str(res_past.json().get("detail", ""))
+    assert "scheduled time has ended" in err_msg_past
+
+    # 3. Active session: start_time=00:00, end_time=23:59 (covering current time)
+    active_sess = await db.sessions.insert_one({
+        "section": "II-CSE-B",
+        "subject": "Data Mining",
+        "period": "Period 2",
+        "periods_included": [2],
+        "start_time": "00:00",
+        "end_time": "23:59",
+        "date": today_str,
+        "session_status": SessionStatus.ACTIVE.value,
+        "faculty_response": FacultyResponseStatus.PENDING.value,
+    })
+    res_active = await client.post(
+        "/api/attendance",
+        json={"session_id": str(active_sess.inserted_id), "status": "PRESENT"},
+        headers=headers,
+    )
+    assert res_active.status_code == 200
+    assert res_active.json()["data"]["facultyResponse"] == "Present"
+
+    # 4. Attempting to remark/modify an already completed session whose hour has ended
+    completed_past_sess = await db.sessions.insert_one({
+        "section": "II-CSE-B",
+        "subject": "Web Tech",
+        "period": "Period 3",
+        "periods_included": [3],
+        "start_time": "06:00",
+        "end_time": "07:00",
+        "date": today_str,
+        "session_status": SessionStatus.COMPLETED.value,
+        "faculty_response": "Present",
+    })
+    res_completed_past = await client.post(
+        "/api/attendance",
+        json={"session_id": str(completed_past_sess.inserted_id), "status": "ABSENT"},
+        headers=headers,
+    )
+    assert res_completed_past.status_code == 400
+    err_msg_completed = res_completed_past.json().get("error", {}).get("message", "") or str(res_completed_past.json().get("detail", ""))
+    assert "scheduled time has ended" in err_msg_completed
+

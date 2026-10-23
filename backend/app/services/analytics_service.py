@@ -9,10 +9,22 @@ from app.schemas.user import UserRole
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
 
-def normalize_faculty(name: Optional[str]) -> str:
+def clean_display_faculty_name(name: Optional[str]) -> str:
     if not name:
         return ""
     n = str(name).strip()
+    # Strip leading punctuation such as '(', '/', '.', '-'
+    while n and n[0] in "(/.- ":
+        n = n[1:].strip()
+    if n.endswith(")"):
+        n = n[:-1].strip()
+    return n.strip()
+
+
+def normalize_faculty(name: Optional[str]) -> str:
+    if not name:
+        return ""
+    n = clean_display_faculty_name(name)
     for prefix in ["Dr.", "Prof.", "Mr.", "Mrs.", "Ms.", "DR.", "PROF.", "MR.", "MRS.", "MS."]:
         if n.startswith(prefix):
             n = n[len(prefix):].strip()
@@ -48,6 +60,13 @@ def is_substitute_status(val: Optional[str]) -> bool:
         return False
     v = str(val).strip().upper()
     return v in ["SUBSTITUTE", "SUBSTITUTE_FACULTY", "SUBSTITUTE REPORTED", "S"]
+
+
+def is_not_marked_status(val: Optional[str]) -> bool:
+    if not val:
+        return False
+    v = str(val).strip().upper()
+    return "NOT MARKED" in v or "CR/LR NOT MARKED" in v or "UNMARKED" in v or v == "EXPIRED"
 
 
 async def get_admin_dashboard_analytics() -> dict:
@@ -372,7 +391,7 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
             if key not in faculty_map:
                 display_sec = format_display_section(raw_sec, yr)
                 faculty_map[key] = {
-                    "facultyName": raw_fac,
+                    "facultyName": clean_display_faculty_name(raw_fac),
                     "section": display_sec,
                     "year": yr,
                     "subjects": set(),
@@ -381,6 +400,7 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
                     "absentHours": 0,
                     "lateHours": 0,
                     "substitutedHours": 0,
+                    "unmarkedHours": 0,
                     "processed_session_ids": set(),
                 }
             if subj:
@@ -410,7 +430,7 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
             if key not in faculty_map:
                 display_sec = format_display_section(raw_sec, yr)
                 faculty_map[key] = {
-                    "facultyName": raw_fac,
+                    "facultyName": clean_display_faculty_name(raw_fac),
                     "section": display_sec,
                     "year": yr,
                     "subjects": set(),
@@ -419,6 +439,7 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
                     "absentHours": 0,
                     "lateHours": 0,
                     "substitutedHours": 0,
+                    "unmarkedHours": 0,
                     "processed_session_ids": set(),
                 }
 
@@ -435,6 +456,8 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
                 faculty_map[key]["absentHours"] += hrs
             elif is_substitute_status(resp):
                 faculty_map[key]["substitutedHours"] += hrs
+            elif is_not_marked_status(resp) or s.get("crlr_not_marked") or resp == FacultyResponseStatus.CRLR_NOT_MARKED.value:
+                faculty_map[key]["unmarkedHours"] += hrs
 
     # 3. Process attendance from db.attendance_records
     for rec in rec_docs:
@@ -474,6 +497,8 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
                     faculty_map[key]["absentHours"] += hrs
                 elif is_substitute_status(status_val):
                     faculty_map[key]["substitutedHours"] += hrs
+                elif is_not_marked_status(status_val):
+                    faculty_map[key]["unmarkedHours"] += hrs
 
     # 4. Construct final summary result list
     result = []
@@ -482,12 +507,15 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
         ab = item["absentHours"]
         late = item["lateHours"]
         sub = item["substitutedHours"]
+        unmarked = item.get("unmarkedHours", 0)
         evaluated = att + ab + sub
-        tot = max(item["ttHours"], evaluated)
+        tot = max(item["ttHours"], evaluated + unmarked)
         pct = round((att / evaluated * 100), 1) if evaluated > 0 else 0.0
 
+        is_crlr_unmarked = unmarked > 0 or (evaluated == 0 and tot > 0)
+
         result.append({
-            "facultyName": item["facultyName"],
+            "facultyName": clean_display_faculty_name(item["facultyName"]),
             "subject": ", ".join(sorted(list(item["subjects"]))),
             "section": item["section"],
             "year": item["year"],
@@ -496,11 +524,15 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
             "absentClasses": ab,
             "lateClasses": late,
             "substitutedClasses": sub,
+            "unmarkedClasses": unmarked,
             "totalHours": tot,
             "attendedHours": att,
             "absentHours": ab,
             "lateHours": late,
             "substitutedHours": sub,
+            "unmarkedHours": unmarked,
+            "crlrNotMarked": is_crlr_unmarked,
+            "crlrNotMarkedMessage": "CR/LR has not marked the attendance for the faculty" if is_crlr_unmarked else None,
             "attendancePercentage": pct,
         })
 
@@ -636,6 +668,7 @@ async def get_faculty_history(
     absent_cnt = 0
     late_cnt = 0
     sub_cnt = 0
+    unmarked_cnt = 0
     pending_cnt = 0
 
     for s in sessions:
@@ -671,6 +704,11 @@ async def get_faculty_history(
         elif is_substitute_status(resp):
             status_label = "Substitute"
             sub_cnt += 1
+        elif is_not_marked_status(resp) or s.get("crlr_not_marked") or resp == FacultyResponseStatus.CRLR_NOT_MARKED.value:
+            status_label = "CR/LR Not Marked"
+            unmarked_cnt += 1
+            if not arr_comment:
+                arr_comment = "CR/LR has not marked the attendance for the faculty within scheduled time slot"
         else:
             pending_cnt += 1
 
@@ -697,7 +735,7 @@ async def get_faculty_history(
     pct = round((attended_cnt / total_evaluated * 100), 1) if total_evaluated > 0 else 0.0
 
     return {
-        "facultyName": faculty_name,
+        "facultyName": clean_display_faculty_name(faculty_name),
         "period": period_clean,
         "startDate": target_start_date,
         "endDate": target_end_date,
@@ -707,6 +745,7 @@ async def get_faculty_history(
             "absentClasses": absent_cnt,
             "lateClasses": late_cnt,
             "substitutedClasses": sub_cnt,
+            "unmarkedClasses": unmarked_cnt,
             "pendingClasses": pending_cnt,
             "attendancePercentage": pct,
         },

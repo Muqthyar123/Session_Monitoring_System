@@ -16,6 +16,7 @@ class FacultyResponseStatus(str, Enum):
     PRESENT = "Present"
     ABSENT = "Not Present"
     SUBSTITUTE = "Substitute"
+    CRLR_NOT_MARKED = "CR/LR Not Marked"
 
 
 class ClassSessionResponse(BaseModel):
@@ -51,6 +52,7 @@ class ClassSessionResponse(BaseModel):
     submitted_at: Optional[str] = Field(None, alias="submittedAt")
     auto_marked_absent: Optional[bool] = Field(False, alias="autoMarkedAbsent")
     auto_absence_reason: Optional[str] = Field(None, alias="autoAbsenceReason")
+    crlr_not_marked: Optional[bool] = Field(False, alias="crlrNotMarked")
 
     model_config = ConfigDict(populate_by_name=True)
 

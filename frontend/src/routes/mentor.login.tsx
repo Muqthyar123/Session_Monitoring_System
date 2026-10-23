@@ -55,19 +55,19 @@ function MentorLoginPage() {
             Mentor Portal Sign In
           </CardTitle>
           <CardDescription className="text-xs text-slate-500">
-            Enter your Mentor ID or Email to view student absentees and analytics.
+            Enter your Employee ID or Email to view student absentees and analytics.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-1.5">
-              <Label htmlFor="identifier">Mentor ID or Email</Label>
+              <Label htmlFor="identifier">Employee ID or Email</Label>
               <div className="relative">
                 <GraduationCap className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   id="identifier"
                   type="text"
-                  placeholder="e.g. M101 or mentor@example.com"
+                  placeholder="e.g. 605101 or mentor@example.com"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="pl-9"
@@ -100,7 +100,7 @@ function MentorLoginPage() {
 
           <div className="mt-4 rounded-md border border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-xs text-muted-foreground">
             <p className="font-semibold text-emerald-800 dark:text-emerald-300">Default Password</p>
-            <p>Your default password is your <strong>Mentor / Employee ID number</strong> (e.g. <code>605101</code>).</p>
+            <p>Your username is your <strong>Employee ID</strong> (e.g. <code>605101</code>) and default password is <strong><code>mentor@1234</code></strong>.</p>
           </div>
 
           <div className="mt-6 border-t border-slate-100 pt-4 text-center text-xs text-slate-500 dark:border-slate-800 flex justify-center gap-4">

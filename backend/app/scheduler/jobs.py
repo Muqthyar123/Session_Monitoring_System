@@ -34,7 +34,13 @@ async def process_scheduled_sessions_job():
             start_time_str = session["start_time"]
 
             # Parse start time in Kolkata timezone
-            start_dt = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
+            clean_start = start_time_str.strip().upper().replace("AM", "").replace("PM", "").strip()
+            sparts = clean_start.split(":")
+            sh = int(sparts[0])
+            sm = int(sparts[1]) if len(sparts) > 1 else 0
+            if sh < 8:
+                sh += 12
+            start_dt = datetime.strptime(f"{date_str} {sh:02d}:{sm:02d}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
             now_ts = now_local.timestamp()
             start_ts = start_dt.timestamp()
             escalation_ts = start_ts + 600  # 10 minutes (600 seconds)
@@ -85,7 +91,7 @@ async def process_scheduled_sessions_job():
                     session["_id"] = str(session["_id"])
                     await notify_10min_no_response(session)
 
-            # Check 3: Auto-mark faculty as Absent after scheduled session hour/period completion
+            # Check 3: Mark session as CR/LR Not Marked after scheduled session hour/period completion
             end_time_str = session.get("end_time", "17:00")
             try:
                 end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
@@ -104,17 +110,18 @@ async def process_scheduled_sessions_job():
                         },
                         {
                             "$set": {
-                                "faculty_response": FacultyResponseStatus.ABSENT.value,
-                                "session_status": SessionStatus.COMPLETED.value,
-                                "auto_marked_absent": True,
-                                "auto_absence_reason": "Automatically marked absent after session completion",
+                                "faculty_response": FacultyResponseStatus.CRLR_NOT_MARKED.value,
+                                "session_status": SessionStatus.EXPIRED.value,
+                                "auto_marked_absent": False,
+                                "crlr_not_marked": True,
+                                "auto_absence_reason": "CR/LR has not marked the attendance for the faculty within scheduled time slot",
                                 "response_time": end_time_str,
                                 "updated_at": now_utc,
                             }
                         },
                     )
                     if result.modified_count > 0:
-                        logger.info("Auto-marked session %s (%s) faculty absent after completion", s_id, session["subject"])
+                        logger.info("Marked session %s (%s) as CR/LR Not Marked after period completion", s_id, session["subject"])
             except Exception as auto_abs_err:
                 logger.debug("Failed checking end time for session %s: %s", s_id, str(auto_abs_err))
 

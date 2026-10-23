@@ -15,6 +15,7 @@ class AuthUserInfo(BaseModel):
     email: Optional[str] = None
     role: UserRole
     mentor_id: Optional[str] = Field(None, alias="mentorId")
+    employee_id: Optional[str] = Field(None, alias="employeeId")
     phone: Optional[str] = None
     department: Optional[str] = None
     designation: Optional[str] = None

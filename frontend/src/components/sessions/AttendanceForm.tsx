@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, UserCheck, UserX } from "lucide-react";
+import { CheckCircle2, Clock, UserCheck, UserX, Lock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,10 @@ import type { ClassSession } from "@/data/mock/mockData";
 
 type Step = "choose" | "confirm-present" | "substitute-question" | "substitute-name";
 
-function parseMinutes(tStr: string): number {
+function parseTimeToMinutes(tStr: string): number {
   if (!tStr) return 0;
-  const parts = tStr.split(":");
+  const clean = tStr.trim().toUpperCase().replace("AM", "").replace("PM", "").trim();
+  const parts = clean.split(":");
   let h = parseInt(parts[0] || "0", 10);
   const m = parseInt(parts[1] || "0", 10);
   if (h < 8) h += 12;
@@ -32,38 +33,52 @@ export function AttendanceForm({
   const [nameError, setNameError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   const [arrivalTime, setArrivalTime] = useState("");
   const [arrivalComment, setArrivalComment] = useState("");
+  const [now, setNow] = useState<Date>(new Date());
 
-  const answered = session.facultyResponse !== "Pending";
-
+  // Track live clock so period state updates dynamically
   useEffect(() => {
-    if (answered) {
-      setSecondsLeft(null);
-      return;
-    }
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-    const calculateRemaining = () => {
-      const now = new Date();
-      const parts = (session.startTime || "09:00").split(":");
-      let sh = parseInt(parts[0] || "9", 10);
-      const sm = parseInt(parts[1] || "0", 10);
-      if (sh < 8) sh += 12;
-      const startMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm, 0).getTime();
-      const windowEndMs = startMs + 600000; // 10 minutes (600 seconds)
-      const diffSec = Math.floor((windowEndMs - Date.now()) / 1000);
-      return diffSec;
-    };
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const startMinutes = parseTimeToMinutes(session.startTime);
+  const endMinutes = parseTimeToMinutes(session.endTime);
 
-    setSecondsLeft(calculateRemaining());
-    const interval = setInterval(() => {
-      setSecondsLeft(calculateRemaining());
-    }, 1000);
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const todayStr = `${year}-${month}-${day}`;
 
-    return () => clearInterval(interval);
-  }, [session.startTime, answered]);
+  const sessionDate = session.date || todayStr;
+  const isPastDate = sessionDate < todayStr;
+  const isFutureDate = sessionDate > todayStr;
+
+  const isBeforeHour = isFutureDate || (!isPastDate && nowMinutes < startMinutes);
+  const isAfterHour = isPastDate || (!isFutureDate && nowMinutes >= endMinutes);
+  const isWithinHour = !isBeforeHour && !isAfterHour;
+
+  const answered =
+    session.facultyResponse !== "Pending" &&
+    session.facultyResponse !== "CR/LR Not Marked";
+
+  // Calculate remaining seconds for the 10-minute marking window
+  const getSecondsLeftInWindow = () => {
+    if (!isWithinHour) return null;
+    const parts = (session.startTime || "09:00").split(":");
+    let sh = parseInt(parts[0] || "9", 10);
+    const sm = parseInt(parts[1] || "0", 10);
+    if (sh < 8) sh += 12;
+    const windowEndMs =
+      new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm, 0).getTime() +
+      600000; // 10 minutes (600s)
+    return Math.floor((windowEndMs - now.getTime()) / 1000);
+  };
+
+  const secondsLeft = getSecondsLeftInWindow();
 
   const formatTimer = (sec: number) => {
     if (sec <= 0) return "00:00 (10 Min Expired)";
@@ -73,10 +88,23 @@ export function AttendanceForm({
   };
 
   const run = async (action: () => Promise<ClassSession>) => {
+    if (isAfterHour) {
+      toast.error(
+        `The scheduled time for this class hour ended at ${session.endTime}. Attendance cannot be marked or modified.`
+      );
+      return;
+    }
+    if (isBeforeHour) {
+      toast.error(
+        `Attendance can only be marked during the assigned class hour (${session.startTime} - ${session.endTime}).`
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       const updated = await action();
-      toast.success("Attendance response submitted successfully");
+      toast.success("Faculty attendance recorded successfully");
       onSubmitted(updated);
       setStep("choose");
       setIsEditing(false);
@@ -100,6 +128,12 @@ export function AttendanceForm({
           status={
             answered
               ? session.facultyResponse
+              : isAfterHour
+              ? session.facultyResponse === "CR/LR Not Marked"
+                ? "CR/LR Not Marked"
+                : "Expired"
+              : isBeforeHour
+              ? "Upcoming"
               : session.sessionStatus
           }
         />
@@ -123,88 +157,154 @@ export function AttendanceForm({
           <span className="text-slate-900 dark:text-white font-semibold">{session.endTime}</span>
         </div>
 
-        {/* 10-Minute Live Countdown Timer Banner */}
-        {(!answered || isEditing) ? (
+        {/* Dynamic Class Hour / Countdown Status Banner */}
+        {answered ? (
+          isAfterHour ? (
+            <div className="rounded-lg bg-slate-100 border border-slate-200 dark:bg-slate-800/80 dark:border-slate-700 p-2.5 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-medium">
+                <Lock className="size-3.5 text-slate-500" />
+                Class hour ended at {session.endTime}. Attendance is locked.
+              </span>
+              <Badge variant="outline" className="text-slate-500 text-[10px]">
+                Locked
+              </Badge>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800 p-2.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-medium">
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+                Attendance recorded. Can be modified until class hour ends at {session.endTime}.
+              </span>
+            </div>
+          )
+        ) : isBeforeHour ? (
+          <div className="rounded-lg bg-slate-100/90 border border-slate-200 dark:bg-slate-800/70 dark:border-slate-700 p-3 text-xs text-slate-700 dark:text-slate-300 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Clock className="size-4 text-indigo-500 shrink-0" />
+              <span>
+                Upcoming Class: Attendance marking opens at <strong>{session.startTime}</strong>
+              </span>
+            </span>
+            <Badge variant="outline" className="text-slate-600 dark:text-slate-300 border-slate-300 text-[11px]">
+              Opens at {session.startTime}
+            </Badge>
+          </div>
+        ) : isWithinHour ? (
           <div className="rounded-lg bg-amber-50/90 border border-amber-200/80 dark:bg-amber-950/40 dark:border-amber-900/60 p-3 text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-center justify-between shadow-xs">
             <span className="flex items-center gap-2">
               <Clock className="size-4 text-amber-600 dark:text-amber-400 animate-pulse" />
               10-Minute Attendance Marking Window
             </span>
             <span className="font-mono text-sm font-bold bg-amber-200/70 dark:bg-amber-900/80 text-amber-950 dark:text-amber-100 px-2.5 py-1 rounded-md border border-amber-300 dark:border-amber-700">
-              {secondsLeft !== null ? formatTimer(secondsLeft) : "10:00"}
+              {secondsLeft !== null && secondsLeft > 0
+                ? formatTimer(secondsLeft)
+                : `Period Active (ends ${session.endTime})`}
             </span>
           </div>
-        ) : null}
+        ) : (
+          <div className="rounded-lg bg-amber-50/90 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <AlertCircle className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                Class hour ended at <strong>{session.endTime}</strong>. CR/LR has not marked attendance.
+              </span>
+            </span>
+            <Badge variant="outline" className="text-amber-800 dark:text-amber-300 border-amber-300 text-[11px]">
+              CR/LR Not Marked
+            </Badge>
+          </div>
+        )}
 
-        {/* Card Footer Actions - Fully accessible for testing */}
-        <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-          {answered && !isEditing ? (
-            /* Completed & Marked Period -> Read-Only Badge + Re-mark Option */
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
-                {session.facultyResponse === "Present" ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                    <CheckCircle2 className="size-4" /> Attended (Faculty Present)
-                  </span>
-                ) : session.facultyResponse === "Not Present" || session.facultyResponse === "Absent" ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
-                    <UserX className="size-4" /> Not Attended (Faculty Absent)
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                    <UserCheck className="size-4" /> Substitute: {session.substituteName || "Assigned"}
-                  </span>
-                )}
-                <div className="flex items-center gap-2 ml-auto">
-                  {session.responseTime ? (
-                    <span className="text-xs text-slate-400">Responded: {session.responseTime}</span>
-                  ) : null}
-                  {!session.autoMarkedAbsent && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
-                      onClick={() => setIsEditing(true)}
-                    >
-                      Change Response
-                    </Button>
+        {/* Card Footer Actions - Render only when answered or during active class hour */}
+        {(answered || isWithinHour || isEditing) && (
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+            {answered && !isEditing ? (
+              /* Completed & Marked Period -> Read-Only Badge + Conditional Re-mark ONLY within the hour */
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium">
+                  {session.facultyResponse === "Present" ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                      <CheckCircle2 className="size-4" /> Attended (Faculty Present)
+                    </span>
+                  ) : session.facultyResponse === "Not Present" || session.facultyResponse === "Absent" ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+                      <UserX className="size-4" /> Not Attended (Faculty Absent)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                      <UserCheck className="size-4" /> Substitute: {session.substituteName || "Assigned"}
+                    </span>
                   )}
-                </div>
-              </div>
 
-              {/* Submitter details / Auto-absent note */}
-              {session.submittedByName ? (
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                  <UserCheck className="size-3 text-emerald-600 shrink-0" />
-                  Recorded by: <span className="font-semibold text-foreground">{session.submittedByName} ({session.submittedRole || "CR/LR"})</span>
-                  {session.responseTime ? ` at ${session.responseTime}` : ""}
-                </p>
-              ) : session.autoMarkedAbsent || session.facultyResponse === "Not Present" ? (
-                <p className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-1 rounded border border-amber-200 dark:border-amber-900/60">
-                  ⚠️ Automatically marked absent after scheduled session completion (no response submitted within hour).
-                </p>
-              ) : null}
-            </div>
-          ) : step === "choose" ? (
+                  <div className="flex items-center gap-2 ml-auto">
+                    {session.responseTime ? (
+                      <span className="text-xs text-slate-400">Responded: {session.responseTime}</span>
+                    ) : null}
+
+                    {/* Strictly allow modification ONLY while within the active class hour */}
+                    {isWithinHour ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
+                        onClick={() => setIsEditing(true)}
+                      >
+                        Change Response
+                      </Button>
+                    ) : (
+                      <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 italic flex items-center gap-1">
+                        <Lock className="size-3" /> Locked (Hour completed)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Submitter details */}
+                {session.submittedByName ? (
+                  <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                    <UserCheck className="size-3 text-emerald-600 shrink-0" />
+                    Recorded by:{" "}
+                    <span className="font-semibold text-foreground">
+                      {session.submittedByName} ({session.submittedRole || "CR/LR"})
+                    </span>
+                    {session.responseTime ? ` at ${session.responseTime}` : ""}
+                  </p>
+                ) : null}
+              </div>
+            ) : step === "choose" ? (
             /* Active Class Period -> Interactive Present / Not Present Buttons */
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Button
-                size="md"
-                onClick={() => setStep("confirm-present")}
-                disabled={submitting}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
-              >
-                <CheckCircle2 className="size-4 mr-2" /> Faculty Present
-              </Button>
-              <Button
-                size="md"
-                variant="outline"
-                onClick={() => setStep("substitute-question")}
-                disabled={submitting}
-                className="border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200"
-              >
-                <UserX className="size-4 mr-2 text-rose-500" /> Faculty Not Present
-              </Button>
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  size="default"
+                  onClick={() => setStep("confirm-present")}
+                  disabled={submitting}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+                >
+                  <CheckCircle2 className="size-4 mr-2" /> Faculty Present
+                </Button>
+                <Button
+                  size="default"
+                  variant="outline"
+                  onClick={() => setStep("substitute-question")}
+                  disabled={submitting}
+                  className="border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                >
+                  <UserX className="size-4 mr-2 text-rose-500" /> Faculty Not Present
+                </Button>
+              </div>
+              {isEditing ? (
+                <div className="text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsEditing(false)}
+                    className="text-xs text-slate-500"
+                  >
+                    Cancel Edit
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : step === "confirm-present" ? (
             <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3.5 dark:border-slate-800 dark:bg-slate-950">
@@ -217,7 +317,9 @@ export function AttendanceForm({
               </p>
               <div className="space-y-2">
                 <div>
-                  <Label htmlFor="arrivalTime" className="text-xs font-medium">Arrival Time (Optional, e.g. 09:15 AM)</Label>
+                  <Label htmlFor="arrivalTime" className="text-xs font-medium">
+                    Arrival Time (Optional, e.g. 09:15 AM)
+                  </Label>
                   <Input
                     id="arrivalTime"
                     value={arrivalTime}
@@ -227,7 +329,9 @@ export function AttendanceForm({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="arrivalComment" className="text-xs font-medium">Arrival Comment / Remarks (Optional)</Label>
+                  <Label htmlFor="arrivalComment" className="text-xs font-medium">
+                    Arrival Comment / Remarks (Optional)
+                  </Label>
                   <Input
                     id="arrivalComment"
                     value={arrivalComment}
@@ -320,6 +424,7 @@ export function AttendanceForm({
             </form>
           )}
         </div>
+        )}
       </div>
     </div>
   );

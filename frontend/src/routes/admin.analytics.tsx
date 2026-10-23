@@ -680,9 +680,16 @@ function AdminAnalyticsPage() {
                           <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-white">
                             <div className="flex items-center gap-2 cursor-pointer" onClick={() => handleOpenHistory(fac.facultyName)}>
                               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                                {fac.facultyName.charAt(0).toUpperCase()}
+                                {fac.facultyName.replace(/^[^a-zA-Z0-9]+/, "").charAt(0).toUpperCase() || "F"}
                               </div>
-                              <span className="hover:underline hover:text-indigo-600">{fac.facultyName}</span>
+                              <div>
+                                <span className="hover:underline hover:text-indigo-600 block">{fac.facultyName}</span>
+                                {((fac as any).crlrNotMarked || (fac as any).unmarkedClasses > 0) && (
+                                  <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400 block">
+                                    (has cr/lr not marked the attendance for the faculty)
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3.5">
@@ -944,6 +951,10 @@ function AdminAnalyticsPage() {
                           ) : log.status === "Substitute" ? (
                             <Badge className="bg-blue-500/15 text-blue-600 hover:bg-blue-500/25 border-blue-500/30">
                               Substitute: {log.substituteName || "Reported"}
+                            </Badge>
+                          ) : log.status === "CR/LR Not Marked" ? (
+                            <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700/50">
+                              CR/LR Not Marked
                             </Badge>
                           ) : (
                             <Badge variant="secondary">Pending</Badge>

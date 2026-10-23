@@ -8,6 +8,7 @@ type StatusKind =
   | "Present"
   | "Not Present"
   | "Substitute"
+  | "CR/LR Not Marked"
   | "Processed"
   | "Processing"
   | "Failed"
@@ -23,6 +24,7 @@ const styles: Record<StatusKind, string> = {
   Present: "bg-success/12 text-success",
   "Not Present": "bg-destructive/12 text-destructive",
   Substitute: "bg-info/12 text-info",
+  "CR/LR Not Marked": "bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700/50",
   Processed: "bg-success/12 text-success",
   Processing: "bg-warning/20 text-warning-foreground",
   Failed: "bg-destructive/12 text-destructive",

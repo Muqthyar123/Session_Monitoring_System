@@ -89,24 +89,60 @@ async def submit_attendance(
             detail="Access forbidden: You can only submit attendance for your assigned section.",
         )
 
-    # Deadline enforcement: Faculty presence must be updated within the session hour/period
+    # Deadline enforcement: Faculty presence must be marked STRICTLY within the assigned class hour
     now_local = datetime.now(tz_kolkata)
     now_utc = datetime.now(timezone.utc)
-    date_str = session.get("date", now_local.strftime("%Y-%m-%d"))
-    end_time_str = session.get("end_time", "17:00")
-    try:
-        end_dt = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
-        if end_dt.hour < 8:
-            end_dt = end_dt.replace(hour=end_dt.hour + 12)
-        if user_role in ["CR", "LR"] and now_local.timestamp() >= end_dt.timestamp():
+    today_str = now_local.strftime("%Y-%m-%d")
+    date_str = session.get("date", today_str)
+
+    # 1. Date Check: Attendance can only be recorded on the scheduled session date
+    if date_str != today_str:
+        if date_str < today_str:
             raise HTTPException(
                 status_code=400,
-                detail="Faculty presence can no longer be updated for this session as the scheduled time has ended.",
+                detail=f"Faculty presence can no longer be updated for this session as the scheduled time has ended (session was on a past date: {date_str}).",
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Faculty presence cannot be marked before the scheduled date (scheduled for {date_str}).",
+            )
+
+    start_time_str = session.get("start_time", "09:00")
+    end_time_str = session.get("end_time", "17:00")
+
+    def _parse_time_dt(t_str: str) -> datetime:
+        clean_t = t_str.strip().upper().replace("AM", "").replace("PM", "").strip()
+        parts = clean_t.split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        if h < 8:
+            h += 12
+        return datetime.strptime(f"{date_str} {h:02d}:{m:02d}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
+
+    try:
+        start_dt = _parse_time_dt(start_time_str)
+        end_dt = _parse_time_dt(end_time_str)
+        now_ts = now_local.timestamp()
+
+        # 2. Strict Class Hour Window:
+        # Cannot mark attendance before the class starts
+        if now_ts < start_dt.timestamp():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Faculty presence can only be marked during the assigned class hour (scheduled from {start_time_str} to {end_time_str}). Marking before class start is not permitted.",
+            )
+
+        # 3. After completion of the assigned time for that hour, do not allow to modify or remark attendance again
+        if now_ts >= end_dt.timestamp():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Faculty presence can no longer be updated for this session as the scheduled time has ended (assigned class hour ended at {end_time_str}). Modifying or remarking attendance is strictly prohibited after hour completion.",
             )
     except HTTPException:
         raise
-    except Exception:
-        pass
+    except Exception as time_err:
+        logger.warning("Error evaluating time window for session %s: %s", session.get("_id"), str(time_err))
 
     # Validation: substitute_name rules
     if data.status == AttendanceStatus.PRESENT and data.substitute_name:

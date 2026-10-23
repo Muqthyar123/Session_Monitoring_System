@@ -65,38 +65,97 @@ def generate_crlr_excel_template() -> bytes:
 async def parse_and_import_crlr_excel(
     file_bytes: bytes, filename: str, actor_id: str
 ) -> Dict[str, Any]:
-    """Parse CR/LR Excel workbook and safely import users."""
-    if not filename.lower().endswith(".xlsx"):
-        raise ValueError("Invalid file format. Only .xlsx Excel workbooks are supported.")
+    """Parse CR/LR Excel workbook or CSV file and safely import users."""
+    fn_lower = filename.lower()
+    if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls") or fn_lower.endswith(".csv")):
+        raise ValueError("Invalid file format. Only .xlsx, .xls, or .csv files are supported.")
 
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    except Exception as e:
-        raise ValueError(f"Failed to read Excel file: {str(e)}")
+    raw_rows = extract_raw_rows_from_file(file_bytes, filename)
+    if not raw_rows:
+        raise ValueError("File is empty or could not be read.")
 
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        raise ValueError("Excel file is empty.")
+    # Find header row flexibly
+    NAME_ALIASES = {"name", "fullname", "enterfullname", "studentname", "crlrname"}
+    EMAIL_ALIASES = {"email", "emailaddress", "enteremail", "mailid", "mail"}
+    ROLL_ALIASES = {"rollnumber", "rollno", "roll", "enterrollnumber", "pin", "regno", "reg"}
+    PHONE_ALIASES = {"phone", "phonenumber", "entermobilenumber", "mobile", "mobilenumber", "contact"}
+    YEAR_ALIASES = {"year", "selecttheyear", "academicyear", "studyyear"}
+    DEPT_ALIASES = {"department", "selectthedepartment", "branch", "dept"}
+    SECTION_ALIASES = {"section", "selectthesection", "sec"}
+    ROLE_ALIASES = {"role", "crlr", "cr/lr", "representative", "position"}
 
-    header_row = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
-    expected_cols = ["name", "roll number", "email", "phone", "role", "year", "section"]
-    col_map = {}
-    for idx, h in enumerate(header_row):
-        h_norm = h.lower()
-        if h_norm in expected_cols:
-            col_map[h_norm] = idx
+    header_idx = -1
+    col_map: Dict[str, int] = {}
 
-    missing_cols = [c for c in ["name", "email", "role", "year", "section"] if c not in col_map]
+    for idx, row in enumerate(raw_rows[:15]):
+        row_cleaned = [re.sub(r'[^a-z0-9]', '', str(cell).lower()) for cell in row if cell is not None]
+        has_email = any(c in EMAIL_ALIASES or "email" in c or "mail" in c for c in row_cleaned)
+        has_roll = any(c in ROLL_ALIASES or "roll" in c for c in row_cleaned)
+        has_name = any(c in NAME_ALIASES or "name" in c for c in row_cleaned)
+        if (has_email and has_name) or (has_roll and has_name) or (has_roll and has_email):
+            header_idx = idx
+            for c_idx, cell in enumerate(row):
+                if cell is None:
+                    continue
+                clean_h = re.sub(r'[^a-z0-9]', '', str(cell).lower())
+                if (clean_h in NAME_ALIASES or "fullname" in clean_h or "name" in clean_h) and "name" not in col_map:
+                    col_map["name"] = c_idx
+                elif (clean_h in EMAIL_ALIASES or "email" in clean_h or "mail" in clean_h) and "email" not in col_map:
+                    col_map["email"] = c_idx
+                elif (clean_h in ROLL_ALIASES or "roll" in clean_h or "pin" in clean_h) and "roll" not in col_map:
+                    col_map["roll"] = c_idx
+                elif (clean_h in PHONE_ALIASES or "phone" in clean_h or "mobile" in clean_h) and "phone" not in col_map:
+                    col_map["phone"] = c_idx
+                elif (clean_h in YEAR_ALIASES or "year" in clean_h) and "year" not in col_map:
+                    col_map["year"] = c_idx
+                elif (clean_h in DEPT_ALIASES or "dept" in clean_h or "branch" in clean_h) and "dept" not in col_map:
+                    col_map["dept"] = c_idx
+                elif (clean_h in SECTION_ALIASES or "section" in clean_h or "sec" in clean_h) and "section" not in col_map:
+                    col_map["section"] = c_idx
+                elif (clean_h in ROLE_ALIASES or "crlr" in clean_h or "role" in clean_h) and "role" not in col_map:
+                    col_map["role"] = c_idx
+            break
+
+    if header_idx == -1:
+        # Fallback to row 0 index mapping
+        header_row = [str(cell).strip().lower() if cell is not None else "" for cell in raw_rows[0]]
+        for idx, h in enumerate(header_row):
+            h_clean = re.sub(r'[^a-z0-9]', '', h)
+            if "name" in h_clean and "name" not in col_map:
+                col_map["name"] = idx
+            elif ("email" in h_clean or "mail" in h_clean) and "email" not in col_map:
+                col_map["email"] = idx
+            elif "roll" in h_clean and "roll" not in col_map:
+                col_map["roll"] = idx
+            elif ("phone" in h_clean or "mobile" in h_clean) and "phone" not in col_map:
+                col_map["phone"] = idx
+            elif "year" in h_clean and "year" not in col_map:
+                col_map["year"] = idx
+            elif ("dept" in h_clean or "branch" in h_clean) and "dept" not in col_map:
+                col_map["dept"] = idx
+            elif ("section" in h_clean or "sec" in h_clean) and "section" not in col_map:
+                col_map["section"] = idx
+            elif ("role" in h_clean or "crlr" in h_clean) and "role" not in col_map:
+                col_map["role"] = idx
+        header_idx = 0
+
+    missing_cols = []
+    if "name" not in col_map:
+        missing_cols.append("Name")
+    if "email" not in col_map and "roll" not in col_map:
+        missing_cols.append("Email or Roll Number")
     if missing_cols:
-        raise ValueError(f"Missing required columns in Excel: {', '.join(missing_cols)}")
+        raise ValueError(f"Missing required columns in file: {', '.join(missing_cols)}")
 
     db = get_database()
 
-    # Pre-fetch existing emails and roll numbers for fast duplicate checking
+    # Pre-fetch existing emails, roll numbers, and known sections
     existing_users = await db.users.find({}, {"email": 1, "roll_number": 1}).to_list(length=10000)
-    existing_emails = {u["email"].lower(): str(u["_id"]) for u in existing_users if "email" in u}
-    existing_rolls = {u["roll_number"].upper(): str(u["_id"]) for u in existing_users if u.get("roll_number")}
+    existing_emails = {str(u["email"]).strip().lower(): str(u["_id"]) for u in existing_users if "email" in u and u["email"]}
+    existing_rolls = {str(u["roll_number"]).strip().upper(): str(u["_id"]) for u in existing_users if u.get("roll_number")}
+
+    all_db_sections = await db.sections.find({}, {"section_name": 1}).to_list(length=500)
+    db_sec_names = {s.get("section_name", "").upper(): s.get("section_name") for s in all_db_sections if s.get("section_name")}
 
     seen_emails_in_file = set()
     seen_rolls_in_file = set()
@@ -107,61 +166,96 @@ async def parse_and_import_crlr_excel(
     failed_count = 0
     errors = []
 
-    default_password_hash = hash_password("demo1234")
-
-    for row_idx, row_values in enumerate(rows[1:], start=2):
+    for row_idx, row_values in enumerate(raw_rows[header_idx + 1:], start=header_idx + 2):
         if not any(row_values):
-            continue  # Skip completely empty rows
+            continue
 
         total_rows += 1
-        row_str_num = f"Row {row_idx}"
 
-        def get_val(col_name: str) -> str:
-            idx = col_map.get(col_name)
+        def get_val(key_name: str) -> str:
+            idx = col_map.get(key_name)
             if idx is not None and idx < len(row_values) and row_values[idx] is not None:
-                return str(row_values[idx]).strip()
+                v = str(row_values[idx]).strip()
+                return v if v.lower() != "none" else ""
             return ""
 
         name = get_val("name")
         email = get_val("email").lower()
-        role = get_val("role").upper()
-        roll = get_val("roll number").upper()
+        roll = get_val("roll").upper()
         phone = get_val("phone")
-        year = get_val("year")
-        section = get_val("section").upper()
+        raw_year = get_val("year")
+        raw_dept = get_val("dept").upper() or "CSE"
+        raw_sec = get_val("section").upper()
+        raw_role = get_val("role").upper()
 
         row_errors = []
 
         if not name:
             row_errors.append("Name is required.")
-        if not email:
-            row_errors.append("Email is required.")
-        else:
+
+        if not roll and not email:
+            row_errors.append("Roll Number or Email is required.")
+
+        if not email and roll:
+            clean_roll_email = re.sub(r'[^a-zA-Z0-9]', '', roll.lower())
+            email = f"{clean_roll_email}@nrtec.in"
+
+        if email:
             try:
                 email_adapter.validate_python(email)
             except Exception:
                 row_errors.append(f"Invalid email format: '{email}'.")
 
-        if role not in [UserRole.CR.value, UserRole.LR.value]:
-            row_errors.append(f"Role must be CR or LR (got '{role}').")
-
-        if not year:
-            row_errors.append("Year is required.")
-        if not section:
-            row_errors.append("Section is required.")
-
-        # Duplicate checks in file
-        if email in seen_emails_in_file:
-            row_errors.append(f"Duplicate email '{email}' within Excel file.")
+        # Determine Role
+        if "LR" in raw_role or "LATERAL" in raw_role or "LADIES" in raw_role:
+            role = UserRole.LR.value
         else:
-            if email:
-                seen_emails_in_file.add(email)
+            role = UserRole.CR.value
 
-        if roll:
-            if roll in seen_rolls_in_file:
-                row_errors.append(f"Duplicate roll number '{roll}' within Excel file.")
+        # Normalize Year
+        y_low = raw_year.lower()
+        if "4" in y_low or "iv" in y_low:
+            year = "4th Year"
+            roman = "IV"
+        elif "3" in y_low or "iii" in y_low:
+            year = "3rd Year"
+            roman = "III"
+        elif "2" in y_low or "ii" in y_low:
+            year = "2nd Year"
+            roman = "II"
+        elif "1" in y_low or "i" in y_low:
+            year = "1st Year"
+            roman = "I"
+        else:
+            year = raw_year if raw_year else "2nd Year"
+            roman = "II"
+
+        # Normalize Section to match database convention (e.g. IV-CSE-C2 or II-CSE-D)
+        clean_sec = raw_sec
+        for pfx in ["1ST YEAR - ", "2ND YEAR - ", "3RD YEAR - ", "4TH YEAR - ", "SECTION-", "SECTION "]:
+            if clean_sec.startswith(pfx):
+                clean_sec = clean_sec[len(pfx):].strip()
+
+        if clean_sec.startswith("I-") or clean_sec.startswith("II-") or clean_sec.startswith("III-") or clean_sec.startswith("IV-"):
+            section = clean_sec
+        else:
+            sec_tag = clean_sec.replace("CSE-", "").replace("CSE", "").strip("- ")
+            candidate_section = f"{roman}-{raw_dept}-{sec_tag}" if sec_tag else f"{roman}-{raw_dept}"
+            if candidate_section.upper() in db_sec_names:
+                section = db_sec_names[candidate_section.upper()]
             else:
-                seen_rolls_in_file.add(roll)
+                section = candidate_section
+
+        # Duplicate checks within file
+        if email and email in seen_emails_in_file:
+            row_errors.append(f"Duplicate email '{email}' within file.")
+        elif email:
+            seen_emails_in_file.add(email)
+
+        if roll and roll in seen_rolls_in_file:
+            row_errors.append(f"Duplicate roll number '{roll}' within file.")
+        elif roll:
+            seen_rolls_in_file.add(roll)
 
         if row_errors:
             failed_count += 1
@@ -169,13 +263,18 @@ async def parse_and_import_crlr_excel(
             continue
 
         now = datetime.now(timezone.utc)
+        user_roll = roll if roll else None
+        # Default password is their roll number (uppercase) or crlr1234
+        default_pwd = user_roll if user_roll else "crlr1234"
 
-        # Check if updating or creating
-        if email in existing_emails:
-            # Update existing user
-            u_id = existing_emails[email]
+        # Check existing user
+        target_uid = existing_emails.get(email) or (existing_rolls.get(roll) if roll else None)
+
+        if target_uid:
+            # Update existing user safely
             update_fields = {
                 "name": name,
+                "email": email,
                 "role": role,
                 "year": year,
                 "section": section,
@@ -183,33 +282,20 @@ async def parse_and_import_crlr_excel(
             }
             if roll:
                 update_fields["roll_number"] = roll
+                update_fields["password_hash"] = hash_password(roll)
             if phone:
                 update_fields["phone"] = phone
 
-            await db.users.update_one({"_id": db.users.find_one({"email": email})["_id"]}, {"$set": update_fields})
+            query = {"_id": ObjectId(target_uid)} if ObjectId.is_valid(target_uid) else {"_id": target_uid}
+            await db.users.update_one(query, {"$set": update_fields})
             updated_count += 1
-        elif roll and roll in existing_rolls:
-            # Update existing user by roll number
-            update_fields = {
-                "name": name,
-                "email": email,
-                "role": role,
-                "year": year,
-                "section": section,
-                "updated_at": now,
-            }
-            if phone:
-                update_fields["phone"] = phone
-            await db.users.update_one({"roll_number": roll}, {"$set": update_fields})
-            updated_count += 1
+            user_id_str = str(target_uid)
         else:
-            # Create new user
-            user_roll = roll.strip().upper() if roll else None
-            raw_pwd = user_roll if user_roll else "crlr1234"
+            # Create new CR/LR user
             new_user_doc = {
                 "name": name,
                 "email": email,
-                "password_hash": hash_password(raw_pwd),
+                "password_hash": hash_password(default_pwd),
                 "role": role,
                 "roll_number": user_roll,
                 "phone": phone if phone else None,
@@ -220,10 +306,35 @@ async def parse_and_import_crlr_excel(
                 "updated_at": now,
             }
             res = await db.users.insert_one(new_user_doc)
-            existing_emails[email] = str(res.inserted_id)
+            user_id_str = str(res.inserted_id)
+            existing_emails[email] = user_id_str
             if roll:
-                existing_rolls[roll] = str(res.inserted_id)
+                existing_rolls[roll] = user_id_str
             created_count += 1
+
+        # Link CR/LR to db.sections
+        if section:
+            sec_update = {}
+            if role == UserRole.CR.value:
+                sec_update["assigned_cr_id"] = user_id_str
+                sec_update["cr_name"] = name
+            else:
+                sec_update["assigned_lr_id"] = user_id_str
+                sec_update["lr_name"] = name
+
+            await db.sections.update_one(
+                {"section_name": section},
+                {
+                    "$set": sec_update,
+                    "$setOnInsert": {
+                        "section_name": section,
+                        "year": year,
+                        "department": raw_dept,
+                        "created_at": now,
+                    }
+                },
+                upsert=True,
+            )
 
     # Log audit entry
     await db.audit_logs.insert_one(
@@ -1279,13 +1390,14 @@ async def parse_and_import_mentor_excel(
         now = datetime.now(timezone.utc)
         target_id = existing_by_id.get(mentor_id) or existing_by_email.get(email)
 
-        # Default password is the mentor's ID number
-        pwd_to_use = password.strip() if password and password.strip() else mentor_id
+        # Default password is "mentor@1234"
+        pwd_to_use = password.strip() if password and password.strip() else "mentor@1234"
 
         update_fields: Dict[str, Any] = {
             "name": name,
             "email": email,
             "mentor_id": mentor_id,
+            "employee_id": mentor_id,
             "roll_number": mentor_id,
             "updated_at": now,
         }
@@ -1318,6 +1430,7 @@ async def parse_and_import_mentor_excel(
                 "name": name,
                 "email": email,
                 "mentor_id": mentor_id,
+                "employee_id": mentor_id,
                 "roll_number": mentor_id,
                 "password_hash": hash_password(pwd_to_use),
                 "role": UserRole.MENTOR.value,

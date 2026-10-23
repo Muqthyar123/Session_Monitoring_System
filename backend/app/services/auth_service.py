@@ -12,16 +12,37 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
     raw_ident = login_data.email.strip()
     email_clean = raw_ident.lower()
     
-    # Try finding user by email, mentor_id, or roll_number
-    user = await db.users.find_one({
-        "$or": [
-            {"email": email_clean},
-            {"mentor_id": raw_ident},
-            {"mentor_id": raw_ident.upper()},
-            {"roll_number": raw_ident},
-            {"roll_number": raw_ident.upper()}
-        ]
-    })
+    # Try finding user by email, employee_id, mentor_id, or roll_number
+    or_clauses = [
+        {"email": email_clean},
+        {"employee_id": raw_ident},
+        {"employee_id": raw_ident.upper()},
+        {"mentor_id": raw_ident},
+        {"mentor_id": raw_ident.upper()},
+        {"roll_number": raw_ident},
+        {"roll_number": raw_ident.upper()}
+    ]
+    if raw_ident.isdigit():
+        or_clauses.extend([
+            {"employee_id": int(raw_ident)},
+            {"mentor_id": int(raw_ident)},
+        ])
+
+    user = await db.users.find_one({"$or": or_clauses})
+
+    # Resilient fallback if $or misses in mock or remote DB
+    if not user:
+        user = (
+            await db.users.find_one({"employee_id": raw_ident})
+            or await db.users.find_one({"mentor_id": raw_ident})
+            or await db.users.find_one({"roll_number": raw_ident.upper()})
+            or await db.users.find_one({"email": email_clean})
+        )
+        if not user and raw_ident.isdigit():
+            user = (
+                await db.users.find_one({"employee_id": int(raw_ident)})
+                or await db.users.find_one({"mentor_id": int(raw_ident)})
+            )
 
     if not user:
         raise HTTPException(
@@ -35,12 +56,15 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
             detail="User account is disabled. Please contact administrator.",
         )
 
-    pwd_valid = verify_password(login_data.password, user.get("password_hash", ""))
+    clean_pwd = login_data.password.strip()
+    pwd_valid = verify_password(clean_pwd, user.get("password_hash", ""))
+    if not pwd_valid and clean_pwd != login_data.password:
+        pwd_valid = verify_password(login_data.password, user.get("password_hash", ""))
     
     # Fallback check: CR/LR default password is their roll number
     if not pwd_valid and user.get("roll_number"):
         clean_user_roll = user.get("roll_number", "").strip().upper()
-        if clean_user_roll and login_data.password.strip().upper() == clean_user_roll:
+        if clean_user_roll and (clean_pwd.upper() == clean_user_roll or login_data.password.strip().upper() == clean_user_roll):
             pwd_valid = True
             # Upgrade stored password hash to match their roll number
             await db.users.update_one(
@@ -48,15 +72,22 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
                 {"$set": {"password_hash": hash_password(clean_user_roll)}}
             )
 
-    # Fallback check for mentors: default password is their mentor_id
-    if not pwd_valid and user.get("mentor_id"):
-        clean_m_id = user.get("mentor_id", "").strip().upper()
-        if clean_m_id and login_data.password.strip().upper() == clean_m_id:
+    # Fallback check for mentors: default password is "mentor@1234" (or mentor_id / employee_id)
+    if not pwd_valid and user.get("role") == UserRole.MENTOR.value:
+        if clean_pwd == "mentor@1234" or login_data.password == "mentor@1234":
             pwd_valid = True
             await db.users.update_one(
                 {"_id": user["_id"]},
-                {"$set": {"password_hash": hash_password(clean_m_id)}}
+                {"$set": {"password_hash": hash_password("mentor@1234")}}
             )
+        else:
+            clean_m_id = str(user.get("employee_id") or user.get("mentor_id") or "").strip().upper()
+            if clean_m_id and (clean_pwd.upper() == clean_m_id or login_data.password.strip().upper() == clean_m_id):
+                pwd_valid = True
+                await db.users.update_one(
+                    {"_id": user["_id"]},
+                    {"$set": {"password_hash": hash_password("mentor@1234")}}
+                )
 
     if not pwd_valid:
         raise HTTPException(
@@ -104,7 +135,8 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
         name=user.get("name", ""),
         email=user.get("email", ""),
         role=UserRole(role),
-        mentor_id=user.get("mentor_id"),
+        mentor_id=user.get("mentor_id") or user.get("employee_id"),
+        employee_id=user.get("employee_id") or user.get("mentor_id"),
         phone=user.get("phone"),
         department=user.get("department"),
         designation=user.get("designation"),
