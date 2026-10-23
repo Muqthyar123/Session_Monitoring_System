@@ -52,7 +52,9 @@ export const Route = createFileRoute("/admin/timetable")({
 
 function TimetablePage() {
   const uploads = useAsyncData(() => getTimetableUploads(), []);
-  const [year, setYear] = useState(MOCK_YEARS[1] || "2nd Year");
+  const [year, setYear] = useState(() => {
+    return sessionStorage.getItem("admin_timetable_year") || MOCK_YEARS[1] || "2nd Year";
+  });
 
   const romanMap: Record<string, string> = {
     "1st Year": "I",
@@ -68,15 +70,41 @@ function TimetablePage() {
     return Array.from(new Set(uploadedForYear)).sort();
   }, [uploads.data, year]);
 
-  const [section, setSection] = useState("");
+  const [section, setSection] = useState(() => {
+    return sessionStorage.getItem("admin_timetable_section") || "";
+  });
+
+  const handleSectionSelect = (newSec: string) => {
+    setSection(newSec);
+    if (newSec) {
+      sessionStorage.setItem("admin_timetable_section", newSec);
+    } else {
+      sessionStorage.removeItem("admin_timetable_section");
+    }
+  };
 
   useEffect(() => {
-    if (availableSections.length > 0 && (!section || !availableSections.includes(section))) {
+    // If uploads are still loading, do not clear or force-reset the section
+    if (uploads.loading && availableSections.length === 0) return;
+
+    if (availableSections.length > 0) {
+      // If current section is already valid in availableSections, keep it
+      if (section && availableSections.includes(section)) {
+        return;
+      }
+      // Check if sessionStorage section matches
+      const savedSec = sessionStorage.getItem("admin_timetable_section");
+      if (savedSec && availableSections.includes(savedSec)) {
+        setSection(savedSec);
+        return;
+      }
+      // Fallback only if no valid section is currently selected
       setSection(availableSections[0]);
-    } else if (availableSections.length === 0 && section !== "") {
+      sessionStorage.setItem("admin_timetable_section", availableSections[0]);
+    } else if (!uploads.loading && availableSections.length === 0 && section !== "") {
       setSection("");
     }
-  }, [availableSections, section]);
+  }, [availableSections, section, uploads.loading]);
 
   const timetable = useAsyncData(() => {
     if (!section) return Promise.resolve([]);
@@ -85,11 +113,26 @@ function TimetablePage() {
 
   const handleYearChange = (newYear: string) => {
     setYear(newYear);
+    sessionStorage.setItem("admin_timetable_year", newYear);
     const uploadedForNewYear = (uploads.data ?? [])
       .filter((u) => u.academicYear === newYear)
       .map((u) => u.section);
     const sectionsForNewYear = Array.from(new Set(uploadedForNewYear)).sort();
-    setSection(sectionsForNewYear[0] || "");
+
+    // Preserve active section if present in the new year's sections
+    if (section && sectionsForNewYear.includes(section)) {
+      return;
+    }
+    const savedSec = sessionStorage.getItem("admin_timetable_section");
+    if (savedSec && sectionsForNewYear.includes(savedSec)) {
+      setSection(savedSec);
+      return;
+    }
+    const fallbackSec = sectionsForNewYear[0] || "";
+    setSection(fallbackSec);
+    if (fallbackSec) {
+      sessionStorage.setItem("admin_timetable_section", fallbackSec);
+    }
   };
 
   const handleUploadSuccess = async (file: File) => {
@@ -123,8 +166,12 @@ function TimetablePage() {
             variant="outline"
             size="sm"
             onClick={() => {
-              if (r.academicYear) setYear(r.academicYear);
+              if (r.academicYear) {
+                setYear(r.academicYear);
+                sessionStorage.setItem("admin_timetable_year", r.academicYear);
+              }
               setSection(r.section);
+              sessionStorage.setItem("admin_timetable_section", r.section);
               document.getElementById("timetable-view")?.scrollIntoView({ behavior: "smooth" });
             }}
           >
@@ -137,6 +184,9 @@ function TimetablePage() {
             onClick={async () => {
               if (confirm(`Are you sure you want to delete the timetable for section ${r.section}?`)) {
                 await deleteSectionTimetable(r.section);
+                if (section === r.section) {
+                  sessionStorage.removeItem("admin_timetable_section");
+                }
                 uploads.reload();
                 timetable.reload();
               }
@@ -267,7 +317,7 @@ function TimetablePage() {
             </Select>
           </div>
           <div className="w-full sm:w-48">
-            <Select value={section} onValueChange={setSection} disabled={availableSections.length === 0}>
+            <Select value={section} onValueChange={handleSectionSelect} disabled={availableSections.length === 0}>
               <SelectTrigger aria-label="Select Section">
                 <SelectValue placeholder={availableSections.length === 0 ? "No uploaded sections" : "Select Section"} />
               </SelectTrigger>

@@ -116,7 +116,7 @@ async def submit_attendance(
         parts = clean_t.split(":")
         h = int(parts[0])
         m = int(parts[1]) if len(parts) > 1 else 0
-        if h < 8:
+        if 1 <= h < 8:
             h += 12
         return datetime.strptime(f"{date_str} {h:02d}:{m:02d}", "%Y-%m-%d %H:%M").replace(tzinfo=tz_kolkata)
 

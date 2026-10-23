@@ -85,9 +85,35 @@ function CRLRManagementPage() {
   const { data, loading, error, reload } = useAsyncData(() => getCRLRUsers(), []);
   const timetableUploads = useAsyncData(() => getTimetableUploads(), []);
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState(ALL);
-  const [yearFilter, setYearFilter] = useState(ALL);
-  const [sectionFilter, setSectionFilter] = useState(ALL);
+  const [roleFilter, setRoleFilter] = useState(() => {
+    return sessionStorage.getItem("admin_crlr_role") || ALL;
+  });
+  const [yearFilter, setYearFilter] = useState(() => {
+    return sessionStorage.getItem("admin_crlr_year") || ALL;
+  });
+  const [sectionFilter, setSectionFilter] = useState(() => {
+    return sessionStorage.getItem("admin_crlr_section") || ALL;
+  });
+
+  const handleRoleFilterChange = (v: string) => {
+    setRoleFilter(v);
+    sessionStorage.setItem("admin_crlr_role", v);
+  };
+  const handleYearFilterChange = (v: string) => {
+    setYearFilter(v);
+    sessionStorage.setItem("admin_crlr_year", v);
+  };
+  const handleSectionFilterChange = (v: string) => {
+    setSectionFilter(v);
+    sessionStorage.setItem("admin_crlr_section", v);
+  };
+
+  const handleUploadCRLR = async (file: File) => {
+    const res = await uploadCRLRExcel(file);
+    reload();
+    timetableUploads.reload();
+    return res;
+  };
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<CRLRUser | null>(null);
@@ -174,7 +200,12 @@ function CRLRManagementPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      year: yearFilter !== ALL ? yearFilter : MOCK_YEARS[0]!,
+      section: sectionFilter !== ALL ? sectionFilter : (availableSections[0] || "CSE-A"),
+      role: roleFilter !== ALL ? (roleFilter as "CR" | "LR") : "CR",
+    });
     setFormErrors({});
     setDialogOpen(true);
   };
@@ -312,7 +343,7 @@ function CRLRManagementPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FileUpload onUpload={uploadCRLRExcel} />
+          <FileUpload onUpload={handleUploadCRLR} />
         </CardContent>
       </Card>
 
@@ -328,7 +359,7 @@ function CRLRManagementPage() {
               aria-label="Search records"
             />
           </div>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <Select value={roleFilter} onValueChange={handleRoleFilterChange}>
             <SelectTrigger aria-label="Filter by role">
               <SelectValue placeholder="Role" />
             </SelectTrigger>
@@ -338,7 +369,7 @@ function CRLRManagementPage() {
               <SelectItem value="LR">LR</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={yearFilter} onValueChange={setYearFilter}>
+          <Select value={yearFilter} onValueChange={handleYearFilterChange}>
             <SelectTrigger aria-label="Filter by year">
               <SelectValue placeholder="Year" />
             </SelectTrigger>
@@ -351,7 +382,7 @@ function CRLRManagementPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={sectionFilter} onValueChange={setSectionFilter}>
+          <Select value={sectionFilter} onValueChange={handleSectionFilterChange}>
             <SelectTrigger aria-label="Filter by section">
               <SelectValue placeholder="Section" />
             </SelectTrigger>

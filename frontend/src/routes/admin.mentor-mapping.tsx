@@ -67,9 +67,23 @@ function AdminMentorMappingPage() {
   const [confirming, setConfirming] = useState(false);
 
   // Filters for current mappings list
-  const [filterYear, setFilterYear] = useState<string>("ALL");
-  const [filterSection, setFilterSection] = useState<string>("ALL");
+  const [filterYear, setFilterYear] = useState<string>(() => {
+    return sessionStorage.getItem("admin_mm_year") || "ALL";
+  });
+  const [filterSection, setFilterSection] = useState<string>(() => {
+    return sessionStorage.getItem("admin_mm_section") || "ALL";
+  });
   const [searchMentor, setSearchMentor] = useState<string>("");
+
+  const handleFilterYearChange = (y: string) => {
+    setFilterYear(y);
+    sessionStorage.setItem("admin_mm_year", y);
+  };
+
+  const handleFilterSectionChange = (s: string) => {
+    setFilterSection(s);
+    sessionStorage.setItem("admin_mm_section", s);
+  };
 
   // Preview state
   const [previewData, setPreviewData] = useState<MentorMappingPreviewData | null>(null);
@@ -404,7 +418,7 @@ function AdminMentorMappingPage() {
                   />
                 </div>
 
-                <Select value={filterYear} onValueChange={setFilterYear}>
+                <Select value={filterYear} onValueChange={handleFilterYearChange}>
                   <SelectTrigger className="w-36 h-9 text-xs">
                     <SelectValue placeholder="All Years" />
                   </SelectTrigger>
@@ -418,7 +432,7 @@ function AdminMentorMappingPage() {
                   </SelectContent>
                 </Select>
 
-                <Select value={filterSection} onValueChange={setFilterSection}>
+                <Select value={filterSection} onValueChange={handleFilterSectionChange}>
                   <SelectTrigger className="w-36 h-9 text-xs">
                     <SelectValue placeholder="All Sections" />
                   </SelectTrigger>

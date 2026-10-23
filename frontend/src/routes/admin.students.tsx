@@ -133,9 +133,23 @@ const emptyForm: StudentFormState = {
 };
 
 function AdminStudentsPage() {
-  const [yearFilter, setYearFilter] = useState(ALL);
-  const [sectionFilter, setSectionFilter] = useState(ALL);
+  const [yearFilter, setYearFilter] = useState(() => {
+    return sessionStorage.getItem("admin_students_year") || ALL;
+  });
+  const [sectionFilter, setSectionFilter] = useState(() => {
+    return sessionStorage.getItem("admin_students_section") || ALL;
+  });
   const [search, setSearch] = useState("");
+
+  const handleYearFilterChange = (y: string) => {
+    setYearFilter(y);
+    sessionStorage.setItem("admin_students_year", y);
+  };
+
+  const handleSectionFilterChange = (s: string) => {
+    setSectionFilter(s);
+    sessionStorage.setItem("admin_students_section", s);
+  };
 
   const { data, loading, error, reload } = useAsyncData(
     () => getStudents(yearFilter, sectionFilter),
@@ -257,7 +271,18 @@ function AdminStudentsPage() {
 
   const openCreateDialog = () => {
     setEditing(null);
-    setForm(emptyForm);
+    let defaultBatch = 2029;
+    if (yearFilter !== ALL) {
+      if (yearFilter.includes("1")) defaultBatch = 2030;
+      else if (yearFilter.includes("2")) defaultBatch = 2029;
+      else if (yearFilter.includes("3")) defaultBatch = 2028;
+      else if (yearFilter.includes("4")) defaultBatch = 2027;
+    }
+    setForm({
+      ...emptyForm,
+      batch: defaultBatch,
+      section: sectionFilter !== ALL ? sectionFilter : (availableFilterSections[0] || "CSE-A"),
+    });
     setFormErrors({});
     setDialogOpen(true);
   };
@@ -544,7 +569,7 @@ function AdminStudentsPage() {
               </div>
 
               <div className="w-36">
-                <Select value={yearFilter} onValueChange={setYearFilter}>
+                <Select value={yearFilter} onValueChange={handleYearFilterChange}>
                   <SelectTrigger size="sm">
                     <SelectValue placeholder="All Years" />
                   </SelectTrigger>
@@ -560,7 +585,7 @@ function AdminStudentsPage() {
               </div>
 
               <div className="w-36">
-                <Select value={sectionFilter} onValueChange={setSectionFilter}>
+                <Select value={sectionFilter} onValueChange={handleSectionFilterChange}>
                   <SelectTrigger size="sm">
                     <SelectValue placeholder="All Sections" />
                   </SelectTrigger>

@@ -58,9 +58,33 @@ const DEFAULT_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 const DEFAULT_SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 function AdminStudentHistoryPage() {
-  const [selectedYear, setSelectedYear] = useState<string | null>(null);
-  const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string | null>(() => {
+    return sessionStorage.getItem("admin_sh_year") || null;
+  });
+  const [selectedSection, setSelectedSection] = useState<string | null>(() => {
+    return sessionStorage.getItem("admin_sh_section") || null;
+  });
   const [globalSearch, setGlobalSearch] = useState("");
+
+  const handleSelectYear = (yr: string | null) => {
+    setSelectedYear(yr);
+    if (yr) {
+      sessionStorage.setItem("admin_sh_year", yr);
+    } else {
+      sessionStorage.removeItem("admin_sh_year");
+      sessionStorage.removeItem("admin_sh_section");
+      setSelectedSection(null);
+    }
+  };
+
+  const handleSelectSection = (sec: string | null) => {
+    setSelectedSection(sec);
+    if (sec) {
+      sessionStorage.setItem("admin_sh_section", sec);
+    } else {
+      sessionStorage.removeItem("admin_sh_section");
+    }
+  };
 
   // Level 1: Dynamic Years
   const {
@@ -174,11 +198,11 @@ function AdminStudentHistoryPage() {
         actions={
           <div className="flex items-center gap-2">
             {selectedSection ? (
-              <Button variant="outline" size="sm" onClick={() => setSelectedSection(null)}>
+              <Button variant="outline" size="sm" onClick={() => handleSelectSection(null)}>
                 <ArrowLeft className="size-4 mr-2" /> Back to Sections
               </Button>
             ) : selectedYear ? (
-              <Button variant="outline" size="sm" onClick={() => setSelectedYear(null)}>
+              <Button variant="outline" size="sm" onClick={() => handleSelectYear(null)}>
                 <ArrowLeft className="size-4 mr-2" /> Back to Years
               </Button>
             ) : null}
@@ -284,7 +308,7 @@ function AdminStudentHistoryPage() {
               {normalizedYears.map((item) => (
                 <Card
                   key={item.year}
-                  onClick={() => setSelectedYear(item.year)}
+                  onClick={() => handleSelectYear(item.year)}
                   className="cursor-pointer transition-all hover:border-primary hover:shadow-md group bg-card"
                 >
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -332,7 +356,7 @@ function AdminStudentHistoryPage() {
               {normalizedSections.map((item) => (
                 <Card
                   key={item.section}
-                  onClick={() => setSelectedSection(item.section)}
+                  onClick={() => handleSelectSection(item.section)}
                   className="cursor-pointer transition-all hover:border-primary hover:shadow-md group bg-card"
                 >
                   <CardHeader className="pb-2">

@@ -64956,46 +64956,6 @@
       }
     },
     {
-      "name": "II-CSE-A LR",
-      "email": "lr@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSA02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-A",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6e9fe"
-      }
-    },
-    {
-      "name": "II-CSE-B CR",
-      "email": "cr.cseb@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSB01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-B",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6e9ff"
-      }
-    },
-    {
       "name": "II-CSE-B LR",
       "email": "lr.cseb@example.com",
       "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
@@ -65013,26 +64973,6 @@
       },
       "_id": {
         "$oid": "6ace7f7cc2fc78917fb6ea00"
-      }
-    },
-    {
-      "name": "II-CSE-C CR",
-      "email": "cr.csec@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSC01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-C",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea01"
       }
     },
     {
@@ -65153,26 +65093,6 @@
       },
       "_id": {
         "$oid": "6ace7f7cc2fc78917fb6ea07"
-      }
-    },
-    {
-      "name": "II-CSE-F LR",
-      "email": "lr.csef@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSF02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-F",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea08"
       }
     },
     {
@@ -65313,26 +65233,6 @@
       },
       "_id": {
         "$oid": "6ace7f7cc2fc78917fb6ea0f"
-      }
-    },
-    {
-      "name": "II-CSE-J LR",
-      "email": "lr.csej@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSJ02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-J",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea10"
       }
     },
     {
@@ -66674,26 +66574,6 @@
       "_id": {
         "$oid": "6adba2d5b083899f80785d4e"
       }
-    },
-    {
-      "name": "II-CSE-A CR",
-      "email": "cr@example.com",
-      "password_hash": "$2b$12$x6N4atUaNUKySODHkyvA3OKK5tZ3CW.nr3EVMifvkZnt53lZ1UBQG",
-      "role": "CR",
-      "roll_number": "22CSA01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-A",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
-      },
-      "_id": {
-        "$oid": "6adba675769db24faad0ad28"
-      }
     }
   ],
   "audit_logs": [
@@ -67295,6 +67175,119 @@
       "_id": {
         "$oid": "6adba80c769db24faad0ad2f"
       }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "actor_email": "admin@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": "ADMIN"
+      },
+      "created_at": {
+        "$date": "2026-10-23T18:35:28.347Z"
+      },
+      "_id": {
+        "$oid": "6adba8f0769db24faad0ad30"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6e9fe",
+      "created_at": {
+        "$date": "2026-10-23T18:35:50.509Z"
+      },
+      "_id": {
+        "$oid": "6adba906769db24faad0ad31"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea10",
+      "created_at": {
+        "$date": "2026-10-23T18:36:07.512Z"
+      },
+      "_id": {
+        "$oid": "6adba917769db24faad0ad32"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6e9ff",
+      "created_at": {
+        "$date": "2026-10-23T18:36:19.651Z"
+      },
+      "_id": {
+        "$oid": "6adba923769db24faad0ad33"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6adbae26ab19d22b4d2fa1b1",
+      "created_at": {
+        "$date": "2026-10-23T19:01:43.712Z"
+      },
+      "_id": {
+        "$oid": "6adbaf17ab19d22b4d2fa1b4"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6adbae26ab19d22b4d2fa1b2",
+      "created_at": {
+        "$date": "2026-10-23T19:01:46.738Z"
+      },
+      "_id": {
+        "$oid": "6adbaf1aab19d22b4d2fa1b5"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6adbae26ab19d22b4d2fa1b3",
+      "created_at": {
+        "$date": "2026-10-23T19:01:50.942Z"
+      },
+      "_id": {
+        "$oid": "6adbaf1eab19d22b4d2fa1b6"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6adba675769db24faad0ad28",
+      "created_at": {
+        "$date": "2026-10-23T19:01:54.114Z"
+      },
+      "_id": {
+        "$oid": "6adbaf22ab19d22b4d2fa1b7"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea01",
+      "created_at": {
+        "$date": "2026-10-23T19:02:04.979Z"
+      },
+      "_id": {
+        "$oid": "6adbaf2cab19d22b4d2fa1b8"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea08",
+      "created_at": {
+        "$date": "2026-10-23T19:02:16.348Z"
+      },
+      "_id": {
+        "$oid": "6adbaf38ab19d22b4d2fa1b9"
+      }
     }
   ],
   "sections": [
@@ -67306,13 +67299,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.701Z"
       },
       "assigned_cr_id": "6adba675769db24faad0ad28",
-      "assigned_lr_id": "6ace7f7cc2fc78917fb6e9fe",
+      "assigned_lr_id": "6adbae26ab19d22b4d2fa1b1",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Indu",
@@ -67326,12 +67319,12 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.701Z"
       },
-      "assigned_cr_id": "6ace7f7cc2fc78917fb6e9ff",
+      "assigned_cr_id": "6adbae26ab19d22b4d2fa1b2",
       "assigned_lr_id": "6ace7f7cc2fc78917fb6ea00",
       "branch": "CSE",
       "department": "CSE",
@@ -67346,7 +67339,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.702Z"
@@ -67366,7 +67359,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.702Z"
@@ -67386,7 +67379,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.703Z"
@@ -67406,7 +67399,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.703Z"
@@ -67426,7 +67419,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.704Z"
@@ -67445,7 +67438,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.704Z"
@@ -67463,7 +67456,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.705Z"
@@ -67483,13 +67476,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-23T18:24:53.470Z"
+        "$date": "2026-10-23T18:57:42.072Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.706Z"
       },
       "assigned_cr_id": "6ace7f7cc2fc78917fb6ea0f",
-      "assigned_lr_id": "6ace7f7cc2fc78917fb6ea10",
+      "assigned_lr_id": "6adbae26ab19d22b4d2fa1b3",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Nithigna .Kakarla",

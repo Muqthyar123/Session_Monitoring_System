@@ -92,12 +92,35 @@ function SessionsPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [yearFilter, setYearFilter] = useState<string>(ALL);
-  const [sectionFilter, setSectionFilter] = useState<string>(ALL);
-  const [statusFilter, setStatusFilter] = useState<string>(ALL);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
+  const [yearFilter, setYearFilter] = useState<string>(() => {
+    return sessionStorage.getItem("admin_sessions_year") || ALL;
+  });
+  const [sectionFilter, setSectionFilter] = useState<string>(() => {
+    return sessionStorage.getItem("admin_sessions_section") || ALL;
+  });
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    return sessionStorage.getItem("admin_sessions_status") || ALL;
+  });
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    return sessionStorage.getItem("admin_sessions_date") || new Date().toISOString().split("T")[0];
+  });
+
+  const handleYearFilterChange = (y: string) => {
+    setYearFilter(y);
+    sessionStorage.setItem("admin_sessions_year", y);
+  };
+  const handleSectionFilterChange = (s: string) => {
+    setSectionFilter(s);
+    sessionStorage.setItem("admin_sessions_section", s);
+  };
+  const handleStatusFilterChange = (st: string) => {
+    setStatusFilter(st);
+    sessionStorage.setItem("admin_sessions_status", st);
+  };
+  const handleDateChange = (d: string) => {
+    setSelectedDate(d);
+    sessionStorage.setItem("admin_sessions_date", d);
+  };
 
   const loadData = async () => {
     try {
@@ -227,7 +250,7 @@ function SessionsPage() {
           <Input
             type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            onChange={(e) => handleDateChange(e.target.value)}
           />
         </div>
 
@@ -236,10 +259,7 @@ function SessionsPage() {
           <Label className="text-xs text-muted-foreground mb-1 block">Academic Year</Label>
           <Select
             value={yearFilter}
-            onValueChange={(val) => {
-              setYearFilter(val);
-              setSectionFilter(ALL); // reset section filter on year change
-            }}
+            onValueChange={handleYearFilterChange}
           >
             <SelectTrigger aria-label="Filter by year">
               <SelectValue placeholder="All Years" />
@@ -258,7 +278,7 @@ function SessionsPage() {
         {/* Section Filter */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">Section</Label>
-          <Select value={sectionFilter} onValueChange={setSectionFilter}>
+          <Select value={sectionFilter} onValueChange={handleSectionFilterChange}>
             <SelectTrigger aria-label="Filter by section">
               <SelectValue placeholder="All Sections" />
             </SelectTrigger>
@@ -276,7 +296,7 @@ function SessionsPage() {
         {/* Status Filter */}
         <div>
           <Label className="text-xs text-muted-foreground mb-1 block">Session Status</Label>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
             <SelectTrigger aria-label="Filter by session status">
               <SelectValue placeholder="All Statuses" />
             </SelectTrigger>

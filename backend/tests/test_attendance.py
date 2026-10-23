@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import zoneinfo
 import pytest
 from httpx import AsyncClient
@@ -404,15 +404,19 @@ async def test_marking_attendance_strictly_within_class_hour_enforcement(client:
         err_msg_future = res_future.json().get("error", {}).get("message", "") or str(res_future.json().get("detail", ""))
         assert "only be marked during the assigned class hour" in err_msg_future
 
-    # 2. Completed session: scheduled in the past today (e.g. 06:00 - 07:00)
+    # 2. Completed session: scheduled in the past
+    past_date = today_str if now_local.hour > 0 else (now_local - timedelta(days=1)).strftime("%Y-%m-%d")
+    past_start = "00:00" if now_local.hour > 0 else "09:00"
+    past_end = f"{max(0, now_local.hour - 1):02d}:00" if now_local.hour > 0 else "10:00"
+
     past_sess = await db.sessions.insert_one({
         "section": "II-CSE-B",
         "subject": "Theory of Computation",
         "period": "Period 1",
         "periods_included": [1],
-        "start_time": "06:00",
-        "end_time": "07:00",
-        "date": today_str,
+        "start_time": past_start,
+        "end_time": past_end,
+        "date": past_date,
         "session_status": SessionStatus.EXPIRED.value,
         "faculty_response": FacultyResponseStatus.PENDING.value,
     })
@@ -451,9 +455,9 @@ async def test_marking_attendance_strictly_within_class_hour_enforcement(client:
         "subject": "Web Tech",
         "period": "Period 3",
         "periods_included": [3],
-        "start_time": "06:00",
-        "end_time": "07:00",
-        "date": today_str,
+        "start_time": past_start,
+        "end_time": past_end,
+        "date": past_date,
         "session_status": SessionStatus.COMPLETED.value,
         "faculty_response": "Present",
     })

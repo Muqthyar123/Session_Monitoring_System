@@ -162,9 +162,33 @@ function AdminAnalyticsPage() {
   const navigate = useNavigate();
   const { data, loading, error, reload } = useAsyncData(() => getAdminDashboard(), [], 15000);
 
-  const [selectedYear, setSelectedYear] = useState<string | null>(null);
-  const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string | null>(() => {
+    return sessionStorage.getItem("admin_analytics_year") || null;
+  });
+  const [selectedSection, setSelectedSection] = useState<string | null>(() => {
+    return sessionStorage.getItem("admin_analytics_section") || null;
+  });
   const [searchQuery, setSearchQuery] = useState("");
+
+  const handleSelectYear = (yr: string | null) => {
+    setSelectedYear(yr);
+    if (yr) {
+      sessionStorage.setItem("admin_analytics_year", yr);
+    } else {
+      sessionStorage.removeItem("admin_analytics_year");
+      sessionStorage.removeItem("admin_analytics_section");
+      setSelectedSection(null);
+    }
+  };
+
+  const handleSelectSection = (sec: string | null) => {
+    setSelectedSection(sec);
+    if (sec) {
+      sessionStorage.setItem("admin_analytics_section", sec);
+    } else {
+      sessionStorage.removeItem("admin_analytics_section");
+    }
+  };
 
   // Faculty History & Progress Modal State
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -383,8 +407,8 @@ function AdminAnalyticsPage() {
                       <div
                         key={yc.year}
                         onClick={() => {
-                          setSelectedYear(yc.year);
-                          setSelectedSection(null);
+                          handleSelectYear(yc.year);
+                          handleSelectSection(null);
                         }}
                         className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-5 transition-all hover:border-indigo-400 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
                       >
@@ -451,8 +475,8 @@ function AdminAnalyticsPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setSelectedYear(null);
-                          setSelectedSection(null);
+                          handleSelectYear(null);
+                          handleSelectSection(null);
                         }}
                         className="text-slate-700 dark:text-slate-300"
                       >
@@ -472,7 +496,7 @@ function AdminAnalyticsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSelectedSection(null)}
+                        onClick={() => handleSelectSection(null)}
                         className="text-indigo-600 dark:text-indigo-400"
                       >
                         Show All Sections in {selectedYear}
@@ -487,7 +511,7 @@ function AdminAnalyticsPage() {
                         <div
                           key={sc.section}
                           onClick={() => {
-                            setSelectedSection(isSelected ? null : sc.section);
+                            handleSelectSection(isSelected ? null : sc.section);
                           }}
                           className={`group cursor-pointer rounded-xl border p-4 transition-all ${
                             isSelected

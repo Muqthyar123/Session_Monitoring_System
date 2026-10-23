@@ -63,9 +63,23 @@ function ManageSectionsPage() {
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [selectedYear, setSelectedYear] = useState<string>("ALL");
-  const [selectedBranch, setSelectedBranch] = useState<string>("ALL");
+  const [selectedYear, setSelectedYear] = useState<string>(() => {
+    return sessionStorage.getItem("admin_sections_year") || "ALL";
+  });
+  const [selectedBranch, setSelectedBranch] = useState<string>(() => {
+    return sessionStorage.getItem("admin_sections_branch") || "ALL";
+  });
   const [searchTerm, setSearchTerm] = useState("");
+
+  const handleSelectYear = (y: string) => {
+    setSelectedYear(y);
+    sessionStorage.setItem("admin_sections_year", y);
+  };
+
+  const handleSelectBranch = (b: string) => {
+    setSelectedBranch(b);
+    sessionStorage.setItem("admin_sections_branch", b);
+  };
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -98,8 +112,8 @@ function ManageSectionsPage() {
 
   const handleOpenAdd = () => {
     setEditingSection(null);
-    setFormYear("2nd Year");
-    setFormBranch(departments.length > 0 ? departments[0].code : "CSE");
+    setFormYear(selectedYear !== "ALL" ? selectedYear : "2nd Year");
+    setFormBranch(selectedBranch !== "ALL" ? selectedBranch : (departments.length > 0 ? departments[0].code : "CSE"));
     setFormSectionName("");
     setFormActive(true);
     setDialogOpen(true);
@@ -226,7 +240,7 @@ function ManageSectionsPage() {
         <div className="flex flex-wrap items-center gap-3 bg-card p-4 rounded-xl border shadow-sm">
           <div className="w-48">
             <Label className="text-xs text-muted-foreground mb-1 block">Academic Year</Label>
-            <Select value={selectedYear} onValueChange={setSelectedYear}>
+            <Select value={selectedYear} onValueChange={handleSelectYear}>
               <SelectTrigger>
                 <SelectValue placeholder="All Years" />
               </SelectTrigger>
@@ -241,7 +255,7 @@ function ManageSectionsPage() {
 
           <div className="w-48">
             <Label className="text-xs text-muted-foreground mb-1 block">Branch / Program</Label>
-            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+            <Select value={selectedBranch} onValueChange={handleSelectBranch}>
               <SelectTrigger>
                 <SelectValue placeholder="All Branches" />
               </SelectTrigger>
