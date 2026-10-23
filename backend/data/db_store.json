@@ -64956,286 +64956,6 @@
       }
     },
     {
-      "name": "II-CSE-B LR",
-      "email": "lr.cseb@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSB02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-B",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea00"
-      }
-    },
-    {
-      "name": "II-CSE-C LR",
-      "email": "lr.csec@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSC02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-C",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea02"
-      }
-    },
-    {
-      "name": "II-CSE-D CR",
-      "email": "cr.csed@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSD01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-D",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea03"
-      }
-    },
-    {
-      "name": "II-CSE-D LR",
-      "email": "lr.csed@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSD02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-D",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea04"
-      }
-    },
-    {
-      "name": "II-CSE-E CR",
-      "email": "cr.csee@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSE01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-E",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea05"
-      }
-    },
-    {
-      "name": "II-CSE-E LR",
-      "email": "lr.csee@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSE02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-E",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea06"
-      }
-    },
-    {
-      "name": "II-CSE-F CR",
-      "email": "cr.csef@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSF01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-F",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea07"
-      }
-    },
-    {
-      "name": "II-CSE-G CR",
-      "email": "cr.cseg@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSG01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-G",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea09"
-      }
-    },
-    {
-      "name": "II-CSE-G LR",
-      "email": "lr.cseg@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSG02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-G",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea0a"
-      }
-    },
-    {
-      "name": "II-CSE-H CR",
-      "email": "cr.cseh@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSH01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-H",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea0b"
-      }
-    },
-    {
-      "name": "II-CSE-H LR",
-      "email": "lr.cseh@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSH02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-H",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea0c"
-      }
-    },
-    {
-      "name": "II-CSE-I CR",
-      "email": "cr.csei@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSI01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-I",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea0d"
-      }
-    },
-    {
-      "name": "II-CSE-I LR",
-      "email": "lr.csei@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "LR",
-      "roll_number": "22CSI02",
-      "phone": "9876543212",
-      "year": "2nd Year",
-      "section": "II-CSE-I",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea0e"
-      }
-    },
-    {
-      "name": "II-CSE-J CR",
-      "email": "cr.csej@example.com",
-      "password_hash": "$2b$12$c5mnwUwIuBRs4vfugblbn.Ml8eLUkk4pHmysLz6UwWHZFPDqOvZtW",
-      "role": "CR",
-      "roll_number": "22CSJ01",
-      "phone": "9876543211",
-      "year": "2nd Year",
-      "section": "II-CSE-J",
-      "is_active": true,
-      "created_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "updated_at": {
-        "$date": "2026-10-13T18:59:08.091Z"
-      },
-      "_id": {
-        "$oid": "6ace7f7cc2fc78917fb6ea0f"
-      }
-    },
-    {
       "name": "Bolla palli Ankitha",
       "email": "bollapalliankitha@gmail.com",
       "password_hash": "$2b$12$KS3Bv/QbXuT6gfo7xSJL5..CMEw5BF/RD9oVo32yohrX9FDPLNSBy",
@@ -67287,6 +67007,160 @@
       },
       "_id": {
         "$oid": "6adbaf38ab19d22b4d2fa1b9"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea0a",
+      "created_at": {
+        "$date": "2026-10-23T19:03:07.801Z"
+      },
+      "_id": {
+        "$oid": "6adbaf6bab19d22b4d2fa1ba"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea0f",
+      "created_at": {
+        "$date": "2026-10-23T19:03:19.820Z"
+      },
+      "_id": {
+        "$oid": "6adbaf77ab19d22b4d2fa1bb"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea0e",
+      "created_at": {
+        "$date": "2026-10-23T19:03:31.311Z"
+      },
+      "_id": {
+        "$oid": "6adbaf83ab19d22b4d2fa1bc"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea00",
+      "created_at": {
+        "$date": "2026-10-23T19:04:24.430Z"
+      },
+      "_id": {
+        "$oid": "6adbafb8ab19d22b4d2fa1bd"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea0d",
+      "created_at": {
+        "$date": "2026-10-23T19:04:37.750Z"
+      },
+      "_id": {
+        "$oid": "6adbafc5ab19d22b4d2fa1be"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea0c",
+      "created_at": {
+        "$date": "2026-10-23T19:05:15.338Z"
+      },
+      "_id": {
+        "$oid": "6adbafebab19d22b4d2fa1bf"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea02",
+      "created_at": {
+        "$date": "2026-10-23T19:05:35.059Z"
+      },
+      "_id": {
+        "$oid": "6adbafffab19d22b4d2fa1c0"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea0b",
+      "created_at": {
+        "$date": "2026-10-23T19:05:55.996Z"
+      },
+      "_id": {
+        "$oid": "6adbb013ab19d22b4d2fa1c1"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea09",
+      "created_at": {
+        "$date": "2026-10-23T19:06:06.927Z"
+      },
+      "_id": {
+        "$oid": "6adbb01eab19d22b4d2fa1c2"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea07",
+      "created_at": {
+        "$date": "2026-10-23T19:06:30.006Z"
+      },
+      "_id": {
+        "$oid": "6adbb036ab19d22b4d2fa1c3"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea06",
+      "created_at": {
+        "$date": "2026-10-23T19:07:42.551Z"
+      },
+      "_id": {
+        "$oid": "6adbb07eab19d22b4d2fa1c4"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea05",
+      "created_at": {
+        "$date": "2026-10-23T19:08:09.308Z"
+      },
+      "_id": {
+        "$oid": "6adbb099ab19d22b4d2fa1c5"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea04",
+      "created_at": {
+        "$date": "2026-10-23T19:08:23.897Z"
+      },
+      "_id": {
+        "$oid": "6adbb0a7ab19d22b4d2fa1c6"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "action": "DELETE_USER",
+      "target_user_id": "6ace7f7cc2fc78917fb6ea03",
+      "created_at": {
+        "$date": "2026-10-23T19:08:34.930Z"
+      },
+      "_id": {
+        "$oid": "6adbb0b2ab19d22b4d2fa1c7"
       }
     }
   ],
