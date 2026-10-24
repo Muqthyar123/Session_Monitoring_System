@@ -706,14 +706,7 @@ function AdminAnalyticsPage() {
                               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
                                 {fac.facultyName.replace(/^[^a-zA-Z0-9]+/, "").charAt(0).toUpperCase() || "F"}
                               </div>
-                              <div>
-                                <span className="hover:underline hover:text-indigo-600 block">{fac.facultyName}</span>
-                                {((fac as any).crlrNotMarked || (fac as any).unmarkedClasses > 0) && (
-                                  <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400 block">
-                                    (has cr/lr not marked the attendance for the faculty)
-                                  </span>
-                                )}
-                              </div>
+                              <span className="hover:underline hover:text-indigo-600 block">{fac.facultyName}</span>
                             </div>
                           </td>
                           <td className="px-4 py-3.5">
