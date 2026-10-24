@@ -17,6 +17,7 @@ import {
   Download,
   CalendarClock,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/utils/exportUtils";
@@ -55,6 +56,7 @@ interface AbsenteeCardProps {
   onSavePlanned: () => void;
   calledState?: { student?: boolean; parent?: boolean };
   onCallToggle: (type: "student" | "parent") => void;
+  lockedInfo?: { reason: string; updatedBy?: string };
 }
 
 function AbsenteeCard({
@@ -71,9 +73,17 @@ function AbsenteeCard({
   onSavePlanned,
   calledState,
   onCallToggle,
+  lockedInfo,
 }: AbsenteeCardProps) {
   const isStudentCalled = calledState?.student;
   const isParentCalled = calledState?.parent;
+
+  const isReasonLocked = Boolean(
+    (record.reason && record.reason.trim()) ||
+    (lockedInfo && lockedInfo.reason && lockedInfo.reason.trim())
+  );
+  const effectiveReason = lockedInfo?.reason || record.reason || "";
+  const effectiveUpdatedBy = lockedInfo?.updatedBy || record.reasonUpdatedBy || "Mentor";
 
   return (
     <Card className="border-rose-500/25 shadow-sm transition-all hover:shadow-md">
@@ -174,35 +184,75 @@ function AbsenteeCard({
             <label className="text-xs font-semibold text-foreground">
               Absence Category:
             </label>
-            <div className="inline-flex rounded-lg p-0.5 bg-muted text-[11px] border">
-              <button
-                type="button"
-                onClick={() => onModeChange("NORMAL")}
-                className={cn(
-                  "px-2.5 py-1 rounded-md transition-all font-medium",
-                  mode === "NORMAL"
-                    ? "bg-background text-foreground shadow-sm font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Normal Absence
-              </button>
-              <button
-                type="button"
-                onClick={() => onModeChange("PLANNED")}
-                className={cn(
-                  "px-2.5 py-1 rounded-md transition-all font-medium",
-                  mode === "PLANNED"
-                    ? "bg-background text-amber-600 dark:text-amber-400 shadow-sm font-semibold"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Planned Absence
-              </button>
-            </div>
+            {isReasonLocked ? (
+              <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-400 gap-1 font-semibold">
+                <CheckCircle2 className="size-3 text-emerald-600" /> Normal Absence (Locked)
+              </Badge>
+            ) : (
+              <div className="inline-flex rounded-lg p-0.5 bg-muted text-[11px] border">
+                <button
+                  type="button"
+                  onClick={() => onModeChange("NORMAL")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md transition-all font-medium",
+                    mode === "NORMAL"
+                      ? "bg-background text-foreground shadow-sm font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Normal Absence
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onModeChange("PLANNED")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md transition-all font-medium",
+                    mode === "PLANNED"
+                      ? "bg-background text-amber-600 dark:text-amber-400 shadow-sm font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Planned Absence
+                </button>
+              </div>
+            )}
           </div>
 
-          {mode === "NORMAL" ? (
+          {isReasonLocked ? (
+            <div className="space-y-2">
+              <div className="rounded-lg border border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-950/25 p-3 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300">
+                    <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                    <span>Absence Reason Recorded</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] bg-background text-emerald-700 dark:text-emerald-400 border-emerald-400 gap-1 font-semibold">
+                    <Lock className="size-3" /> Locked
+                  </Badge>
+                </div>
+                <div className="bg-background/95 rounded border p-2 text-foreground font-medium italic text-xs leading-relaxed">
+                  "{effectiveReason}"
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
+                  <span>
+                    Recorded by: <strong className="text-foreground">{effectiveUpdatedBy}</strong>
+                  </span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                    Resubmission disabled
+                  </span>
+                </div>
+              </div>
+              <Button
+                disabled
+                size="sm"
+                variant="outline"
+                className="w-full text-xs cursor-not-allowed opacity-80 bg-muted/40 border-muted text-muted-foreground"
+              >
+                <Lock className="size-3.5 mr-1.5" />
+                Reason Saved & Locked (Cannot Resubmit)
+              </Button>
+            </div>
+          ) : mode === "NORMAL" ? (
             <div className="space-y-1.5">
               <div className="flex gap-2">
                 <Input
@@ -221,12 +271,6 @@ function AbsenteeCard({
                   {isSaving ? "Saving..." : "Save Note"}
                 </Button>
               </div>
-              {record.reason && (
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Current note: <span className="italic text-foreground font-medium">"{record.reason}"</span>
-                  {record.reasonUpdatedBy && <span> (by {record.reasonUpdatedBy})</span>}
-                </p>
-              )}
             </div>
           ) : (
             <div className="space-y-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
@@ -381,6 +425,9 @@ function MentorAbsenteesPage() {
   const [reasonInputs, setReasonInputs] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
+  // Permanently locked reasons map for instant dynamic UI updates without reload
+  const [lockedReasonMap, setLockedReasonMap] = useState<Record<string, { reason: string; updatedBy?: string }>>({});
+
   // Dialer call tracker for smooth color/badge toggle
   const [calledMap, setCalledMap] = useState<Record<string, { student?: boolean; parent?: boolean }>>({});
 
@@ -416,8 +463,18 @@ function MentorAbsenteesPage() {
     setSavingId(recordId);
     try {
       await saveAbsenceComment(recordId, reasonText.trim());
-      toast.success(`Absence note saved for ${record.studentName}.`);
+      // Optimistically update record and locked reason map
+      record.reason = reasonText.trim();
+      record.reasonUpdatedBy = "Mentor";
+      setLockedReasonMap((prev) => ({
+        ...prev,
+        [recordId]: { reason: reasonText.trim(), updatedBy: "Mentor" },
+        [record.rollNumber]: { reason: reasonText.trim(), updatedBy: "Mentor" },
+      }));
+      toast.success(`Absence note saved and locked for ${record.studentName}.`);
       if (reloadAbsentees) reloadAbsentees();
+      if (reloadSections) reloadSections();
+      if (reloadYears) reloadYears();
       if (globalSearch) {
         const updated = await searchMentorAbsenteesGlobal(globalSearch.trim());
         setSearchResults(updated);
@@ -623,6 +680,7 @@ function MentorAbsenteesPage() {
                           [recordId]: { ...prev[recordId], [type]: true },
                         }))
                       }
+                      lockedInfo={lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]}
                     />
                   );
                 })}
@@ -858,6 +916,7 @@ function MentorAbsenteesPage() {
                           [recordId]: { ...prev[recordId], [type]: true },
                         }))
                       }
+                      lockedInfo={lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]}
                     />
                   );
                 })}

@@ -709,6 +709,14 @@ async def update_absence_comment(
                 detail="Access denied. You can only update absence notes for your assigned students.",
             )
 
+    # Locking rule: If reason is already saved and non-empty, do not allow resubmission for mentors
+    if doc.get("reason") and str(doc.get("reason")).strip():
+        if user_role in [UserRole.MENTOR.value, "MENTOR"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Absence note has already been recorded and cannot be modified again.",
+            )
+
     now_utc = datetime.now(timezone.utc)
     actor_name = current_user.get("name", "Mentor")
     actual_id = doc["_id"]

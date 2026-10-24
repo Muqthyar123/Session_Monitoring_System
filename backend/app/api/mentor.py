@@ -151,5 +151,12 @@ async def update_absence_reason_put_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
     """Save or update absence reason (compatibility endpoint)."""
-    updated = await save_absence_reason(record_id, data.reason, current_user.get("name", "Mentor"))
+    user_role = current_user.get("role", "")
+    updated = await save_absence_reason(
+        record_id,
+        data.reason,
+        current_user.get("name", "Mentor"),
+        actor_id=str(current_user.get("_id", "")),
+        actor_role=user_role,
+    )
     return ApiResponse(success=True, data=updated, message="Absence reason saved successfully.")

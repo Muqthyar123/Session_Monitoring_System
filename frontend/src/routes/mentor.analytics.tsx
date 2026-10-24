@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   UserX,
+  Lock,
 } from "lucide-react";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -415,9 +416,20 @@ function MentorAttendanceHistoryPage() {
                           )}
                         </div>
                         {log.reason ? (
-                          <p className="text-foreground pt-1">
-                            <strong>Mentor Note:</strong> {log.reason}
-                          </p>
+                          <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs space-y-1 mt-1">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                                <CheckCircle2 className="size-3 text-emerald-600" /> Mentor Absence Note
+                              </span>
+                              <Badge variant="outline" className="text-[9px] h-4 bg-background border-emerald-400 text-emerald-700 dark:text-emerald-300 gap-0.5">
+                                <Lock className="size-2.5" /> Locked
+                              </Badge>
+                            </div>
+                            <p className="text-foreground italic font-medium">"{log.reason}"</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Recorded by: <span className="font-medium text-foreground">{log.reasonUpdatedBy || "Mentor"}</span>
+                            </p>
+                          </div>
                         ) : (
                           <p className="text-muted-foreground italic pt-1">No reason recorded by mentor yet.</p>
                         )}

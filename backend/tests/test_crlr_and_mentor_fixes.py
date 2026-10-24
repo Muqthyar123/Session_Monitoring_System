@@ -146,3 +146,62 @@ async def test_expired_session_is_marked_crlr_not_marked():
     assert computed["faculty_response"] == "CR/LR Not Marked"
     assert computed["crlr_not_marked"] is True
     assert "CR/LR has not marked" in computed["auto_absence_reason"]
+
+
+@pytest.mark.asyncio
+async def test_absence_reason_locking_for_mentors():
+    from fastapi import HTTPException
+    from app.services.student_attendance_service import save_absence_reason
+    from app.services.mentor_service import update_absence_comment
+
+    db = get_database()
+    # Create an absent record
+    ins_res = await db.student_attendance.insert_one({
+        "year": "II",
+        "section": "CSE-A",
+        "date": "2026-10-24",
+        "roll_number": "22CS2LOCK01",
+        "student_name": "Lock Test Student",
+        "status": "Absent",
+        "reason": None,
+        "created_at": datetime.now(tz_kolkata),
+    })
+    rec_id = str(ins_res.inserted_id)
+
+    # 1. First save as Mentor should succeed
+    res1 = await save_absence_reason(
+        rec_id, "Sick with viral fever", "Dr. Mentor", actor_role="MENTOR"
+    )
+    assert res1.reason == "Sick with viral fever"
+    assert res1.reason_updated_by == "Dr. Mentor"
+
+    # 2. Resubmission / modification as Mentor MUST fail with 400 Bad Request
+    with pytest.raises(HTTPException) as exc_info:
+        await save_absence_reason(
+            rec_id, "Trying to change reason", "Dr. Mentor", actor_role="MENTOR"
+        )
+    assert exc_info.value.status_code == 400
+    assert "already been recorded and cannot be modified again" in exc_info.value.detail
+
+    # 3. Resubmission via update_absence_comment as Mentor MUST also fail with 400 Bad Request
+    mentor_user = {
+        "_id": "mentor_lock_id",
+        "role": "MENTOR",
+        "name": "Dr. Mentor",
+        "assigned_students": ["22CS2LOCK01"],
+        "assigned_sections": ["CSE-A"],
+    }
+    with pytest.raises(HTTPException) as exc_info2:
+        await update_absence_comment(rec_id, "Attempted resubmit via patch", mentor_user)
+    assert exc_info2.value.status_code == 400
+    assert "already been recorded and cannot be modified again" in exc_info2.value.detail
+
+    # 4. Admin override CAN still modify if needed
+    admin_user = {
+        "_id": "admin_lock_id",
+        "role": "ADMIN",
+        "name": "Admin Officer",
+    }
+    admin_res = await update_absence_comment(rec_id, "Admin verified medical excuse", admin_user)
+    assert admin_res.reason == "Admin verified medical excuse"
+

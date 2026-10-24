@@ -54,7 +54,11 @@ import {
   cancelPlannedAbsence,
   type PlannedAbsenceItem,
 } from "@/services/plannedAbsenceService";
-import { getStudents, type StudentItem } from "@/services/studentService";
+import {
+  getMentorStudents,
+  searchMentorStudentsGlobal,
+} from "@/services/mentorService";
+import type { StudentItem } from "@/services/studentService";
 
 export const Route = createFileRoute("/mentor/planned-absences")({
   component: MentorPlannedAbsencesPage,
@@ -92,28 +96,118 @@ function MentorPlannedAbsencesPage() {
   // Selected student auto-lookup memo
   const selectedStudent = useMemo(() => {
     return assignedStudents.find(
-      (s) => s.id === selectedStudentId || s._id === selectedStudentId
+      (s) => s.id === selectedStudentId || (s as any)._id === selectedStudentId
     );
   }, [assignedStudents, selectedStudentId]);
 
-  const handleRollNumberQueryChange = (val: string) => {
+  // Dynamically sorted/filtered students for the dropdown
+  const displayStudents = useMemo(() => {
+    let list = [...assignedStudents];
+    if (selectedStudent && !list.some((s) => (s.id || (s as any)._id) === (selectedStudent.id || (selectedStudent as any)._id))) {
+      list.unshift(selectedStudent);
+    }
+    const q = rollNumberQuery.trim().toLowerCase();
+    if (!q) return list;
+    const qAlt = q.endsWith("el") ? q.slice(0, -2) + "e1" : q.endsWith("e1") ? q.slice(0, -2) + "el" : q;
+
+    return list.sort((a, b) => {
+      const aRoll = (a.rollNumber || "").toLowerCase();
+      const bRoll = (b.rollNumber || "").toLowerCase();
+      const aName = (a.name || "").toLowerCase();
+      const bName = (b.name || "").toLowerCase();
+
+      const aExact = aRoll === q || aRoll === qAlt || aName === q;
+      const bExact = bRoll === q || bRoll === qAlt || bName === q;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+
+      const aStarts = aRoll.startsWith(q) || aRoll.startsWith(qAlt) || aName.startsWith(q);
+      const bStarts = bRoll.startsWith(q) || bRoll.startsWith(qAlt) || bName.startsWith(q);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+
+      const aHas = aRoll.includes(q) || aRoll.includes(qAlt) || aName.includes(q);
+      const bHas = bRoll.includes(q) || bRoll.includes(qAlt) || bName.includes(q);
+      if (aHas && !bHas) return -1;
+      if (!aHas && bHas) return 1;
+
+      return 0;
+    });
+  }, [assignedStudents, selectedStudent, rollNumberQuery]);
+
+  const handleRollNumberQueryChange = async (val: string) => {
     setRollNumberQuery(val);
     const trimmed = val.trim().toLowerCase();
     if (!trimmed) {
       setSelectedStudentId("");
       return;
     }
-    const match = assignedStudents.find(
-      (s) => s.rollNumber && s.rollNumber.toLowerCase() === trimmed
-    );
-    if (match) {
-      setSelectedStudentId(match.id || match._id);
+
+    const trimmedAlt = trimmed.endsWith("el")
+      ? trimmed.slice(0, -2) + "e1"
+      : trimmed.endsWith("e1")
+      ? trimmed.slice(0, -2) + "el"
+      : trimmed;
+
+    // 1. Immediate local matching (by roll number or name)
+    const localMatch =
+      assignedStudents.find((s) => {
+        const r = (s.rollNumber || "").toLowerCase();
+        const n = (s.name || "").toLowerCase();
+        return r === trimmed || r === trimmedAlt || n === trimmed;
+      }) ||
+      assignedStudents.find((s) => {
+        const r = (s.rollNumber || "").toLowerCase();
+        const n = (s.name || "").toLowerCase();
+        return r.startsWith(trimmed) || r.startsWith(trimmedAlt) || n.startsWith(trimmed);
+      }) ||
+      assignedStudents.find((s) => {
+        const r = (s.rollNumber || "").toLowerCase();
+        const n = (s.name || "").toLowerCase();
+        return r.includes(trimmed) || n.includes(trimmed);
+      });
+
+    if (localMatch) {
+      setSelectedStudentId(localMatch.id || (localMatch as any)._id);
+    }
+
+    // 2. Also query backend search if length >= 2
+    if (trimmed.length >= 2) {
+      try {
+        const results = await searchMentorStudentsGlobal(trimmed);
+        if (results && results.length > 0) {
+          setAssignedStudents((prev) => {
+            const existingIds = new Set(prev.map((s) => s.id || (s as any)._id));
+            const toAdd = results.filter((r) => !existingIds.has(r.id || (r as any)._id));
+            return [...prev, ...toAdd];
+          });
+
+          const best =
+            results.find((r) => {
+              const roll = (r.rollNumber || "").toLowerCase();
+              const name = (r.name || "").toLowerCase();
+              return roll === trimmed || roll === trimmedAlt || name === trimmed;
+            }) ||
+            results.find((r) => {
+              const roll = (r.rollNumber || "").toLowerCase();
+              const name = (r.name || "").toLowerCase();
+              return roll.startsWith(trimmed) || roll.startsWith(trimmedAlt) || name.startsWith(trimmed);
+            }) ||
+            results[0];
+
+          if (best) {
+            setSelectedStudentId(best.id || (best as any)._id);
+          }
+        }
+      } catch (err) {
+        console.error("Remote student search error:", err);
+      }
     }
   };
 
   const handleSelectStudentChange = (id: string) => {
     setSelectedStudentId(id);
-    const match = assignedStudents.find((s) => s.id === id || s._id === id);
+    const match = assignedStudents.find((s) => (s.id || (s as any)._id) === id);
     if (match) {
       setRollNumberQuery(match.rollNumber);
     }
@@ -161,10 +255,16 @@ function MentorPlannedAbsencesPage() {
   const fetchStudents = async () => {
     try {
       setStudentsLoading(true);
-      const data = await getStudents();
-      setAssignedStudents(data);
+      const data = await getMentorStudents();
+      setAssignedStudents(data || []);
     } catch (err: any) {
       console.error("Failed to load students:", err);
+      try {
+        const fallback = await searchMentorStudentsGlobal("");
+        setAssignedStudents(fallback || []);
+      } catch (e) {
+        console.error("Fallback search failed:", e);
+      }
     } finally {
       setStudentsLoading(false);
     }
@@ -572,27 +672,75 @@ function MentorPlannedAbsencesPage() {
             </DialogHeader>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4 py-2">
-              {/* Student Roll Number Lookup + Picker */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-foreground">
-                  Student Roll Number / Lookup <span className="text-destructive">*</span>
-                </label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    placeholder="Enter student roll number (e.g. 24471A0575)..."
-                    value={rollNumberQuery}
-                    onChange={(e) => handleRollNumberQueryChange(e.target.value)}
-                    className="pl-9 text-xs"
-                  />
+              {/* Student Details Lookup & Dropdown */}
+              <div className="space-y-2.5">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">
+                    Search Student Details (Roll Number or Name) <span className="text-destructive">*</span>
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Type roll number or student name (e.g. 23471A05EL, 24471A0575, Pallavi)..."
+                      value={rollNumberQuery}
+                      onChange={(e) => handleRollNumberQueryChange(e.target.value)}
+                      className="pl-9 pr-8 text-xs"
+                    />
+                    {rollNumberQuery && (
+                      <button
+                        type="button"
+                        onClick={() => handleRollNumberQueryChange("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs font-bold p-1"
+                        title="Clear search"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
 
+                {/* Dropdown displaying particular student name by default */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-muted-foreground flex items-center justify-between">
+                    <span>Assigned Student Dropdown:</span>
+                    {studentsLoading && <span className="text-primary text-[10px] animate-pulse">Searching roster...</span>}
+                  </label>
+                  <Select value={selectedStudentId} onValueChange={handleSelectStudentChange}>
+                    <SelectTrigger className="w-full text-xs h-9">
+                      <SelectValue placeholder={studentsLoading ? "Loading assigned students..." : "Choose assigned student..."}>
+                        {selectedStudent ? (
+                          <span className="font-semibold text-foreground">
+                            {selectedStudent.name}{" "}
+                            <span className="text-muted-foreground font-mono font-normal">
+                              ({selectedStudent.rollNumber} &bull; {selectedStudent.year}, Sec {selectedStudent.section})
+                            </span>
+                          </span>
+                        ) : undefined}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {displayStudents.map((s) => {
+                        const sid = s.id || (s as any)._id;
+                        return (
+                          <SelectItem key={sid} value={sid} className="text-xs">
+                            <span className="font-semibold text-foreground">{s.name}</span>{" "}
+                            <span className="text-muted-foreground font-mono text-[11px]">
+                              ({s.rollNumber} &bull; {s.year}, Sec {s.section})
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Verified Student Details Card */}
                 {selectedStudent ? (
-                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2.5 text-xs flex items-center justify-between">
+                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2.5 text-xs flex items-center justify-between animate-in fade-in-50">
                     <div>
                       <div className="font-semibold text-foreground flex items-center gap-1.5">
-                        <User className="size-3.5 text-emerald-600" />
-                        <span>{selectedStudent.name}</span>
+                        <User className="size-3.5 text-emerald-600 shrink-0" />
+                        <span className="font-bold text-foreground">{selectedStudent.name}</span>
                         <Badge variant="outline" className="text-[10px] bg-background font-mono font-bold">
                           {selectedStudent.rollNumber}
                         </Badge>
@@ -605,25 +753,11 @@ function MentorPlannedAbsencesPage() {
                       Student Verified
                     </Badge>
                   </div>
-                ) : (
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-muted-foreground">
-                      Or select student from assigned list:
-                    </label>
-                    <Select value={selectedStudentId} onValueChange={handleSelectStudentChange}>
-                      <SelectTrigger className="w-full text-xs">
-                        <SelectValue placeholder={studentsLoading ? "Loading students..." : "Choose assigned student..."} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {assignedStudents.map((s) => (
-                          <SelectItem key={s.id || s._id} value={s.id || s._id} className="text-xs">
-                            {s.rollNumber} — {s.name} ({s.year}, Sec {s.section})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                ) : rollNumberQuery.trim() && !studentsLoading ? (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                    No matching student found for "{rollNumberQuery}". You can choose directly from the dropdown above.
+                  </p>
+                ) : null}
               </div>
 
               {/* Quick Date Presets & Date Range */}

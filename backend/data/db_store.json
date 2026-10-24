@@ -68119,6 +68119,85 @@
       "_id": {
         "$oid": "6adccff0a4227eef0d85568d"
       }
+    },
+    {
+      "actor_id": "6ace7f50c2fc78917fb6e32c",
+      "actor_email": "rajababu123@nrtec.in",
+      "action": "CREATE_PLANNED_ABSENCE",
+      "target_student_id": "6ace88ae018376b229dfb2e6",
+      "target_roll_number": "23471A05EL",
+      "metadata": {
+        "start_date": "2026-10-25",
+        "end_date": "2026-10-25",
+        "reason": "Personal leave",
+        "planned_absence_id": "6adcd94ca4227eef0d85568e"
+      },
+      "created_at": {
+        "$date": "2026-10-24T16:14:04.614Z"
+      },
+      "_id": {
+        "$oid": "6adcd94ca4227eef0d85568f"
+      }
+    },
+    {
+      "actor_id": "6ace7f50c2fc78917fb6e32c",
+      "actor_email": "rajababu123@nrtec.in",
+      "action": "UPDATE_PLANNED_ABSENCE",
+      "target_planned_absence_id": "6adcd94ca4227eef0d85568e",
+      "metadata": {
+        "start_date": "2026-10-25",
+        "end_date": "2026-10-29",
+        "updated_at": {
+          "$date": "2026-10-24T16:14:23.439Z"
+        },
+        "updated_by_id": "6ace7f50c2fc78917fb6e32c",
+        "updated_by_name": "RAJA BABU GUNJI",
+        "reason": "Personal leave"
+      },
+      "created_at": {
+        "$date": "2026-10-24T16:14:23.439Z"
+      },
+      "_id": {
+        "$oid": "6adcd95fa4227eef0d855690"
+      }
+    },
+    {
+      "actor_id": "6ace7f50c2fc78917fb6e32c",
+      "actor_email": "rajababu123@nrtec.in",
+      "action": "UPDATE_PLANNED_ABSENCE",
+      "target_planned_absence_id": "6adcd94ca4227eef0d85568e",
+      "metadata": {
+        "start_date": "2026-10-24",
+        "end_date": "2026-10-29",
+        "updated_at": {
+          "$date": "2026-10-24T16:19:12.818Z"
+        },
+        "updated_by_id": "6ace7f50c2fc78917fb6e32c",
+        "updated_by_name": "RAJA BABU GUNJI",
+        "reason": "Personal leave"
+      },
+      "created_at": {
+        "$date": "2026-10-24T16:19:12.818Z"
+      },
+      "_id": {
+        "$oid": "6adcda80a4227eef0d855691"
+      }
+    },
+    {
+      "actor_id": "6ace7f50c2fc78917fb6e32c",
+      "actor_email": "rajababu123@nrtec.in",
+      "action": "UPDATE_ABSENCE_COMMENT",
+      "target_attendance_id": "6adc54bba4227eef0d8555e9",
+      "metadata": {
+        "comment": "personal issue",
+        "student": "ANNAPUREDDY VENKATA SRIVALLI"
+      },
+      "created_at": {
+        "$date": "2026-10-24T16:47:34.845Z"
+      },
+      "_id": {
+        "$oid": "6adce126a4227eef0d855692"
+      }
     }
   ],
   "sections": [
@@ -84699,16 +84778,18 @@
       "parent_phone": "8096418159",
       "submitted_by": "Veeravalli Hima Sree (LR)",
       "status": "Absent",
-      "reason": null,
+      "reason": "personal issue",
       "created_at": {
         "$date": "2026-10-24T06:48:27.095Z"
       },
       "updated_at": {
-        "$date": "2026-10-24T06:48:27.095Z"
+        "$date": "2026-10-24T16:47:34.845Z"
       },
       "_id": {
         "$oid": "6adc54bba4227eef0d8555e9"
-      }
+      },
+      "reason_updated_by": "RAJA BABU GUNJI",
+      "reason_updated_by_id": "6ace7f50c2fc78917fb6e32c"
     },
     {
       "date": "2026-10-24",
@@ -100259,6 +100340,33 @@
       "_id": {
         "$oid": "6adccfd8a4227eef0d85568b"
       }
+    },
+    {
+      "student_id": "6ace88ae018376b229dfb2e6",
+      "student_name": "SHAIK MEERA MUQTHYAR",
+      "roll_number": "23471A05EL",
+      "year": "4th Year",
+      "section": "C5",
+      "start_date": "2026-10-24",
+      "end_date": "2026-10-29",
+      "reason": "Personal leave",
+      "status": "ACTIVE",
+      "mentor_id": "6ace7f50c2fc78917fb6e32c",
+      "mentor_name": "RAJA BABU GUNJI",
+      "created_by_id": "6ace7f50c2fc78917fb6e32c",
+      "created_by_name": "RAJA BABU GUNJI",
+      "created_by_role": "MENTOR",
+      "created_at": {
+        "$date": "2026-10-24T16:14:04.614Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T16:19:12.818Z"
+      },
+      "_id": {
+        "$oid": "6adcd94ca4227eef0d85568e"
+      },
+      "updated_by_id": "6ace7f50c2fc78917fb6e32c",
+      "updated_by_name": "RAJA BABU GUNJI"
     }
   ]
 }

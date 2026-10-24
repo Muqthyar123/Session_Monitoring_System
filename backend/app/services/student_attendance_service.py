@@ -11,6 +11,7 @@ from app.schemas.student_attendance import (
     StudentAttendanceCorrectRequest,
     StudentAnalyticsItem,
 )
+from app.schemas.user import UserRole
 
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
@@ -224,7 +225,13 @@ async def get_absentee_students_for_section(year: str, section: str, date: Optio
     return absentees
 
 
-async def save_absence_reason(record_id: str, reason: str, actor_name: str, actor_id: Optional[str] = None) -> StudentAttendanceRecordResponse:
+async def save_absence_reason(
+    record_id: str,
+    reason: str,
+    actor_name: str,
+    actor_id: Optional[str] = None,
+    actor_role: Optional[str] = None,
+) -> StudentAttendanceRecordResponse:
     """Save or update the absence reason for a specific attendance record."""
     db = get_database()
     clean_id = (record_id or "").strip()
@@ -249,6 +256,14 @@ async def save_absence_reason(record_id: str, reason: str, actor_name: str, acto
         }, sort=[("date", -1), ("created_at", -1)])
     if not doc:
         raise HTTPException(status_code=404, detail="Attendance record not found.")
+
+    # Locking rule: If reason is already saved and non-empty, do not allow resubmission for mentors
+    if doc.get("reason") and str(doc.get("reason")).strip():
+        if actor_role in [UserRole.MENTOR.value, "MENTOR"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Absence reason has already been recorded and cannot be modified again.",
+            )
 
     now_utc = datetime.now(timezone.utc)
     actual_id = doc["_id"]
