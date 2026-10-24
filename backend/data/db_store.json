@@ -66294,6 +66294,406 @@
       "_id": {
         "$oid": "6adba2d5b083899f80785d4e"
       }
+    },
+    {
+      "name": "II-CSE-A CR",
+      "email": "cr@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSA01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-A",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd332c"
+      }
+    },
+    {
+      "name": "II-CSE-A LR",
+      "email": "lr@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSA02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-A",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd332d"
+      }
+    },
+    {
+      "name": "II-CSE-B CR",
+      "email": "cr.cseb@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSB01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-B",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd332e"
+      }
+    },
+    {
+      "name": "II-CSE-B LR",
+      "email": "lr.cseb@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSB02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-B",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd332f"
+      }
+    },
+    {
+      "name": "II-CSE-C CR",
+      "email": "cr.csec@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSC01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-C",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3330"
+      }
+    },
+    {
+      "name": "II-CSE-C LR",
+      "email": "lr.csec@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSC02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-C",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3331"
+      }
+    },
+    {
+      "name": "II-CSE-D CR",
+      "email": "cr.csed@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSD01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-D",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3332"
+      }
+    },
+    {
+      "name": "II-CSE-D LR",
+      "email": "lr.csed@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSD02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-D",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3333"
+      }
+    },
+    {
+      "name": "II-CSE-E CR",
+      "email": "cr.csee@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSE01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-E",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3334"
+      }
+    },
+    {
+      "name": "II-CSE-E LR",
+      "email": "lr.csee@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSE02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-E",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3335"
+      }
+    },
+    {
+      "name": "II-CSE-F CR",
+      "email": "cr.csef@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSF01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-F",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3336"
+      }
+    },
+    {
+      "name": "II-CSE-F LR",
+      "email": "lr.csef@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSF02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-F",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3337"
+      }
+    },
+    {
+      "name": "II-CSE-G CR",
+      "email": "cr.cseg@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSG01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-G",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3338"
+      }
+    },
+    {
+      "name": "II-CSE-G LR",
+      "email": "lr.cseg@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSG02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-G",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd3339"
+      }
+    },
+    {
+      "name": "II-CSE-H CR",
+      "email": "cr.cseh@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSH01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-H",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd333a"
+      }
+    },
+    {
+      "name": "II-CSE-H LR",
+      "email": "lr.cseh@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSH02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-H",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd333b"
+      }
+    },
+    {
+      "name": "II-CSE-I CR",
+      "email": "cr.csei@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSI01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-I",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd333c"
+      }
+    },
+    {
+      "name": "II-CSE-I LR",
+      "email": "lr.csei@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSI02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-I",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd333d"
+      }
+    },
+    {
+      "name": "II-CSE-J CR",
+      "email": "cr.csej@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "CR",
+      "roll_number": "22CSJ01",
+      "phone": "9876543211",
+      "year": "2nd Year",
+      "section": "II-CSE-J",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd333e"
+      }
+    },
+    {
+      "name": "II-CSE-J LR",
+      "email": "lr.csej@example.com",
+      "password_hash": "$2b$12$tdXEbB1C/ctxN20pEKNah.u4svx4oY2WhDUNG.jdLV/SbtDi17WVu",
+      "role": "LR",
+      "roll_number": "22CSJ02",
+      "phone": "9876543212",
+      "year": "2nd Year",
+      "section": "II-CSE-J",
+      "is_active": true,
+      "created_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "updated_at": {
+        "$date": "2026-10-24T18:35:34.948Z"
+      },
+      "_id": {
+        "$oid": "6adcfa77a3c6a0c317bd333f"
+      }
     }
   ],
   "audit_logs": [
@@ -68183,13 +68583,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.701Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d85556a",
-      "assigned_lr_id": "6adc321ea4227eef0d85556b",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd332c",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd332d",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Indu",
@@ -68203,13 +68603,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.701Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d85556c",
-      "assigned_lr_id": "6adc321ea4227eef0d85556d",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd332e",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd332f",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "Kondu jaya prudhvi raju",
@@ -68223,13 +68623,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.702Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d85556e",
-      "assigned_lr_id": "6adc321ea4227eef0d85556f",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd3330",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd3331",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "M.Akhil Raj",
@@ -68243,13 +68643,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.702Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d855570",
-      "assigned_lr_id": "6adc321ea4227eef0d855571",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd3332",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd3333",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Shaik Ayeshabee",
@@ -68263,13 +68663,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.703Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d855572",
-      "assigned_lr_id": "6adc321ea4227eef0d855573",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd3334",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd3335",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "Sk. E. Gouse Basha",
@@ -68283,13 +68683,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.703Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d855574",
-      "assigned_lr_id": "6adc321ea4227eef0d855575",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd3336",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd3337",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "Netuluri Sai Pradeep",
@@ -68303,13 +68703,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.704Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d855576",
-      "assigned_lr_id": "6adc321ea4227eef0d855577",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd3338",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd3339",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "G. Soumya"
@@ -68322,13 +68722,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.704Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d855578",
-      "assigned_lr_id": "6adc321ea4227eef0d855579",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd333a",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd333b",
       "branch": "CSE",
       "department": "CSE"
     },
@@ -68340,13 +68740,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.705Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d85557a",
-      "assigned_lr_id": "6adc321ea4227eef0d85557b",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd333c",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd333d",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "PATTAN ABDULLA",
@@ -68360,13 +68760,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T17:35:54.485Z"
+        "$date": "2026-10-24T18:35:34.948Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.706Z"
       },
-      "assigned_cr_id": "6adc321ea4227eef0d85557c",
-      "assigned_lr_id": "6adc321ea4227eef0d85557d",
+      "assigned_cr_id": "6adcfa77a3c6a0c317bd333e",
+      "assigned_lr_id": "6adcfa77a3c6a0c317bd333f",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Nithigna .Kakarla",

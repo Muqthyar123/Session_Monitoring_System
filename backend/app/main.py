@@ -143,7 +143,10 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 
 # Healthcheck endpoint
+@app.get("/", tags=["Health"])
+@app.head("/", tags=["Health"])
 @app.get("/health", tags=["Health"])
+@app.head("/health", tags=["Health"])
 async def health_check():
     return {"status": "ok", "project": settings.PROJECT_NAME, "version": settings.VERSION}
 
