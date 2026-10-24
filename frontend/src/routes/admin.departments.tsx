@@ -63,6 +63,7 @@ function ManageDepartmentsPage() {
 
   const [formCode, setFormCode] = useState("");
   const [formName, setFormName] = useState("");
+  const [formCoordinatorName, setFormCoordinatorName] = useState("");
   const [formActive, setFormActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -86,6 +87,7 @@ function ManageDepartmentsPage() {
     setEditingDept(null);
     setFormCode("");
     setFormName("");
+    setFormCoordinatorName("");
     setFormActive(true);
     setDialogOpen(true);
   };
@@ -94,6 +96,7 @@ function ManageDepartmentsPage() {
     setEditingDept(dept);
     setFormCode(dept.code);
     setFormName(dept.name);
+    setFormCoordinatorName(dept.coordinatorName || "");
     setFormActive(dept.isActive);
     setDialogOpen(true);
   };
@@ -111,6 +114,7 @@ function ManageDepartmentsPage() {
         await updateDepartment(editingDept.id, {
           code: formCode.trim().toUpperCase(),
           name: formName.trim(),
+          coordinatorName: formCoordinatorName.trim() || null,
           isActive: formActive,
         });
         toast.success(`Department '${formCode}' updated successfully.`);
@@ -118,6 +122,7 @@ function ManageDepartmentsPage() {
         await createDepartment({
           code: formCode.trim().toUpperCase(),
           name: formName.trim(),
+          coordinatorName: formCoordinatorName.trim() || null,
           isActive: formActive,
         });
         toast.success(`Department '${formCode}' created successfully.`);
@@ -364,6 +369,16 @@ function ManageDepartmentsPage() {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="dept-coordinator">Coordinator Name (HOD / Faculty Coordinator)</Label>
+                <Input
+                  id="dept-coordinator"
+                  placeholder="e.g. Dr. S. Nageswara Rao"
+                  value={formCoordinatorName}
+                  onChange={(e) => setFormCoordinatorName(e.target.value)}
                 />
               </div>
 

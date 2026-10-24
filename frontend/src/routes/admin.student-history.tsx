@@ -116,17 +116,24 @@ function AdminStudentHistoryPage() {
   );
 
   const normalizedSections: { section: string; studentCount?: number; absenteeCount?: number }[] = useMemo(() => {
-    if (!dbSections || !Array.isArray(dbSections)) {
-      return DEFAULT_SECTIONS.map((s) => ({ section: s }));
+    if (!dbSections || !Array.isArray(dbSections) || dbSections.length === 0) {
+      return [];
     }
-    return dbSections.map((item: any) => {
-      if (typeof item === "string") return { section: item };
-      return {
-        section: item.section || "A",
-        studentCount: item.studentCount,
-        absenteeCount: item.absenteeCount,
-      };
-    });
+    const seen = new Set<string>();
+    const list: { section: string; studentCount?: number; absenteeCount?: number }[] = [];
+    for (const item of dbSections) {
+      const rawSec = typeof item === "string" ? item : (item.section || "");
+      const cleanSec = rawSec.trim();
+      if (cleanSec && !seen.has(cleanSec)) {
+        seen.add(cleanSec);
+        list.push({
+          section: cleanSec,
+          studentCount: typeof item === "object" ? item.studentCount : undefined,
+          absenteeCount: typeof item === "object" ? item.absenteeCount : undefined,
+        });
+      }
+    }
+    return list;
   }, [dbSections]);
 
   // Level 3: Students list for selected Year + Section

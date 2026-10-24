@@ -12,10 +12,15 @@ import {
   CheckCircle2,
   AlertTriangle,
   UserX,
-  UserCheck,
+  Clock,
   Building2,
   Download,
+  Lock,
+  Save,
+  CalendarClock,
 } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { exportToCSV } from "@/utils/exportUtils";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -35,34 +40,35 @@ import { useAsyncData } from "@/hooks/useAsyncData";
 import {
   getAbsenteeYears,
   getAbsenteeSections,
-  getStudentAnalyticsSummary,
+  getAbsenteeStudents,
+  saveAbsenceReason,
   getStudentCompleteHistory,
-  type StudentAnalyticsSummaryItem,
   type AbsenteeStudentItem,
 } from "@/services/studentAttendanceService";
+import { createPlannedAbsence } from "@/services/plannedAbsenceService";
 import { getStudents, type StudentItem } from "@/services/studentService";
 
 export const Route = createFileRoute("/admin/student-analytics")({
   head: () => ({
     meta: [
-      { title: "Student Attendance Analytics — Admin Portal" },
-      { name: "description", content: "Comprehensive overview of dynamic student attendance metrics across all academic years and sections." },
+      { title: "Student Absentees — Admin Portal" },
+      { name: "description", content: "Inspect today's absentee students across academic years and sections, track dialer calls, and inspect recorded mentor notes." },
     ],
   }),
-  component: AdminStudentAnalyticsPage,
+  component: AdminStudentAbsenteesPage,
 });
 
 const DEFAULT_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 const DEFAULT_SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
-function AdminStudentAnalyticsPage() {
+function AdminStudentAbsenteesPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(() => {
     return sessionStorage.getItem("admin_sa_year") || null;
   });
   const [selectedSection, setSelectedSection] = useState<string | null>(() => {
     return sessionStorage.getItem("admin_sa_section") || null;
   });
-  const [search, setSearch] = useState("");
+  const [sectionSearch, setSectionSearch] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
 
   const handleSelectYear = (yr: string | null) => {
@@ -85,7 +91,7 @@ function AdminStudentAnalyticsPage() {
     }
   };
 
-  // Level 1: Dynamic Years
+  // Level 1: Dynamic Years with student and absentee counts
   const {
     data: dbYears,
     loading: loadingYears,
@@ -107,7 +113,7 @@ function AdminStudentAnalyticsPage() {
     });
   }, [dbYears]);
 
-  // Level 2: Dynamic Sections for Selected Year
+  // Level 2: Dynamic Sections for Selected Year (Strict assigned sections only, deduplicated)
   const {
     data: dbSections,
     loading: loadingSections,
@@ -119,34 +125,41 @@ function AdminStudentAnalyticsPage() {
   );
 
   const normalizedSections: { section: string; studentCount?: number; absenteeCount?: number }[] = useMemo(() => {
-    if (!dbSections || !Array.isArray(dbSections)) {
-      return DEFAULT_SECTIONS.map((s) => ({ section: s }));
+    if (!dbSections || !Array.isArray(dbSections) || dbSections.length === 0) {
+      return [];
     }
-    return dbSections.map((item: any) => {
-      if (typeof item === "string") return { section: item };
-      return {
-        section: item.section || "A",
-        studentCount: item.studentCount,
-        absenteeCount: item.absenteeCount,
-      };
-    });
+    const seen = new Set<string>();
+    const list: { section: string; studentCount?: number; absenteeCount?: number }[] = [];
+    for (const item of dbSections) {
+      const rawSec = typeof item === "string" ? item : (item.section || "");
+      const cleanSec = rawSec.trim();
+      if (cleanSec && !seen.has(cleanSec)) {
+        seen.add(cleanSec);
+        list.push({
+          section: cleanSec,
+          studentCount: typeof item === "object" ? item.studentCount : undefined,
+          absenteeCount: typeof item === "object" ? item.absenteeCount : undefined,
+        });
+      }
+    }
+    return list;
   }, [dbSections]);
 
-  // Level 3: Students list for selected Year + Section
+  // Level 3: Today's Marked Absentees for selected Year + Section
   const {
-    data: summaryList,
-    loading: loadingSummary,
-    error: errorSummary,
-    reload: reloadSummary,
+    data: absenteesList,
+    loading: loadingAbsentees,
+    error: errorAbsentees,
+    reload: reloadAbsentees,
   } = useAsyncData(
     () =>
       selectedYear && selectedSection
-        ? getStudentAnalyticsSummary(selectedYear, selectedSection)
+        ? getAbsenteeStudents(selectedYear, selectedSection)
         : Promise.resolve([]),
     [selectedYear, selectedSection]
   );
 
-  // Global Search results when searching across all students
+  // Global student search results when searching across the institution
   const {
     data: searchResults,
     loading: loadingGlobalSearch,
@@ -158,36 +171,154 @@ function AdminStudentAnalyticsPage() {
     [globalSearch]
   );
 
-  // Selected student for complete history modal
-  const [activeStudent, setActiveStudent] = useState<StudentAnalyticsSummaryItem | null>(null);
+  // Level 4: Complete History modal for a student
+  const [activeHistoryStudent, setActiveHistoryStudent] = useState<AbsenteeStudentItem | null>(null);
   const {
-    data: historyList,
+    data: historyRecords,
     loading: loadingHistory,
-    error: errorHistory,
   } = useAsyncData(
     () =>
-      activeStudent ? getStudentCompleteHistory(activeStudent.rollNumber) : Promise.resolve([]),
-    [activeStudent]
+      activeHistoryStudent ? getStudentCompleteHistory(activeHistoryStudent.rollNumber) : Promise.resolve([]),
+    [activeHistoryStudent]
   );
 
-  const filteredSummary = useMemo(() => {
-    if (!summaryList) return [];
-    const term = search.trim().toLowerCase();
-    if (!term) return summaryList;
-    return summaryList.filter(
-      (s) =>
-        s.studentName.toLowerCase().includes(term) ||
-        s.rollNumber.toLowerCase().includes(term)
+  // Today date string (YYYY-MM-DD)
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  // Absence comment and planned mode states
+  const [absenceModes, setAbsenceModes] = useState<Record<string, "NORMAL" | "PLANNED">>({});
+  const [dateRanges, setDateRanges] = useState<Record<string, { from: string; to: string }>>({});
+  const [reasonInputs, setReasonInputs] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  // Permanently locked reasons map for instant dynamic UI updates without reload
+  const [lockedReasonMap, setLockedReasonMap] = useState<Record<string, { reason: string; updatedBy?: string }>>({});
+
+  // Dialer call tracker for smooth color/badge toggle
+  const [calledMap, setCalledMap] = useState<Record<string, { student?: boolean; parent?: boolean }>>({});
+
+  const handleCallToggle = (recordId: string, type: "student" | "parent") => {
+    setCalledMap((prev) => ({
+      ...prev,
+      [recordId]: {
+        ...prev[recordId],
+        [type]: !prev[recordId]?.[type],
+      },
+    }));
+  };
+
+  const handleModeChange = (id: string, mode: "NORMAL" | "PLANNED") => {
+    setAbsenceModes((prev) => ({ ...prev, [id]: mode }));
+    if (!dateRanges[id]) {
+      setDateRanges((prev) => ({ ...prev, [id]: { from: todayStr, to: todayStr } }));
+    }
+  };
+
+  const handleDateChange = (id: string, field: "from" | "to", val: string) => {
+    setDateRanges((prev) => ({
+      ...prev,
+      [id]: {
+        from: field === "from" ? val : prev[id]?.from || todayStr,
+        to: field === "to" ? val : prev[id]?.to || todayStr,
+      },
+    }));
+  };
+
+  const handleReasonChange = (id: string, value: string) => {
+    setReasonInputs((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleSaveNormalReason = async (record: AbsenteeStudentItem) => {
+    const recordId = record.id || (record as any)._id || record.rollNumber;
+    const reasonText = reasonInputs[recordId] ?? record.reason ?? "";
+    if (!reasonText.trim()) {
+      toast.error("Please enter a reason or note before saving.");
+      return;
+    }
+
+    setSavingId(recordId);
+    try {
+      await saveAbsenceReason(recordId, reasonText.trim());
+      record.reason = reasonText.trim();
+      record.reasonUpdatedBy = "Admin";
+      setLockedReasonMap((prev) => ({
+        ...prev,
+        [recordId]: { reason: reasonText.trim(), updatedBy: "Admin" },
+        [record.rollNumber]: { reason: reasonText.trim(), updatedBy: "Admin" },
+      }));
+      toast.success(`Absence note saved and locked for ${record.studentName}.`);
+      if (reloadAbsentees) reloadAbsentees();
+      if (reloadSections) reloadSections();
+      if (reloadYears) reloadYears();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save absence reason.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleSavePlannedReason = async (record: AbsenteeStudentItem) => {
+    const recordId = record.id || (record as any)._id || record.rollNumber;
+    const reasonText = reasonInputs[recordId] ?? record.reason ?? "";
+    if (!reasonText.trim()) {
+      toast.error("Please enter a reason before saving planned absence.");
+      return;
+    }
+    const dates = dateRanges[recordId] || { from: todayStr, to: todayStr };
+    if (!dates.from || !dates.to) {
+      toast.error("Please select both From and To dates.");
+      return;
+    }
+    if (dates.from > dates.to) {
+      toast.error("From Date cannot be after To Date.");
+      return;
+    }
+
+    setSavingId(recordId);
+    try {
+      await createPlannedAbsence({
+        studentId: record.studentId || recordId,
+        rollNumber: record.rollNumber,
+        studentName: record.studentName,
+        year: record.year,
+        section: record.section,
+        startDate: dates.from,
+        endDate: dates.to,
+        reason: reasonText.trim(),
+      });
+      toast.success(
+        `Planned leave recorded for ${record.studentName} (${dates.from} to ${dates.to}). Moved to Planned Absentees.`
+      );
+      if (reloadAbsentees) reloadAbsentees();
+      if (reloadSections) reloadSections();
+      if (reloadYears) reloadYears();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to record planned absence.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const filteredAbsentees = useMemo(() => {
+    if (!absenteesList) return [];
+    const term = sectionSearch.trim().toLowerCase();
+    if (!term) return absenteesList;
+    return absenteesList.filter(
+      (a) =>
+        a.studentName.toLowerCase().includes(term) ||
+        a.rollNumber.toLowerCase().includes(term) ||
+        (a.studentPhone && a.studentPhone.includes(term)) ||
+        (a.parentPhone && a.parentPhone.includes(term))
     );
-  }, [summaryList, search]);
+  }, [absenteesList, sectionSearch]);
 
   const isGlobalSearchActive = !selectedSection && globalSearch.trim().length >= 2;
 
   return (
     <AdminLayout>
       <PageHeader
-        title="Student Attendance Analytics"
-        description="Comprehensive real-time student attendance metrics, dynamic section drill-down, and absence records across academic years."
+        title="Student Absentees"
+        description="Inspect today's absentee students across academic years and sections, track dialer calls, and inspect recorded mentor notes."
         actions={
           <div className="flex items-center gap-2">
             {selectedSection ? (
@@ -224,12 +355,12 @@ function AdminStudentAnalyticsPage() {
         </div>
       )}
 
-      {/* GLOBAL SEARCH RESULTS VIEW */}
+      {/* GLOBAL SEARCH ACTIVE RESULTS */}
       {isGlobalSearchActive && (
-        <div className="space-y-4 mb-8">
+        <div className="space-y-4 mb-6">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">
-              Global Search Results for &ldquo;{globalSearch}&rdquo;
+              Search Results for &ldquo;{globalSearch}&rdquo;
             </h2>
             <span className="text-xs text-muted-foreground">
               {searchResults?.length || 0} student(s) found
@@ -237,29 +368,29 @@ function AdminStudentAnalyticsPage() {
           </div>
 
           {loadingGlobalSearch ? (
-            <LoadingState label="Searching student directory..." />
+            <LoadingState label="Searching students across database..." />
           ) : !searchResults || searchResults.length === 0 ? (
             <EmptyState
-              title="No students matched search"
-              description={`Could not find any student matching "${globalSearch}".`}
+              title="No students found"
+              description={`No student matching "${globalSearch}" was found.`}
             />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {searchResults.map((st) => (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+              {searchResults.map((st: StudentItem) => (
                 <Card
                   key={st.rollNumber}
                   className="hover:border-primary transition-all cursor-pointer"
                   onClick={() => {
-                    setActiveStudent({
-                      studentName: st.name,
+                    setActiveHistoryStudent({
+                      id: st.id,
                       rollNumber: st.rollNumber,
+                      studentName: st.name,
                       year: st.year || selectedYear || "2nd Year",
                       section: st.section || "A",
                       studentPhone: st.studentPhone,
                       parentPhone: st.parentPhone,
-                      totalAbsences: 0,
-                      totalDays: 0,
-                      attendancePercentage: 100,
+                      date: todayStr,
+                      status: "Absent",
                     });
                   }}
                 >
@@ -338,7 +469,7 @@ function AdminStudentAnalyticsPage() {
         </div>
       )}
 
-      {/* LEVEL 2: Dynamic Sections for Selected Year */}
+      {/* LEVEL 2: Dynamic Sections for Selected Year (Strict assigned sections only, no spurious absentee cards) */}
       {selectedYear && !selectedSection && !isGlobalSearchActive && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -391,7 +522,7 @@ function AdminStudentAnalyticsPage() {
                       </div>
                     )}
                     <div className="flex items-center justify-end text-xs font-semibold text-primary pt-2 border-t">
-                      Student Analytics <ChevronRight className="size-4 ml-1" />
+                      View Absentees <ChevronRight className="size-4 ml-1" />
                     </div>
                   </CardContent>
                 </Card>
@@ -401,7 +532,7 @@ function AdminStudentAnalyticsPage() {
         </div>
       )}
 
-      {/* LEVEL 3: Student Summary Cards for Selected Year & Section */}
+      {/* LEVEL 3: Marked Absentees for Selected Year & Section */}
       {selectedYear && selectedSection && (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -413,7 +544,7 @@ function AdminStudentAnalyticsPage() {
                 Section {selectedSection}
               </Badge>
               <span className="text-xs text-muted-foreground ml-2">
-                {filteredSummary.length} student(s) tracked
+                {filteredAbsentees.length} absentee(s) reported today
               </span>
             </div>
 
@@ -421,9 +552,9 @@ function AdminStudentAnalyticsPage() {
               <div className="relative max-w-xs w-full">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Filter student or roll number..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Filter by name, roll, or phone..."
+                  value={sectionSearch}
+                  onChange={(e) => setSectionSearch(e.target.value)}
                   className="pl-9 bg-card"
                 />
               </div>
@@ -436,79 +567,300 @@ function AdminStudentAnalyticsPage() {
                     { key: "studentName", header: "Student Name" },
                     { key: "year", header: "Academic Year" },
                     { key: "section", header: "Section" },
-                    { key: "attendancePercentage", header: "Attendance %" },
-                    { key: "totalAbsences", header: "Total Absences" },
-                    { key: "totalDays", header: "Total Days Tracked" },
+                    { key: "date", header: "Date" },
+                    { key: "reason", header: "Absence Reason", transform: (v: any) => v || "Unspecified" },
+                    { key: "reasonUpdatedBy", header: "Reason Recorded By", transform: (v: any) => v || "None" },
                     { key: "studentPhone", header: "Student Phone", transform: (v: any) => v || "" },
                     { key: "parentPhone", header: "Parent Phone", transform: (v: any) => v || "" },
                   ];
                   exportToCSV(
-                    filteredSummary,
-                    `Student_Analytics_${selectedYear.replace(/\s+/g, "_")}_Section_${selectedSection}`,
+                    filteredAbsentees,
+                    `Today_Absentees_${selectedYear.replace(/\s+/g, "_")}_Section_${selectedSection}`,
                     cols
                   );
                 }}
-                disabled={filteredSummary.length === 0}
+                disabled={filteredAbsentees.length === 0}
                 className="gap-1.5 bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 border-emerald-500/30"
-                title="Export student analytics to Excel/CSV"
+                title="Export absentees to Excel/CSV"
               >
-                <Download className="size-4" /> Export Analytics
+                <Download className="size-4" /> Export Absentees
               </Button>
             </div>
           </div>
 
-          {loadingSummary ? (
-            <LoadingState label="Calculating realtime student attendance analytics..." />
-          ) : errorSummary ? (
-            <ErrorState title="Failed to load summary" description={errorSummary.message} retry={reloadSummary} />
-          ) : !summaryList || summaryList.length === 0 ? (
+          {loadingAbsentees ? (
+            <LoadingState label="Loading marked absentees for section..." />
+          ) : errorAbsentees ? (
+            <ErrorState title="Failed to load absentees" description={errorAbsentees.message} retry={reloadAbsentees} />
+          ) : !absenteesList || absenteesList.length === 0 ? (
             <EmptyState
-              title="No student records found"
-              description={`No students registered for ${selectedYear} Section ${selectedSection}.`}
+              title="All Students Present!"
+              description={`No absentees reported today for ${selectedYear} Section ${selectedSection}.`}
             />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredSummary.map((st) => {
-                const pct = st.attendancePercentage;
-                const statusBadge =
-                  pct >= 85 ? (
-                    <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20">
-                      {pct}% Attendance
-                    </Badge>
-                  ) : pct >= 75 ? (
-                    <Badge variant="outline" className="border-amber-500/40 text-amber-600 bg-amber-50 dark:bg-amber-950/20">
-                      {pct}% Attendance
-                    </Badge>
-                  ) : (
-                    <Badge variant="destructive">
-                      {pct}% (Low)
-                    </Badge>
-                  );
+              {filteredAbsentees.map((record) => {
+                const recordId = record.id || (record as any)._id || record.rollNumber;
+                const isStudentCalled = calledMap[recordId]?.student;
+                const isParentCalled = calledMap[recordId]?.parent;
+
+                const lockedInfo = lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber];
+                const isReasonLocked = Boolean(
+                  (record.reason && record.reason.trim()) ||
+                  (lockedInfo && lockedInfo.reason && lockedInfo.reason.trim())
+                );
+                const effectiveReason = lockedInfo?.reason || record.reason || "";
+                const effectiveUpdatedBy = lockedInfo?.updatedBy || record.reasonUpdatedBy || "Mentor";
+
+                const mode = absenceModes[recordId] || "NORMAL";
+                const dates = dateRanges[recordId] || { from: todayStr, to: todayStr };
+                const reasonText = reasonInputs[recordId] ?? record.reason ?? "";
+                const isSaving = savingId === recordId;
 
                 return (
-                  <Card key={st.rollNumber} className="flex flex-col justify-between hover:shadow-sm transition-shadow">
+                  <Card key={recordId} className="border-rose-500/25 shadow-sm transition-all hover:shadow-md">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div>
-                          <CardTitle className="text-base font-bold">{st.studentName}</CardTitle>
-                          <p className="font-mono text-xs text-muted-foreground">{st.rollNumber}</p>
+                          <CardTitle className="text-base font-bold">{record.studentName}</CardTitle>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="font-mono text-xs font-semibold text-primary">
+                              {record.rollNumber}
+                            </span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {record.year} &bull; {record.section}
+                            </Badge>
+                          </div>
                         </div>
-                        {statusBadge}
+                        <Badge variant="destructive" className="gap-1">
+                          <UserX className="size-3" /> Absent
+                        </Badge>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
-                        <span>Total Absences: <strong className="text-foreground">{st.totalAbsences} days</strong></span>
-                        <span>Tracked Days: <strong className="text-foreground">{st.totalDays}</strong></span>
+                    <CardContent className="space-y-4 text-sm">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground border-y py-2">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="size-3.5" />
+                          <span>Date: {record.date}</span>
+                        </div>
+                        {record.submittedBy && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="size-3.5" />
+                            <span>By: {record.submittedBy}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Phone Dialers */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {record.studentPhone ? (
+                          <a
+                            href={`tel:${record.studentPhone}`}
+                            onClick={() => handleCallToggle(recordId, "student")}
+                            className={cn(
+                              "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
+                              isStudentCalled
+                                ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-900/90 shadow-inner"
+                                : "bg-emerald-600 text-white hover:bg-emerald-700"
+                            )}
+                            title={`Call Student (${record.studentPhone})`}
+                          >
+                            {isStudentCalled ? (
+                              <>
+                                <CheckCircle2 className="size-3.5 text-emerald-400 shrink-0" /> Called Student
+                              </>
+                            ) : (
+                              <>
+                                <Phone className="size-3.5 shrink-0" /> Call Student
+                              </>
+                            )}
+                          </a>
+                        ) : (
+                          <Button variant="outline" size="sm" disabled className="text-xs">
+                            No Student Phone
+                          </Button>
+                        )}
+
+                        {record.parentPhone ? (
+                          <a
+                            href={`tel:${record.parentPhone}`}
+                            onClick={() => handleCallToggle(recordId, "parent")}
+                            className={cn(
+                              "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
+                              isParentCalled
+                                ? "bg-blue-950/80 text-blue-300 border border-blue-500/50 hover:bg-blue-900/90 shadow-inner"
+                                : "bg-blue-600 text-white hover:bg-blue-700"
+                            )}
+                            title={`Call Parent (${record.parentPhone})`}
+                          >
+                            {isParentCalled ? (
+                              <>
+                                <CheckCircle2 className="size-3.5 text-blue-400 shrink-0" /> Called Parent
+                              </>
+                            ) : (
+                              <>
+                                <PhoneCall className="size-3.5 shrink-0" /> Call Parent
+                              </>
+                            )}
+                          </a>
+                        ) : (
+                          <Button variant="outline" size="sm" disabled className="text-xs">
+                            No Parent Phone
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Dual Mode Reason Section */}
+                      <div className="space-y-2.5 pt-1 border-t">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold text-foreground">
+                            Absence Category:
+                          </label>
+                          {isReasonLocked ? (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-400 gap-1 font-semibold">
+                              <CheckCircle2 className="size-3 text-emerald-600" /> Normal Absence (Locked)
+                            </Badge>
+                          ) : (
+                            <div className="inline-flex rounded-lg p-0.5 bg-muted text-[11px] border">
+                              <button
+                                type="button"
+                                onClick={() => handleModeChange(recordId, "NORMAL")}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-md transition-all font-medium",
+                                  mode === "NORMAL"
+                                    ? "bg-background text-foreground shadow-sm font-semibold"
+                                    : "text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                Normal Absence
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleModeChange(recordId, "PLANNED")}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-md transition-all font-medium",
+                                  mode === "PLANNED"
+                                    ? "bg-background text-amber-600 dark:text-amber-400 shadow-sm font-semibold"
+                                    : "text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                Planned Absence
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {isReasonLocked ? (
+                          <div className="space-y-2">
+                            <div className="rounded-lg border border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-950/25 p-3 text-xs space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 font-semibold text-emerald-800 dark:text-emerald-300">
+                                  <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                                  <span>Absence Reason Recorded</span>
+                                </div>
+                                <Badge variant="outline" className="text-[10px] bg-background text-emerald-700 dark:text-emerald-400 border-emerald-400 gap-1 font-semibold">
+                                  <Lock className="size-3" /> Locked
+                                </Badge>
+                              </div>
+                              <div className="bg-background/95 rounded border p-2 text-foreground font-medium italic text-xs leading-relaxed">
+                                &ldquo;{effectiveReason}&rdquo;
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
+                                <span>
+                                  Recorded by: <strong className="text-foreground">{effectiveUpdatedBy}</strong>
+                                </span>
+                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                  Resubmission disabled
+                                </span>
+                              </div>
+                            </div>
+                            <Button
+                              disabled
+                              size="sm"
+                              variant="outline"
+                              className="w-full text-xs cursor-not-allowed opacity-80 bg-muted/40 border-muted text-muted-foreground"
+                            >
+                              <Lock className="size-3.5 mr-1.5" />
+                              Reason Saved & Locked (Cannot Resubmit)
+                            </Button>
+                          </div>
+                        ) : mode === "NORMAL" ? (
+                          <div className="space-y-1.5">
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="Enter reason for today only (e.g. Sick, Urgent work)..."
+                                value={reasonText}
+                                onChange={(e) => handleReasonChange(recordId, e.target.value)}
+                                className="text-xs"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => handleSaveNormalReason(record)}
+                                disabled={isSaving}
+                                className="shrink-0"
+                              >
+                                <Save className="size-3.5 mr-1" />
+                                {isSaving ? "Saving..." : "Save Note"}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <label className="text-[11px] font-semibold text-foreground block mb-1">
+                                  From Date:
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={dates.from}
+                                  onChange={(e) => handleDateChange(recordId, "from", e.target.value)}
+                                  className="text-xs h-8 bg-background"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[11px] font-semibold text-foreground block mb-1">
+                                  To Date:
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={dates.to}
+                                  onChange={(e) => handleDateChange(recordId, "to", e.target.value)}
+                                  className="text-xs h-8 bg-background"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="Planned absence reason (e.g. Medical leave, Sports competition)..."
+                                value={reasonText}
+                                onChange={(e) => handleReasonChange(recordId, e.target.value)}
+                                className="text-xs bg-background"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => handleSavePlannedReason(record)}
+                                disabled={isSaving}
+                                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+                              >
+                                <CalendarClock className="size-3.5 mr-1" />
+                                {isSaving ? "Saving..." : "Save Planned Leave"}
+                              </Button>
+                            </div>
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                              &bull; Recording planned leave suppresses daily dialer prompts and moves this student to Planned Absentees.
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                        onClick={() => setActiveStudent(st)}
+                        className="w-full text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs"
+                        onClick={() => setActiveHistoryStudent(record)}
                       >
-                        <History className="size-3.5 mr-2" /> Complete History
+                        <History className="size-3.5 mr-2" /> View Student Absence History
                       </Button>
                     </CardContent>
                   </Card>
@@ -520,28 +872,27 @@ function AdminStudentAnalyticsPage() {
       )}
 
       {/* LEVEL 4: Complete Student History Modal */}
-      <Dialog open={!!activeStudent} onOpenChange={(open) => !open && setActiveStudent(null)}>
+      <Dialog open={!!activeHistoryStudent} onOpenChange={(open) => !open && setActiveHistoryStudent(null)}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="size-5 text-primary" />
-              <span>Attendance History: {activeStudent?.studentName}</span>
+              <span>Attendance History: {activeHistoryStudent?.studentName}</span>
             </DialogTitle>
             <DialogDescription>
-              Roll Number: <span className="font-mono font-semibold">{activeStudent?.rollNumber}</span> &bull; {activeStudent?.year} ({activeStudent?.section})
+              Roll Number: <span className="font-mono font-semibold">{activeHistoryStudent?.rollNumber}</span> &bull; {activeHistoryStudent?.year} ({activeHistoryStudent?.section})
             </DialogDescription>
           </DialogHeader>
 
-          {activeStudent && (
+          {activeHistoryStudent && (
             <div className="space-y-4 py-2">
-              {/* Phone Action Dialers */}
               <div className="grid grid-cols-2 gap-3">
-                {activeStudent.studentPhone ? (
+                {activeHistoryStudent.studentPhone ? (
                   <a
-                    href={`tel:${activeStudent.studentPhone}`}
+                    href={`tel:${activeHistoryStudent.studentPhone}`}
                     className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
                   >
-                    <Phone className="size-3.5" /> Call Student ({activeStudent.studentPhone})
+                    <Phone className="size-3.5" /> Call Student ({activeHistoryStudent.studentPhone})
                   </a>
                 ) : (
                   <Button variant="outline" size="sm" disabled className="text-xs">
@@ -549,12 +900,12 @@ function AdminStudentAnalyticsPage() {
                   </Button>
                 )}
 
-                {activeStudent.parentPhone ? (
+                {activeHistoryStudent.parentPhone ? (
                   <a
-                    href={`tel:${activeStudent.parentPhone}`}
+                    href={`tel:${activeHistoryStudent.parentPhone}`}
                     className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
                   >
-                    <PhoneCall className="size-3.5" /> Call Parent ({activeStudent.parentPhone})
+                    <PhoneCall className="size-3.5" /> Call Parent ({activeHistoryStudent.parentPhone})
                   </a>
                 ) : (
                   <Button variant="outline" size="sm" disabled className="text-xs">
@@ -563,109 +914,36 @@ function AdminStudentAnalyticsPage() {
                 )}
               </div>
 
-              {/* History list */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-                    Absence Log (Sorted Newest First):
-                  </h4>
-                  {historyList && historyList.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const cols = [
-                          { key: "date", header: "Date" },
-                          { key: "rollNumber", header: "Roll Number" },
-                          { key: "studentName", header: "Student Name" },
-                          { key: "year", header: "Academic Year" },
-                          { key: "section", header: "Section" },
-                          { key: "status", header: "Status" },
-                          { key: "reason", header: "Reason / Remark", transform: (v: any) => v || "" },
-                          { key: "submittedBy", header: "Submitted By", transform: (v: any) => v || "" },
-                        ];
-                        exportToCSV(historyList, `Student_Absence_Log_${activeStudent?.rollNumber}`, cols);
-                      }}
-                      className="h-7 text-xs gap-1"
-                      title="Export student absence log to CSV"
-                    >
-                      <Download className="size-3.5" /> Export Log
-                    </Button>
+              <div className="rounded-lg border bg-card">
+                <div className="p-3 border-b bg-muted/40 font-semibold text-xs flex justify-between items-center">
+                  <span>Logged Absence Records</span>
+                  <Badge variant="outline">{historyRecords?.length || 0} Incident(s)</Badge>
+                </div>
+                <div className="divide-y max-h-60 overflow-y-auto">
+                  {loadingHistory ? (
+                    <div className="p-4 text-center text-xs text-muted-foreground">Loading history...</div>
+                  ) : !historyRecords || historyRecords.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-muted-foreground">No absence history recorded for this student.</div>
+                  ) : (
+                    historyRecords.map((item, idx) => (
+                      <div key={idx} className="p-3 text-xs space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="font-semibold text-foreground flex items-center gap-1.5">
+                            <Calendar className="size-3 text-muted-foreground" /> {item.date}
+                          </span>
+                          <Badge variant="destructive" className="text-[10px]">
+                            {item.status}
+                          </Badge>
+                        </div>
+                        {item.reason && (
+                          <p className="text-muted-foreground bg-muted/30 p-2 rounded italic text-[11px]">
+                            Note: {item.reason} {item.reasonUpdatedBy ? `(${item.reasonUpdatedBy})` : ""}
+                          </p>
+                        )}
+                      </div>
+                    ))
                   )}
                 </div>
-
-                {loadingHistory ? (
-                  <LoadingState label="Loading complete history..." />
-                ) : errorHistory ? (
-                  <ErrorState title="Failed to load history" description={errorHistory.message} />
-                ) : !historyList || historyList.length === 0 ? (
-                  <div className="rounded-md bg-emerald-500/10 p-4 text-center text-xs text-emerald-700 dark:text-emerald-400">
-                    No recorded absences found. Student has 100% attendance!
-                  </div>
-                ) : (
-                  <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-                    {historyList.map((log) => (
-                      <div
-                        key={log.id}
-                        className="rounded-lg border p-3.5 text-xs space-y-2 bg-card shadow-xs"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1 font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded">
-                              <UserX className="size-3.5" /> Absent on {log.date}
-                            </span>
-                            <Badge variant="outline" className="text-[10px]">
-                              {log.session || "Session"}
-                            </Badge>
-                          </div>
-                          {log.submittedBy && (
-                            <span className="text-[11px] text-muted-foreground">
-                              Submitted by: <span className="font-medium text-foreground">{log.submittedBy}</span>
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-muted-foreground text-[11px]">
-                          <div>
-                            <span className="font-medium text-foreground">Subject: </span>
-                            {log.subject || "Academic Class"}
-                          </div>
-                          <div>
-                            <span className="font-medium text-foreground">Faculty: </span>
-                            {log.faculty || "Assigned Faculty"}
-                          </div>
-                        </div>
-
-                        <div className="rounded-md bg-muted/50 p-2 text-xs">
-                          {log.reason ? (
-                            <div className="space-y-1">
-                              <p className="text-foreground">
-                                <strong className="text-primary font-semibold">Absence Reason:</strong> {log.reason}
-                              </p>
-                              <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-muted">
-                                <span>
-                                  Updated by Mentor: <strong className="text-foreground">{log.reasonUpdatedBy || "Assigned Mentor"}</strong>
-                                </span>
-                                {log.updatedAt && (
-                                  <span>
-                                    {new Date(log.updatedAt).toLocaleString("en-IN", {
-                                      dateStyle: "medium",
-                                      timeStyle: "short",
-                                    })}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-muted-foreground italic text-center py-0.5">
-                              No reason recorded by mentor yet.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           )}

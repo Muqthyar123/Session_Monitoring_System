@@ -68198,6 +68198,146 @@
       "_id": {
         "$oid": "6adce126a4227eef0d855692"
       }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "actor_email": "admin@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": "ADMIN"
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:26:42.289Z"
+      },
+      "_id": {
+        "$oid": "6adcea52a4227eef0d855693"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "actor_email": "admin@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": null
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:36:38.564Z"
+      },
+      "_id": {
+        "$oid": "6adceca6eb52fca9d213776f"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "actor_email": "admin@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": null
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:37:13.994Z"
+      },
+      "_id": {
+        "$oid": "6adcecc9eb52fca9d2137770"
+      }
+    },
+    {
+      "actor_id": "6adc321ea4227eef0d85556a",
+      "actor_email": "cr@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": null
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:37:14.284Z"
+      },
+      "_id": {
+        "$oid": "6adceccaeb52fca9d2137771"
+      }
+    },
+    {
+      "actor_id": "6adc321ea4227eef0d85556b",
+      "actor_email": "lr@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": null
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:37:14.553Z"
+      },
+      "_id": {
+        "$oid": "6adceccaeb52fca9d2137772"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "actor_email": "admin@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": null
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:40:44.396Z"
+      },
+      "_id": {
+        "$oid": "6adced9ceb52fca9d2137773"
+      }
+    },
+    {
+      "actor_id": "6ace7f7cc2fc78917fb6e9fc",
+      "actor_email": "admin@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": "ADMIN"
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:50:29.643Z"
+      },
+      "_id": {
+        "$oid": "6adcefe5eb52fca9d2137774"
+      }
+    },
+    {
+      "actor_id": "6adc321ea4227eef0d85556c",
+      "actor_email": "cr.cseb@example.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": "CRLR"
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:50:53.806Z"
+      },
+      "_id": {
+        "$oid": "6adceffdeb52fca9d2137775"
+      }
+    },
+    {
+      "actor_id": "6adba2d3b083899f80785d4c",
+      "actor_email": "himasreenrt2023@gmail.com",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": "CRLR"
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:51:03.764Z"
+      },
+      "_id": {
+        "$oid": "6adcf007eb52fca9d2137776"
+      }
+    },
+    {
+      "actor_id": "6ace7f50c2fc78917fb6e32c",
+      "actor_email": "rajababu123@nrtec.in",
+      "action": "LOGIN",
+      "metadata": {
+        "portal": "MENTOR"
+      },
+      "created_at": {
+        "$date": "2026-10-24T17:51:31.103Z"
+      },
+      "_id": {
+        "$oid": "6adcf023eb52fca9d2137777"
+      }
     }
   ],
   "sections": [
@@ -68209,13 +68349,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.701Z"
       },
-      "assigned_cr_id": "6adba2d5b083899f80785d4e",
-      "assigned_lr_id": "6adba292b083899f80785d0c",
+      "assigned_cr_id": "6adc321ea4227eef0d85556a",
+      "assigned_lr_id": "6adc321ea4227eef0d85556b",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Indu",
@@ -68229,13 +68369,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.701Z"
       },
-      "assigned_cr_id": "6adba2d0b083899f80785d49",
-      "assigned_lr_id": "6adba295b083899f80785d0f",
+      "assigned_cr_id": "6adc321ea4227eef0d85556c",
+      "assigned_lr_id": "6adc321ea4227eef0d85556d",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "Kondu jaya prudhvi raju",
@@ -68249,13 +68389,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.702Z"
       },
-      "assigned_cr_id": "6adba297b083899f80785d11",
-      "assigned_lr_id": "6adba298b083899f80785d12",
+      "assigned_cr_id": "6adc321ea4227eef0d85556e",
+      "assigned_lr_id": "6adc321ea4227eef0d85556f",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "M.Akhil Raj",
@@ -68269,13 +68409,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.702Z"
       },
-      "assigned_cr_id": "6adba29cb083899f80785d15",
-      "assigned_lr_id": "6adba2cfb083899f80785d48",
+      "assigned_cr_id": "6adc321ea4227eef0d855570",
+      "assigned_lr_id": "6adc321ea4227eef0d855571",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Shaik Ayeshabee",
@@ -68289,13 +68429,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.703Z"
       },
-      "assigned_cr_id": "6adba29db083899f80785d17",
-      "assigned_lr_id": "6adba29eb083899f80785d18",
+      "assigned_cr_id": "6adc321ea4227eef0d855572",
+      "assigned_lr_id": "6adc321ea4227eef0d855573",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "Sk. E. Gouse Basha",
@@ -68309,13 +68449,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.703Z"
       },
-      "assigned_cr_id": "6adba2a2b083899f80785d1b",
-      "assigned_lr_id": "6adba2a3b083899f80785d1c",
+      "assigned_cr_id": "6adc321ea4227eef0d855574",
+      "assigned_lr_id": "6adc321ea4227eef0d855575",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "Netuluri Sai Pradeep",
@@ -68329,13 +68469,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.704Z"
       },
       "assigned_cr_id": "6adc321ea4227eef0d855576",
-      "assigned_lr_id": "6adba2a4b083899f80785d1d",
+      "assigned_lr_id": "6adc321ea4227eef0d855577",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "G. Soumya"
@@ -68348,7 +68488,7 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.704Z"
@@ -68366,13 +68506,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.705Z"
       },
-      "assigned_cr_id": "6adba2d2b083899f80785d4b",
-      "assigned_lr_id": "6adba2d1b083899f80785d4a",
+      "assigned_cr_id": "6adc321ea4227eef0d85557a",
+      "assigned_lr_id": "6adc321ea4227eef0d85557b",
       "branch": "CSE",
       "department": "CSE",
       "cr_name": "PATTAN ABDULLA",
@@ -68386,13 +68526,13 @@
       "year": "2nd Year",
       "is_active": true,
       "updated_at": {
-        "$date": "2026-10-24T04:20:46.461Z"
+        "$date": "2026-10-24T17:35:54.485Z"
       },
       "created_at": {
         "$date": "2026-10-13T18:58:33.706Z"
       },
-      "assigned_cr_id": "6adba2a8b083899f80785d21",
-      "assigned_lr_id": "6adba2a7b083899f80785d20",
+      "assigned_cr_id": "6adc321ea4227eef0d85557c",
+      "assigned_lr_id": "6adc321ea4227eef0d85557d",
       "branch": "CSE",
       "department": "CSE",
       "lr_name": "Nithigna .Kakarla",

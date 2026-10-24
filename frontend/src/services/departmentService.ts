@@ -28,6 +28,8 @@ export interface DepartmentUpdate {
   code?: string;
   name?: string;
   coordinatorId?: string | null;
+  coordinatorName?: string | null;
+  coordinatorEmail?: string | null;
   isActive?: boolean;
 }
 

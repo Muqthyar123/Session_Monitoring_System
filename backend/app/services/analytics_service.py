@@ -80,16 +80,23 @@ async def get_admin_dashboard_analytics() -> dict:
     total_lrs = await db.users.count_documents({"role": UserRole.LR.value, "is_active": True})
 
     sessions_today = await db.sessions.find({"date": date_str}).to_list(length=1000)
+    rec_docs_today = await db.attendance_records.find().to_list(length=2000)
+    rec_map_today = {str(r.get("session_id")): r for r in rec_docs_today if r.get("session_id")}
+
+    def _get_status(s: dict) -> str:
+        s_id = str(s["_id"])
+        rec = rec_map_today.get(s_id)
+        return (rec.get("status") if rec else None) or s.get("faculty_response") or ""
 
     total_sessions_count = len(sessions_today)
-    present_count = sum(1 for s in sessions_today if is_present_status(s.get("faculty_response")))
-    absent_count = sum(1 for s in sessions_today if is_absent_status(s.get("faculty_response")))
-    substitute_count = sum(1 for s in sessions_today if is_substitute_status(s.get("faculty_response")))
+    present_count = sum(1 for s in sessions_today if is_present_status(_get_status(s)))
+    absent_count = sum(1 for s in sessions_today if is_absent_status(_get_status(s)))
+    substitute_count = sum(1 for s in sessions_today if is_substitute_status(_get_status(s)))
     pending_count = sum(
         1 for s in sessions_today
-        if not is_present_status(s.get("faculty_response"))
-        and not is_absent_status(s.get("faculty_response"))
-        and not is_substitute_status(s.get("faculty_response"))
+        if not is_present_status(_get_status(s))
+        and not is_absent_status(_get_status(s))
+        and not is_substitute_status(_get_status(s))
     )
 
     responded_total = present_count + absent_count + substitute_count
@@ -101,9 +108,9 @@ async def get_admin_dashboard_analytics() -> dict:
     for s_name in sorted_sections:
         norm_s = normalize_section(s_name)
         sec_sessions = [s for s in sessions_today if normalize_section(s.get("section")) == norm_s]
-        p = sum(1 for s in sec_sessions if is_present_status(s.get("faculty_response")))
-        a = sum(1 for s in sec_sessions if is_absent_status(s.get("faculty_response")))
-        sub = sum(1 for s in sec_sessions if is_substitute_status(s.get("faculty_response")))
+        p = sum(1 for s in sec_sessions if is_present_status(_get_status(s)))
+        a = sum(1 for s in sec_sessions if is_absent_status(_get_status(s)))
+        sub = sum(1 for s in sec_sessions if is_substitute_status(_get_status(s)))
         section_wise.append({"section": s_name, "present": p, "absent": a, "substitute": sub})
 
     year_cards = await get_year_cards_summary()
@@ -204,6 +211,14 @@ async def get_year_cards_summary() -> list:
     db = get_database()
     tt_docs = await db.timetables.find({}).to_list(length=10000)
     sess_docs = await db.sessions.find({}).to_list(length=10000)
+    rec_docs = await db.attendance_records.find({}).to_list(length=10000)
+    rec_map = {str(r.get("session_id")): r for r in rec_docs if r.get("session_id")}
+
+    def _get_sec_status(s: dict):
+        rec = rec_map.get(str(s["_id"]))
+        st = (rec.get("status") if rec else None) or s.get("faculty_response") or ""
+        late = bool(s.get("is_late") or s.get("arrival_time") or s.get("arrival_comment") or (rec and rec.get("is_late")))
+        return st, late
 
     # 1. Gather all unique years and sections from timetables
     year_sec_tt_map = {}  # key: (yr, sec_raw) -> list of tt
@@ -268,12 +283,12 @@ async def get_year_cards_summary() -> list:
             facs = sec_fac_map.get(key, set())
             year_faculties.update(facs)
 
-            p_count = sum(1 for s in sec_sessions if is_present_status(s.get("faculty_response")))
-            a_count = sum(1 for s in sec_sessions if is_absent_status(s.get("faculty_response")))
-            sub_count = sum(1 for s in sec_sessions if is_substitute_status(s.get("faculty_response")))
+            p_count = sum(1 for s in sec_sessions if is_present_status(_get_sec_status(s)[0]))
+            a_count = sum(1 for s in sec_sessions if is_absent_status(_get_sec_status(s)[0]))
+            sub_count = sum(1 for s in sec_sessions if is_substitute_status(_get_sec_status(s)[0]))
             late_count = sum(
                 1 for s in sec_sessions
-                if is_present_status(s.get("faculty_response")) and (s.get("is_late") or s.get("arrival_time") or s.get("arrival_comment"))
+                if is_present_status(_get_sec_status(s)[0]) and _get_sec_status(s)[1]
             )
 
             tot_classes = len(sec_sessions)
@@ -407,6 +422,9 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
                 faculty_map[key]["subjects"].add(subj)
             faculty_map[key]["ttHours"] += 1
 
+    # Map attendance_records by session_id for fast lookup
+    rec_by_session = {str(r.get("session_id")): r for r in rec_docs if r.get("session_id")}
+
     # 2. Process attendance from db.sessions
     for s in sess_docs:
         subj, fac_list = extract_individual_faculties(s)
@@ -416,10 +434,11 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
 
         s_id = str(s["_id"])
         hrs = len(s.get("periods_included") or [1])
-        resp = s.get("faculty_response")
-        arr_time = s.get("arrival_time")
-        arr_comment = s.get("arrival_comment")
-        is_late = bool(s.get("is_late") or arr_time or arr_comment)
+        rec = rec_by_session.get(s_id)
+        resp = (rec.get("status") if rec else None) or s.get("faculty_response")
+        arr_time = (rec.get("arrival_time") if rec else None) or s.get("arrival_time")
+        arr_comment = (rec.get("arrival_comment") if rec else None) or s.get("arrival_comment")
+        is_late = bool(s.get("is_late") or arr_time or arr_comment or (rec and rec.get("is_late")))
 
         for raw_fac in fac_list:
             norm_f = normalize_faculty(raw_fac)
@@ -446,6 +465,9 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
             if subj:
                 faculty_map[key]["subjects"].add(subj)
 
+            if s_id in faculty_map[key]["processed_session_ids"]:
+                continue
+
             faculty_map[key]["processed_session_ids"].add(s_id)
 
             if is_present_status(resp):
@@ -459,20 +481,15 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
             elif is_not_marked_status(resp) or s.get("crlr_not_marked") or resp == FacultyResponseStatus.CRLR_NOT_MARKED.value:
                 faculty_map[key]["unmarkedHours"] += hrs
 
-    # 3. Process attendance from db.attendance_records
+    # 3. Process any orphan attendance records not found in db.sessions
     for rec in rec_docs:
         s_id = rec.get("session_id")
-        s_doc = session_id_map.get(s_id) if s_id else None
+        if s_id and s_id in session_id_map:
+            continue
 
-        if s_doc:
-            subj, fac_list = extract_individual_faculties(s_doc)
-            raw_sec = (rec.get("section") or s_doc.get("section") or "").strip()
-            yr = (s_doc.get("year") or "2nd Year").strip()
-        else:
-            subj, fac_list = extract_individual_faculties(rec)
-            raw_sec = (rec.get("section") or "").strip()
-            yr = (rec.get("year") or "2nd Year").strip()
-
+        subj, fac_list = extract_individual_faculties(rec)
+        raw_sec = (rec.get("section") or "").strip()
+        yr = (rec.get("year") or "2nd Year").strip()
         norm_s = normalize_section(raw_sec)
 
         for raw_fac in fac_list:
@@ -481,10 +498,11 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
                 continue
 
             key = (norm_f, norm_s)
-            if key in faculty_map and s_id not in faculty_map[key]["processed_session_ids"]:
-                faculty_map[key]["processed_session_ids"].add(s_id)
+            if key in faculty_map and (not s_id or s_id not in faculty_map[key]["processed_session_ids"]):
+                if s_id:
+                    faculty_map[key]["processed_session_ids"].add(s_id)
                 status_val = rec.get("status")
-                hrs = len(s_doc.get("periods_included") or [1]) if s_doc else 1
+                hrs = 1
                 arr_time = rec.get("arrival_time")
                 arr_comment = rec.get("arrival_comment")
                 is_late = bool(rec.get("is_late") or arr_time or arr_comment)

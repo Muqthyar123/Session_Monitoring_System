@@ -1,4 +1,5 @@
 from typing import List, Optional
+import re
 from datetime import datetime, timezone
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -63,29 +64,30 @@ async def _enrich_department_counts(doc: dict) -> dict:
     coord_id = doc.get("coordinator_id")
     coord_name = doc.get("coordinator_name")
     coord_email = doc.get("coordinator_email")
-    if coord_id and ObjectId.is_valid(coord_id):
-        coord_user = await db.users.find_one({"_id": ObjectId(coord_id)})
-        if coord_user:
-            coord_name = coord_user.get("name")
-            coord_email = coord_user.get("email")
-    elif not coord_name or coord_name == "Unassigned":
-        # Check if an HOD/Coordinator exists in users collection for this department
-        hod_user = await db.users.find_one({
-            "$or": [
-                {"department": code, "designation": {"$regex": "HOD|HEAD|COORDINATOR", "$options": "i"}},
-                {"department": code, "role": UserRole.DEPARTMENT_COORDINATOR.value},
-                {"email": f"{code.lower()}hod@nrtec.in"},
-            ]
-        })
-        if hod_user:
-            coord_id = str(hod_user["_id"])
-            coord_name = hod_user.get("name")
-            coord_email = hod_user.get("email")
-            doc_id = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
-            await db.departments.update_one(
-                {"_id": doc_id},
-                {"$set": {"coordinator_id": coord_id, "coordinator_name": coord_name, "coordinator_email": coord_email}}
-            )
+    if not coord_name or coord_name == "Unassigned":
+        if coord_id and ObjectId.is_valid(coord_id):
+            coord_user = await db.users.find_one({"_id": ObjectId(coord_id)})
+            if coord_user:
+                coord_name = coord_user.get("name")
+                coord_email = coord_user.get("email")
+        if not coord_name or coord_name == "Unassigned":
+            # Check if an HOD/Coordinator exists in users collection for this department
+            hod_user = await db.users.find_one({
+                "$or": [
+                    {"department": code, "designation": {"$regex": "HOD|HEAD|COORDINATOR", "$options": "i"}},
+                    {"department": code, "role": UserRole.DEPARTMENT_COORDINATOR.value},
+                    {"email": f"{code.lower()}hod@nrtec.in"},
+                ]
+            })
+            if hod_user:
+                coord_id = str(hod_user["_id"])
+                coord_name = hod_user.get("name")
+                coord_email = hod_user.get("email")
+                doc_id = doc["_id"] if isinstance(doc["_id"], ObjectId) else ObjectId(str(doc["_id"]))
+                await db.departments.update_one(
+                    {"_id": doc_id},
+                    {"$set": {"coordinator_id": coord_id, "coordinator_name": coord_name, "coordinator_email": coord_email}}
+                )
 
     doc["_id"] = str(doc["_id"])
     doc["student_count"] = stu_count
@@ -218,6 +220,24 @@ async def update_department_api(
         updates["name"] = data.name.strip()
     if data.is_active is not None:
         updates["is_active"] = data.is_active
+    if data.coordinator_name is not None:
+        c_name = data.coordinator_name.strip() if data.coordinator_name else None
+        updates["coordinator_name"] = c_name
+        if c_name:
+            matched_u = await db.users.find_one({"name": {"$regex": f"^{re.escape(c_name)}$", "$options": "i"}})
+            if matched_u:
+                updates["coordinator_id"] = str(matched_u["_id"])
+                if matched_u.get("email"):
+                    updates["coordinator_email"] = matched_u.get("email")
+            else:
+                updates["coordinator_id"] = None
+        else:
+            updates["coordinator_id"] = None
+            updates["coordinator_email"] = None
+
+    if data.coordinator_email is not None:
+        updates["coordinator_email"] = data.coordinator_email.strip() if data.coordinator_email else None
+
     if data.coordinator_id is not None:
         updates["coordinator_id"] = data.coordinator_id
         if data.coordinator_id and ObjectId.is_valid(data.coordinator_id):
@@ -236,7 +256,7 @@ async def update_department_api(
                         }
                     },
                 )
-        else:
+        elif not data.coordinator_id and data.coordinator_name is None:
             updates["coordinator_name"] = None
             updates["coordinator_email"] = None
 

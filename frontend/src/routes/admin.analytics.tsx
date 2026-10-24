@@ -160,7 +160,7 @@ function renderSectionBadge(sec: string, year?: string) {
 
 function AdminAnalyticsPage() {
   const navigate = useNavigate();
-  const { data, loading, error, reload } = useAsyncData(() => getAdminDashboard(), [], 15000);
+  const { data, loading, error, reload } = useAsyncData(() => getAdminDashboard(), [], 5000);
 
   const [selectedYear, setSelectedYear] = useState<string | null>(() => {
     return sessionStorage.getItem("admin_analytics_year") || null;
@@ -682,7 +682,7 @@ function AdminAnalyticsPage() {
                       const subCls = fac.substitutedClasses || fac.substitutedHours;
 
                       const evaluated = attCls + absCls + subCls;
-                      const pct = evaluated > 0 ? Math.round((attCls / evaluated) * 100) : 0;
+                      const pct = fac.attendancePercentage !== undefined ? Math.round(fac.attendancePercentage) : (evaluated > 0 ? Math.round((attCls / evaluated) * 100) : 0);
 
                       const badgeColor =
                         evaluated === 0
