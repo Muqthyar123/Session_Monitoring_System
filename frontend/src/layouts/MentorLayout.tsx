@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { to: "/mentor/students", label: "All Students", icon: Users },
   { to: "/mentor/absentees", label: "Today's Absentees", icon: UserX },
   { to: "/mentor/planned-absences", label: "Planned Absences", icon: CalendarClock },
-  { to: "/mentor/analytics", label: "Attendance Analytics", icon: BarChart3 },
+  { to: "/mentor/analytics", label: "Attendance History", icon: BarChart3 },
 ] as const;
 
 export function MentorLayout({ children }: { children: ReactNode }) {

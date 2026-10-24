@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   CalendarClock,
@@ -83,10 +83,50 @@ function MentorPlannedAbsencesPage() {
   // Create Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [rollNumberQuery, setRollNumberQuery] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // Selected student auto-lookup memo
+  const selectedStudent = useMemo(() => {
+    return assignedStudents.find(
+      (s) => s.id === selectedStudentId || s._id === selectedStudentId
+    );
+  }, [assignedStudents, selectedStudentId]);
+
+  const handleRollNumberQueryChange = (val: string) => {
+    setRollNumberQuery(val);
+    const trimmed = val.trim().toLowerCase();
+    if (!trimmed) {
+      setSelectedStudentId("");
+      return;
+    }
+    const match = assignedStudents.find(
+      (s) => s.rollNumber && s.rollNumber.toLowerCase() === trimmed
+    );
+    if (match) {
+      setSelectedStudentId(match.id || match._id);
+    }
+  };
+
+  const handleSelectStudentChange = (id: string) => {
+    setSelectedStudentId(id);
+    const match = assignedStudents.find((s) => s.id === id || s._id === id);
+    if (match) {
+      setRollNumberQuery(match.rollNumber);
+    }
+  };
+
+  const applyDatePreset = (daysFromToday: number, durationDays: number) => {
+    const start = new Date();
+    start.setDate(start.getDate() + daysFromToday);
+    const end = new Date(start);
+    end.setDate(end.getDate() + (durationDays - 1));
+    setStartDate(start.toISOString().split("T")[0]);
+    setEndDate(end.toISOString().split("T")[0]);
+  };
 
   // Edit Modal State
   const [editTarget, setEditTarget] = useState<PlannedAbsenceItem | null>(null);
@@ -139,13 +179,19 @@ function MentorPlannedAbsencesPage() {
   }, []);
 
   const handleOpenCreate = (preselectedStudent?: StudentItem) => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
     if (preselectedStudent) {
       setSelectedStudentId(preselectedStudent.id || preselectedStudent._id);
+      setRollNumberQuery(preselectedStudent.rollNumber);
     } else {
       setSelectedStudentId("");
+      setRollNumberQuery("");
     }
-    setStartDate(todayStr);
-    setEndDate(todayStr);
+    setStartDate(tomorrowStr);
+    setEndDate(tomorrowStr);
     setReason("");
     setIsCreateOpen(true);
   };
@@ -526,48 +572,123 @@ function MentorPlannedAbsencesPage() {
             </DialogHeader>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4 py-2">
-              {/* Student Picker */}
-              <div className="space-y-1.5">
+              {/* Student Roll Number Lookup + Picker */}
+              <div className="space-y-2">
                 <label className="text-xs font-semibold text-foreground">
-                  Select Student <span className="text-destructive">*</span>
+                  Student Roll Number / Lookup <span className="text-destructive">*</span>
                 </label>
-                <Select value={selectedStudentId} onValueChange={setSelectedStudentId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={studentsLoading ? "Loading students..." : "Choose assigned student..."} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {assignedStudents.map((s) => (
-                      <SelectItem key={s.id || s._id} value={s.id || s._id}>
-                        {s.rollNumber} — {s.name} ({s.year}, Sec {s.section})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Date Range */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-foreground">
-                    Start Date <span className="text-destructive">*</span>
-                  </label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    required
+                    placeholder="Enter student roll number (e.g. 24471A0575)..."
+                    value={rollNumberQuery}
+                    onChange={(e) => handleRollNumberQueryChange(e.target.value)}
+                    className="pl-9 text-xs"
                   />
                 </div>
-                <div className="space-y-1.5">
+
+                {selectedStudent ? (
+                  <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2.5 text-xs flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-foreground flex items-center gap-1.5">
+                        <User className="size-3.5 text-emerald-600" />
+                        <span>{selectedStudent.name}</span>
+                        <Badge variant="outline" className="text-[10px] bg-background font-mono font-bold">
+                          {selectedStudent.rollNumber}
+                        </Badge>
+                      </div>
+                      <div className="text-muted-foreground text-[11px] mt-0.5">
+                        Academic Year: <strong className="text-foreground">{selectedStudent.year}</strong> &bull; Section: <strong className="text-foreground">{selectedStudent.section}</strong>
+                      </div>
+                    </div>
+                    <Badge className="bg-emerald-600 text-white text-[10px]">
+                      Student Verified
+                    </Badge>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-muted-foreground">
+                      Or select student from assigned list:
+                    </label>
+                    <Select value={selectedStudentId} onValueChange={handleSelectStudentChange}>
+                      <SelectTrigger className="w-full text-xs">
+                        <SelectValue placeholder={studentsLoading ? "Loading students..." : "Choose assigned student..."} />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {assignedStudents.map((s) => (
+                          <SelectItem key={s.id || s._id} value={s.id || s._id} className="text-xs">
+                            {s.rollNumber} — {s.name} ({s.year}, Sec {s.section})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Date Presets & Date Range */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-foreground">
-                    End Date <span className="text-destructive">*</span>
+                    Advance Leave Dates <span className="text-destructive">*</span>
                   </label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    required
-                  />
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => applyDatePreset(1, 1)}
+                      className="text-[10px] px-2 py-0.5 rounded border bg-muted/60 hover:bg-primary/10 hover:border-primary/40 text-foreground transition-colors"
+                      title="Starts tomorrow for 1 day"
+                    >
+                      Tomorrow (1 day)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyDatePreset(1, 3)}
+                      className="text-[10px] px-2 py-0.5 rounded border bg-muted/60 hover:bg-primary/10 hover:border-primary/40 text-foreground transition-colors"
+                      title="Starts tomorrow for 3 days"
+                    >
+                      Next 3 Days
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyDatePreset(1, 7)}
+                      className="text-[10px] px-2 py-0.5 rounded border bg-muted/60 hover:bg-primary/10 hover:border-primary/40 text-foreground transition-colors"
+                      title="Starts tomorrow for 7 days"
+                    >
+                      Next Week (7 days)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyDatePreset(0, 1)}
+                      className="text-[10px] px-2 py-0.5 rounded border bg-muted/60 hover:bg-primary/10 hover:border-primary/40 text-foreground transition-colors"
+                      title="Today only"
+                    >
+                      Today
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">From Date</label>
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      required
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-muted-foreground">To Date</label>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      required
+                      className="text-xs"
+                    />
+                  </div>
                 </div>
               </div>
 

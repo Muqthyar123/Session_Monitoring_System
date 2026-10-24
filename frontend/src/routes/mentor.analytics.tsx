@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -29,34 +30,51 @@ import {
 } from "@/components/ui/dialog";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import {
+  getMentorStudentsYears,
+  getMentorStudentsSections,
+} from "@/services/mentorService";
+import {
   getStudentAnalyticsSummary,
   getStudentCompleteHistory,
   type StudentAnalyticsSummaryItem,
   type AbsenteeStudentItem,
 } from "@/services/studentAttendanceService";
-import { MOCK_YEARS } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/mentor/analytics")({
   head: () => ({
     meta: [
-      { title: "Student Attendance Analytics — Mentor Portal" },
+      { title: "Student Attendance History — Mentor Portal" },
       { name: "description", content: "Inspect section student attendance rates and view full history logs." },
     ],
   }),
-  component: MentorStudentAnalyticsPage,
+  component: MentorAttendanceHistoryPage,
 });
 
-const SECTIONS = [
-  "CSE-A", "CSE-B", "CSE-C", "CSE-D", "CSE-E",
-  "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"
-];
-
-function MentorStudentAnalyticsPage() {
+function MentorAttendanceHistoryPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  // Fetch summary when year & section selected
+  // LEVEL 1: Fetch dynamic years assigned to mentor
+  const {
+    data: yearCards,
+    loading: loadingYears,
+    error: errorYears,
+    reload: reloadYears,
+  } = useAsyncData(() => getMentorStudentsYears(), []);
+
+  // LEVEL 2: Fetch dynamic sections for the selected year
+  const {
+    data: sectionCards,
+    loading: loadingSections,
+    error: errorSections,
+    reload: reloadSections,
+  } = useAsyncData(
+    () => (selectedYear ? getMentorStudentsSections(selectedYear) : Promise.resolve([])),
+    [selectedYear]
+  );
+
+  // LEVEL 3: Fetch summary when year & section selected
   const {
     data: summaryList,
     loading: loadingSummary,
@@ -72,6 +90,7 @@ function MentorStudentAnalyticsPage() {
 
   // Selected student for complete history modal
   const [activeStudent, setActiveStudent] = useState<StudentAnalyticsSummaryItem | null>(null);
+  const [calledActive, setCalledActive] = useState<{ student?: boolean; parent?: boolean }>({});
   const {
     data: historyList,
     loading: loadingHistory,
@@ -96,7 +115,7 @@ function MentorStudentAnalyticsPage() {
   return (
     <MentorLayout>
       <PageHeader
-        title="Student Attendance Analytics"
+        title="Student Attendance History"
         description="Select Year and Section to inspect attendance percentages, absentee frequency, and complete historical records."
         actions={
           selectedSection ? (
@@ -111,62 +130,93 @@ function MentorStudentAnalyticsPage() {
         }
       />
 
-      {/* LEVEL 1: Select Academic Year */}
+      {/* LEVEL 1: Dynamic Academic Year Cards */}
       {!selectedYear && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold tracking-tight">Select Academic Year</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {MOCK_YEARS.map((year) => (
-              <Card
-                key={year}
-                onClick={() => setSelectedYear(year)}
-                className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
-              >
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-base font-bold">{year}</CardTitle>
-                  <GraduationCap className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                </CardHeader>
-                <CardContent className="pt-2">
-                  <p className="text-xs text-muted-foreground">Select to choose section</p>
-                  <div className="mt-4 flex items-center justify-end text-xs font-semibold text-primary">
-                    View Sections <ChevronRight className="size-4 ml-1" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold tracking-tight">Select Academic Year</h2>
+            <span className="text-xs text-muted-foreground">Click a year to view assigned sections</span>
           </div>
+
+          {loadingYears ? (
+            <LoadingState label="Loading academic years..." />
+          ) : errorYears ? (
+            <ErrorState title="Failed to load years" description={errorYears.message} retry={reloadYears} />
+          ) : !yearCards || yearCards.length === 0 ? (
+            <EmptyState
+              title="No academic years found"
+              description="No students or classes are assigned under your mentor scope."
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {yearCards.map((yc) => (
+                <Card
+                  key={yc.year}
+                  onClick={() => setSelectedYear(yc.year)}
+                  className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
+                >
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-base font-bold">{yc.year}</CardTitle>
+                    <GraduationCap className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </CardHeader>
+                  <CardContent className="pt-2">
+                    <p className="text-xs text-muted-foreground">Enrolled: {yc.studentCount} Students</p>
+                    <div className="mt-4 flex items-center justify-end text-xs font-semibold text-primary">
+                      View Sections <ChevronRight className="size-4 ml-1" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* LEVEL 2: Select Section */}
+      {/* LEVEL 2: Dynamic Sections for Selected Year */}
       {selectedYear && !selectedSection && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-sm px-3 py-1">
-              {selectedYear}
-            </Badge>
-            <span className="text-sm text-muted-foreground">Select Section</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-sm px-3 py-1 font-semibold">
+                {selectedYear}
+              </Badge>
+              <span className="text-sm text-muted-foreground">Select Section</span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedYear(null)}>
+              <ArrowLeft className="size-4 mr-1" /> All Years
+            </Button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {SECTIONS.map((sec) => (
-              <Card
-                key={sec}
-                onClick={() => setSelectedSection(sec)}
-                className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
-              >
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-bold">{selectedYear} &bull; {sec}</CardTitle>
-                  <CardDescription>Section {sec}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-end text-xs font-semibold text-primary mt-2">
-                    Student Analytics <ChevronRight className="size-4 ml-1" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          {loadingSections ? (
+            <LoadingState label={`Loading sections for ${selectedYear}...`} />
+          ) : errorSections ? (
+            <ErrorState title="Failed to load sections" description={errorSections.message} retry={reloadSections} />
+          ) : !sectionCards || sectionCards.length === 0 ? (
+            <EmptyState
+              title="No sections found"
+              description={`No sections configured for ${selectedYear}.`}
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {sectionCards.map((sc) => (
+                <Card
+                  key={sc.section}
+                  onClick={() => setSelectedSection(sc.section)}
+                  className="cursor-pointer transition-all hover:border-primary hover:shadow-md group"
+                >
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg font-bold">{selectedYear} &bull; Section {sc.section}</CardTitle>
+                    <CardDescription>{sc.studentCount} Students Enrolled</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-end text-xs font-semibold text-primary mt-2">
+                      Attendance History <ChevronRight className="size-4 ml-1" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -243,7 +293,10 @@ function MentorStudentAnalyticsPage() {
                         variant="outline"
                         size="sm"
                         className="w-full"
-                        onClick={() => setActiveStudent(st)}
+                        onClick={() => {
+                          setActiveStudent(st);
+                          setCalledActive({});
+                        }}
                       >
                         <History className="size-3.5 mr-2" /> Complete History
                       </Button>
@@ -276,9 +329,24 @@ function MentorStudentAnalyticsPage() {
                 {activeStudent.studentPhone ? (
                   <a
                     href={`tel:${activeStudent.studentPhone}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                    onClick={() => setCalledActive((prev) => ({ ...prev, student: true }))}
+                    className={cn(
+                      "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
+                      calledActive.student
+                        ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-900/90 shadow-inner"
+                        : "bg-emerald-600 text-white hover:bg-emerald-700"
+                    )}
+                    title={`Call Student (${activeStudent.studentPhone})`}
                   >
-                    <Phone className="size-3.5" /> Call Student ({activeStudent.studentPhone})
+                    {calledActive.student ? (
+                      <>
+                        <CheckCircle2 className="size-3.5 text-emerald-400 shrink-0" /> Called Student
+                      </>
+                    ) : (
+                      <>
+                        <Phone className="size-3.5 shrink-0" /> Call Student
+                      </>
+                    )}
                   </a>
                 ) : (
                   <Button variant="outline" size="sm" disabled className="text-xs">
@@ -289,9 +357,24 @@ function MentorStudentAnalyticsPage() {
                 {activeStudent.parentPhone ? (
                   <a
                     href={`tel:${activeStudent.parentPhone}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+                    onClick={() => setCalledActive((prev) => ({ ...prev, parent: true }))}
+                    className={cn(
+                      "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
+                      calledActive.parent
+                        ? "bg-blue-950/80 text-blue-300 border border-blue-500/50 hover:bg-blue-900/90 shadow-inner"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    )}
+                    title={`Call Parent (${activeStudent.parentPhone})`}
                   >
-                    <PhoneCall className="size-3.5" /> Call Parent ({activeStudent.parentPhone})
+                    {calledActive.parent ? (
+                      <>
+                        <CheckCircle2 className="size-3.5 text-blue-400 shrink-0" /> Called Parent
+                      </>
+                    ) : (
+                      <>
+                        <PhoneCall className="size-3.5 shrink-0" /> Call Parent
+                      </>
+                    )}
                   </a>
                 ) : (
                   <Button variant="outline" size="sm" disabled className="text-xs">

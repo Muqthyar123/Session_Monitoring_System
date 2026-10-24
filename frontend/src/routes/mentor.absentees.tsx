@@ -16,11 +16,13 @@ import {
   Layers,
   Download,
   CalendarClock,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/utils/exportUtils";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
+import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +38,249 @@ import {
   type MentorSectionCardItem,
   type MentorYearCardItem,
 } from "@/services/mentorService";
+import { createPlannedAbsence } from "@/services/plannedAbsenceService";
 import type { AbsenteeStudentItem } from "@/services/studentAttendanceService";
+
+interface AbsenteeCardProps {
+  record: AbsenteeStudentItem;
+  reasonText: string;
+  onReasonChange: (val: string) => void;
+  isSaving: boolean;
+  mode: "NORMAL" | "PLANNED";
+  onModeChange: (m: "NORMAL" | "PLANNED") => void;
+  fromDate: string;
+  toDate: string;
+  onDateChange: (field: "from" | "to", val: string) => void;
+  onSaveNormal: () => void;
+  onSavePlanned: () => void;
+  calledState?: { student?: boolean; parent?: boolean };
+  onCallToggle: (type: "student" | "parent") => void;
+}
+
+function AbsenteeCard({
+  record,
+  reasonText,
+  onReasonChange,
+  isSaving,
+  mode,
+  onModeChange,
+  fromDate,
+  toDate,
+  onDateChange,
+  onSaveNormal,
+  onSavePlanned,
+  calledState,
+  onCallToggle,
+}: AbsenteeCardProps) {
+  const isStudentCalled = calledState?.student;
+  const isParentCalled = calledState?.parent;
+
+  return (
+    <Card className="border-rose-500/25 shadow-sm transition-all hover:shadow-md">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle className="text-base font-bold">{record.studentName}</CardTitle>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="font-mono text-xs font-semibold text-primary">
+                {record.rollNumber}
+              </span>
+              <Badge variant="outline" className="text-[10px]">
+                {record.year} &bull; {record.section}
+              </Badge>
+            </div>
+          </div>
+          <Badge variant="destructive" className="gap-1">
+            <UserX className="size-3" /> Absent
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground border-y py-2">
+          <div className="flex items-center gap-1">
+            <Calendar className="size-3.5" />
+            <span>Date: {record.date}</span>
+          </div>
+          {record.submittedBy && (
+            <div className="flex items-center gap-1">
+              <Clock className="size-3.5" />
+              <span>By: {record.submittedBy}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Contact & Phone Dialers with Smooth Color Toggle */}
+        <div className="grid grid-cols-2 gap-2">
+          {record.studentPhone ? (
+            <a
+              href={`tel:${record.studentPhone}`}
+              onClick={() => onCallToggle("student")}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
+                isStudentCalled
+                  ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-900/90 shadow-inner"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700"
+              )}
+              title={`Call Student (${record.studentPhone})`}
+            >
+              {isStudentCalled ? (
+                <>
+                  <CheckCircle2 className="size-3.5 text-emerald-400 shrink-0" /> Called Student
+                </>
+              ) : (
+                <>
+                  <Phone className="size-3.5 shrink-0" /> Call Student
+                </>
+              )}
+            </a>
+          ) : (
+            <Button variant="outline" size="sm" disabled className="text-xs">
+              No Student Phone
+            </Button>
+          )}
+
+          {record.parentPhone ? (
+            <a
+              href={`tel:${record.parentPhone}`}
+              onClick={() => onCallToggle("parent")}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
+                isParentCalled
+                  ? "bg-blue-950/80 text-blue-300 border border-blue-500/50 hover:bg-blue-900/90 shadow-inner"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              )}
+              title={`Call Parent (${record.parentPhone})`}
+            >
+              {isParentCalled ? (
+                <>
+                  <CheckCircle2 className="size-3.5 text-blue-400 shrink-0" /> Called Parent
+                </>
+              ) : (
+                <>
+                  <PhoneCall className="size-3.5 shrink-0" /> Call Parent
+                </>
+              )}
+            </a>
+          ) : (
+            <Button variant="outline" size="sm" disabled className="text-xs">
+              No Parent Phone
+            </Button>
+          )}
+        </div>
+
+        {/* Dual Mode Reason Section */}
+        <div className="space-y-2.5 pt-1 border-t">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-foreground">
+              Absence Category:
+            </label>
+            <div className="inline-flex rounded-lg p-0.5 bg-muted text-[11px] border">
+              <button
+                type="button"
+                onClick={() => onModeChange("NORMAL")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md transition-all font-medium",
+                  mode === "NORMAL"
+                    ? "bg-background text-foreground shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Normal Absence
+              </button>
+              <button
+                type="button"
+                onClick={() => onModeChange("PLANNED")}
+                className={cn(
+                  "px-2.5 py-1 rounded-md transition-all font-medium",
+                  mode === "PLANNED"
+                    ? "bg-background text-amber-600 dark:text-amber-400 shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Planned Absence
+              </button>
+            </div>
+          </div>
+
+          {mode === "NORMAL" ? (
+            <div className="space-y-1.5">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter reason for today only (e.g., Sick, Urgent work)..."
+                  value={reasonText}
+                  onChange={(e) => onReasonChange(e.target.value)}
+                  className="text-xs"
+                />
+                <Button
+                  size="sm"
+                  onClick={onSaveNormal}
+                  disabled={isSaving}
+                  className="shrink-0"
+                >
+                  <Save className="size-3.5 mr-1" />
+                  {isSaving ? "Saving..." : "Save Note"}
+                </Button>
+              </div>
+              {record.reason && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Current note: <span className="italic text-foreground font-medium">"{record.reason}"</span>
+                  {record.reasonUpdatedBy && <span> (by {record.reasonUpdatedBy})</span>}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="text-[11px] font-semibold text-foreground block mb-1">
+                    From Date:
+                  </label>
+                  <Input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => onDateChange("from", e.target.value)}
+                    className="text-xs h-8 bg-background"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-foreground block mb-1">
+                    To Date:
+                  </label>
+                  <Input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => onDateChange("to", e.target.value)}
+                    className="text-xs h-8 bg-background"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Planned absence reason (e.g., Medical leave, Sports competition)..."
+                  value={reasonText}
+                  onChange={(e) => onReasonChange(e.target.value)}
+                  className="text-xs bg-background"
+                />
+                <Button
+                  size="sm"
+                  onClick={onSavePlanned}
+                  disabled={isSaving}
+                  className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  <CalendarClock className="size-3.5 mr-1" />
+                  {isSaving ? "Saving..." : "Save Planned Leave"}
+                </Button>
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                &bull; Recording planned leave suppresses daily dialer prompts and moves this student to <strong>Planned Absentees</strong>.
+              </p>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export const Route = createFileRoute("/mentor/absentees")({
   head: () => ({
@@ -128,15 +372,40 @@ function MentorAbsenteesPage() {
     return () => clearTimeout(handler);
   }, [globalSearch]);
 
-  // Absence comment states
+  // Today date string (YYYY-MM-DD)
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  // Absence comment and mode states
+  const [absenceModes, setAbsenceModes] = useState<Record<string, "NORMAL" | "PLANNED">>({});
+  const [dateRanges, setDateRanges] = useState<Record<string, { from: string; to: string }>>({});
   const [reasonInputs, setReasonInputs] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  // Dialer call tracker for smooth color/badge toggle
+  const [calledMap, setCalledMap] = useState<Record<string, { student?: boolean; parent?: boolean }>>({});
+
+  const handleModeChange = (id: string, mode: "NORMAL" | "PLANNED") => {
+    setAbsenceModes((prev) => ({ ...prev, [id]: mode }));
+    if (!dateRanges[id]) {
+      setDateRanges((prev) => ({ ...prev, [id]: { from: todayStr, to: todayStr } }));
+    }
+  };
+
+  const handleDateChange = (id: string, field: "from" | "to", val: string) => {
+    setDateRanges((prev) => ({
+      ...prev,
+      [id]: {
+        from: field === "from" ? val : prev[id]?.from || todayStr,
+        to: field === "to" ? val : prev[id]?.to || todayStr,
+      },
+    }));
+  };
 
   const handleReasonChange = (id: string, value: string) => {
     setReasonInputs((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleSaveReason = async (record: AbsenteeStudentItem) => {
+  const handleSaveNormalReason = async (record: AbsenteeStudentItem) => {
     const recordId = record.id || (record as any)._id || record.rollNumber;
     const reasonText = reasonInputs[recordId] ?? record.reason ?? "";
     if (!reasonText.trim()) {
@@ -155,6 +424,52 @@ function MentorAbsenteesPage() {
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to save absence reason.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const handleSavePlannedReason = async (record: AbsenteeStudentItem) => {
+    const recordId = record.id || (record as any)._id || record.rollNumber;
+    const reasonText = reasonInputs[recordId] ?? record.reason ?? "";
+    if (!reasonText.trim()) {
+      toast.error("Please enter a reason before saving planned absence.");
+      return;
+    }
+    const dates = dateRanges[recordId] || { from: todayStr, to: todayStr };
+    if (!dates.from || !dates.to) {
+      toast.error("Please select both From and To dates.");
+      return;
+    }
+    if (dates.from > dates.to) {
+      toast.error("From Date cannot be after To Date.");
+      return;
+    }
+
+    setSavingId(recordId);
+    try {
+      await createPlannedAbsence({
+        studentId: record.studentId || recordId,
+        rollNumber: record.rollNumber,
+        studentName: record.studentName,
+        year: record.year,
+        section: record.section,
+        startDate: dates.from,
+        endDate: dates.to,
+        reason: reasonText.trim(),
+      });
+      toast.success(
+        `Planned leave recorded for ${record.studentName} (${dates.from} to ${dates.to}). Moved to Planned Absentees.`
+      );
+      if (reloadAbsentees) reloadAbsentees();
+      if (reloadSections) reloadSections();
+      if (reloadYears) reloadYears();
+      if (globalSearch) {
+        const updated = await searchMentorAbsenteesGlobal(globalSearch.trim());
+        setSearchResults(updated);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to record planned absence.");
     } finally {
       setSavingId(null);
     }
@@ -284,108 +599,31 @@ function MentorAbsenteesPage() {
                       ? reasonInputs[recordId]
                       : record.reason || "";
                   const isSaving = savingId === recordId;
+                  const currentMode = absenceModes[recordId] || "NORMAL";
+                  const dates = dateRanges[recordId] || { from: todayStr, to: todayStr };
 
                   return (
-                    <Card key={recordId} className="border-rose-500/30 shadow-sm">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-base font-bold">{record.studentName}</CardTitle>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="font-mono text-xs font-semibold text-primary">
-                                {record.rollNumber}
-                              </span>
-                              <Badge variant="outline" className="text-[10px]">
-                                {record.year} &bull; {record.section}
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <Badge variant="destructive" className="gap-1">
-                              <UserX className="size-3" /> Absent
-                            </Badge>
-                            {record.isPlannedAbsence && (
-                              <Badge className="bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border-amber-300 gap-1 text-[10px]">
-                                <CalendarClock className="size-3" /> Planned ({record.plannedAbsenceRange})
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4 text-sm">
-                        {record.isPlannedAbsence && (
-                          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-2.5 text-xs text-amber-900 dark:text-amber-200">
-                            <span className="font-semibold">Approved Leave:</span> {record.plannedAbsenceReason} (Daily calls suppressed).
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground border-y py-2">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="size-3.5" />
-                            <span>Date: {record.date}</span>
-                          </div>
-                          {record.submittedBy && (
-                            <div className="flex items-center gap-1">
-                              <Clock className="size-3.5" />
-                              <span>By: {record.submittedBy}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Contact Dialers */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {record.studentPhone ? (
-                            <a
-                              href={`tel:${record.studentPhone}`}
-                              className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
-                            >
-                              <Phone className="size-3.5" /> Call Student
-                            </a>
-                          ) : (
-                            <Button variant="outline" size="sm" disabled className="text-xs">
-                              No Student Phone
-                            </Button>
-                          )}
-
-                          {record.parentPhone ? (
-                            <a
-                              href={`tel:${record.parentPhone}`}
-                              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
-                            >
-                              <PhoneCall className="size-3.5" /> Call Parent
-                            </a>
-                          ) : (
-                            <Button variant="outline" size="sm" disabled className="text-xs">
-                              No Parent Phone
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Absence Reason Form */}
-                        <div className="space-y-2 pt-1">
-                          <label className="text-xs font-semibold text-foreground">
-                            Absence Reason / Follow-up Notes:
-                          </label>
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="e.g. Medical emergency, Family leave..."
-                              value={currentReason}
-                              onChange={(e) => handleReasonChange(recordId, e.target.value)}
-                              className="text-xs"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => handleSaveReason(record)}
-                              disabled={isSaving}
-                              className="shrink-0"
-                            >
-                              <Save className="size-3.5 mr-1" />
-                              {isSaving ? "Saving..." : "Save"}
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <AbsenteeCard
+                      key={recordId}
+                      record={record}
+                      reasonText={currentReason}
+                      onReasonChange={(val) => handleReasonChange(recordId, val)}
+                      isSaving={isSaving}
+                      mode={currentMode}
+                      onModeChange={(m) => handleModeChange(recordId, m)}
+                      fromDate={dates.from}
+                      toDate={dates.to}
+                      onDateChange={(field, val) => handleDateChange(recordId, field, val)}
+                      onSaveNormal={() => handleSaveNormalReason(record)}
+                      onSavePlanned={() => handleSavePlannedReason(record)}
+                      calledState={calledMap[recordId]}
+                      onCallToggle={(type) =>
+                        setCalledMap((prev) => ({
+                          ...prev,
+                          [recordId]: { ...prev[recordId], [type]: true },
+                        }))
+                      }
+                    />
                   );
                 })}
               </div>
@@ -596,111 +834,31 @@ function MentorAbsenteesPage() {
                       ? reasonInputs[recordId]
                       : record.reason || "";
                   const isSaving = savingId === recordId;
+                  const currentMode = absenceModes[recordId] || "NORMAL";
+                  const dates = dateRanges[recordId] || { from: todayStr, to: todayStr };
 
                   return (
-                    <Card key={recordId} className="border-rose-500/25 shadow-sm">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="text-base font-bold">{record.studentName}</CardTitle>
-                            <p className="font-mono text-xs text-muted-foreground mt-0.5">
-                              Roll No: <strong className="text-primary font-bold">{record.rollNumber}</strong>
-                            </p>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <Badge variant="destructive" className="gap-1">
-                              <UserX className="size-3" /> Absent
-                            </Badge>
-                            {record.isPlannedAbsence && (
-                              <Badge className="bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border-amber-300 gap-1 text-[10px]">
-                                <CalendarClock className="size-3" /> Planned ({record.plannedAbsenceRange})
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4 text-sm">
-                        {record.isPlannedAbsence && (
-                          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md p-2.5 text-xs text-amber-900 dark:text-amber-200">
-                            <span className="font-semibold">Approved Leave:</span> {record.plannedAbsenceReason} (Daily calls suppressed).
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground border-y py-2">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="size-3.5" />
-                            <span>Date: {record.date}</span>
-                          </div>
-                          {record.submittedBy && (
-                            <div className="flex items-center gap-1">
-                              <Clock className="size-3.5" />
-                              <span>By: {record.submittedBy}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Contact & Phone Dialers */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {record.studentPhone ? (
-                            <a
-                              href={`tel:${record.studentPhone}`}
-                              className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
-                              title={`Call Student (${record.studentPhone})`}
-                            >
-                              <Phone className="size-3.5" /> Call Student ({record.studentPhone})
-                            </a>
-                          ) : (
-                            <Button variant="outline" size="sm" disabled className="text-xs">
-                              No Student Phone
-                            </Button>
-                          )}
-
-                          {record.parentPhone ? (
-                            <a
-                              href={`tel:${record.parentPhone}`}
-                              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
-                              title={`Call Parent (${record.parentPhone})`}
-                            >
-                              <PhoneCall className="size-3.5" /> Call Parent ({record.parentPhone})
-                            </a>
-                          ) : (
-                            <Button variant="outline" size="sm" disabled className="text-xs">
-                              No Parent Phone
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Reason / Comment Section */}
-                        <div className="space-y-2 pt-1">
-                          <label className="text-xs font-semibold text-foreground">
-                            Absence Reason / Follow-up Notes:
-                          </label>
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="Enter reason (e.g., Medical leave, Sick, Family event)..."
-                              value={currentReason}
-                              onChange={(e) => handleReasonChange(recordId, e.target.value)}
-                              className="text-xs"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => handleSaveReason(record)}
-                              disabled={isSaving}
-                              className="shrink-0"
-                            >
-                              <Save className="size-3.5 mr-1" />
-                              {isSaving ? "Saving..." : "Save"}
-                            </Button>
-                          </div>
-                          {record.reason && (
-                            <p className="text-[11px] text-muted-foreground mt-1">
-                              Current note: <span className="italic text-foreground font-medium">"{record.reason}"</span>
-                              {record.reasonUpdatedBy && <span> (by {record.reasonUpdatedBy})</span>}
-                            </p>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <AbsenteeCard
+                      key={recordId}
+                      record={record}
+                      reasonText={currentReason}
+                      onReasonChange={(val) => handleReasonChange(recordId, val)}
+                      isSaving={isSaving}
+                      mode={currentMode}
+                      onModeChange={(m) => handleModeChange(recordId, m)}
+                      fromDate={dates.from}
+                      toDate={dates.to}
+                      onDateChange={(field, val) => handleDateChange(recordId, field, val)}
+                      onSaveNormal={() => handleSaveNormalReason(record)}
+                      onSavePlanned={() => handleSavePlannedReason(record)}
+                      calledState={calledMap[recordId]}
+                      onCallToggle={(type) =>
+                        setCalledMap((prev) => ({
+                          ...prev,
+                          [recordId]: { ...prev[recordId], [type]: true },
+                        }))
+                      }
+                    />
                   );
                 })}
               </div>

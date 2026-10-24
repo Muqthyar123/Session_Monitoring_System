@@ -214,7 +214,12 @@ async def test_planned_absence_workflow_and_rbac():
         "created_at": now_utc,
     })
 
-    absentees = await get_mentor_scoped_absentees("3rd Year", "B", today_ist, mentor_user)
+    # Verify that active planned absences are excluded from today's absentees (user requirement)
+    today_abs = await get_mentor_scoped_absentees("3rd Year", "B", today_ist, mentor_user)
+    assert len(today_abs) == 0
+
+    # Verify enrichment when include_planned=True
+    absentees = await get_mentor_scoped_absentees("3rd Year", "B", today_ist, mentor_user, include_planned=True)
     assert len(absentees) == 1
     assert absentees[0].roll_number == "24PA001"
     assert absentees[0].is_planned_absence is True
