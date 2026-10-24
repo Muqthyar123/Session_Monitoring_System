@@ -10,7 +10,12 @@ from typing import Optional
 import certifi
 from bson import json_util
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from mongomock_motor import AsyncMongoMockClient
+try:
+    from mongomock_motor import AsyncMongoMockClient
+    import mongomock
+except ImportError:
+    AsyncMongoMockClient = None
+    mongomock = None
 
 from app.core.config import settings
 from app.core.security import hash_password
@@ -452,6 +457,12 @@ async def connect_to_mongo():
             )
 
     # In-Memory Fallback Mock Database with Durable File-Backed Persistence
+    if AsyncMongoMockClient is None:
+        raise RuntimeError(
+            "Neither real MongoDB nor 'mongomock-motor' is available. "
+            "Please check your MONGODB_URI in environment variables or add 'mongomock-motor' to requirements.txt."
+        )
+
     mock_client = AsyncMongoMockClient()
     db_manager.client = mock_client
     db_manager.db = mock_client[db_name]
