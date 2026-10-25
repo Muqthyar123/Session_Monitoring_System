@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     MONGODB_URI: str = "mongodb://localhost:27017"
     DATABASE_NAME: str = Field(default="college_session_monitoring", validation_alias="DATABASE_NAME")
     MONGODB_DATABASE: Optional[str] = Field(default=None, validation_alias="MONGODB_DATABASE")
-    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 5000  # 5 seconds timeout
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 3000  # 3 seconds — fail fast if Atlas unreachable
 
     JWT_SECRET_KEY: str = "supersecretkey_change_in_production_1234567890"
     JWT_ALGORITHM: str = "HS256"

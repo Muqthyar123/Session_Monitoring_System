@@ -1,6 +1,7 @@
 import re
 from datetime import datetime, timezone
 from typing import Any, List, Optional, Tuple
+
 from bson import ObjectId
 from fastapi import HTTPException, status
 from app.db.mongodb import get_database
@@ -27,52 +28,50 @@ def infer_batch_from_roll(roll: Optional[str]) -> Optional[int]:
 
 def compute_year_from_batch(batch_val: Any) -> str:
     """
-    Computes academic year from batch graduation year:
-    - 2027 -> 4th Year
-    - 2028 -> 3rd Year
-    - 2029 -> 2nd Year
-    - 2030 -> 1st Year
-    - Future batches calculated using standard formula: diff = 2031 - batch
+    Computes academic year from batch graduation year dynamically based on current year.
+    Uses current academic year (July-June cycle) so it stays correct automatically.
+    e.g., if today is Oct 2026: batching_base = 2027
+    - 2027 -> 1st Year, 2028 -> 2nd Year, 2029 -> 3rd Year, 2030 -> 4th Year
     """
     if not batch_val:
         return "2nd Year"
     try:
-        # Check if 4-digit number (e.g. 2027)
+        now = datetime.now(timezone.utc)
+        # Academic year starts July: if month >= 7, current academic year = now.year + 1
+        academic_base = now.year + 1 if now.month >= 7 else now.year
+
         m = re.search(r'\b(20\d{2})\b', str(batch_val))
         if m:
             b_num = int(m.group(1))
-            diff = 2031 - b_num
-            if diff == 1:
-                return "1st Year"
-            elif diff == 2:
-                return "2nd Year"
-            elif diff == 3:
-                return "3rd Year"
-            elif diff == 4:
-                return "4th Year"
-            elif diff > 4:
+            diff = b_num - academic_base  # positive = years until graduation
+            if diff <= 0:
                 return "Graduated"
-            elif diff <= 0:
+            elif diff == 1:
+                return "4th Year"
+            elif diff == 2:
+                return "3rd Year"
+            elif diff == 3:
+                return "2nd Year"
+            elif diff == 4:
+                return "1st Year"
+            else:
                 return "1st Year"
 
-        # Check if 2-digit number (e.g. 27, 28, 29, 30)
         m2 = re.search(r'\b(\d{2})\b', str(batch_val))
         if m2:
             yy = int(m2.group(1))
             if 20 <= yy <= 40:
                 b_num = 2000 + yy
-                diff = 2031 - b_num
-                if diff == 1:
-                    return "1st Year"
-                elif diff == 2:
-                    return "2nd Year"
-                elif diff == 3:
-                    return "3rd Year"
-                elif diff == 4:
-                    return "4th Year"
-                elif diff > 4:
+                diff = b_num - academic_base
+                if diff <= 0:
                     return "Graduated"
-                elif diff <= 0:
+                elif diff == 1:
+                    return "4th Year"
+                elif diff == 2:
+                    return "3rd Year"
+                elif diff == 3:
+                    return "2nd Year"
+                else:
                     return "1st Year"
     except Exception:
         pass

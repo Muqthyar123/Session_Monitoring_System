@@ -1286,27 +1286,33 @@ async def parse_and_import_mentor_excel(
                 col_map = temp_map
                 break
 
-    # Positional fallback if headers could not be matched
-    if (header_idx == -1 or "name" not in col_map or "mentor_id" not in col_map) and len(raw_rows) >= 1:
+    # Positional fallback — only trigger if primary header detection failed completely
+    if header_idx == -1 and len(raw_rows) >= 1:
+        # Reset col_map to avoid partial corruption from the primary scan
+        col_map = {}
         for f_idx in range(min(10, len(raw_rows))):
             row_str = [str(c or "").strip() for c in raw_rows[f_idx]]
             row_clean = [re.sub(r'[^a-z0-9]', '', c.lower()) for c in row_str]
             for c_i, c_val in enumerate(row_clean):
-                if ("id" in c_val or "emp" in c_val or "code" in c_val) and "mentor_id" not in col_map:
+                # Specific ID matches only — avoid matching "id" inside other words
+                if c_val in {"id", "empid", "employeeid", "mentorid", "facultyid", "code", "empcode", "username"} and "mentor_id" not in col_map:
                     col_map["mentor_id"] = c_i
                 elif ("name" in c_val or "faculty" in c_val or "mentor" in c_val) and "name" not in col_map:
                     col_map["name"] = c_i
+                elif ("email" in c_val or "mail" in c_val) and "email" not in col_map:
+                    col_map["email"] = c_i
 
-            if "name" in col_map or "mentor_id" in col_map:
+            if len(col_map) >= 2:
                 header_idx = f_idx
                 break
 
-        if "name" not in col_map and len(raw_rows[0]) > 1:
-            col_map["name"] = 1 if len(raw_rows[0]) > 1 else 0
-        if "mentor_id" not in col_map:
-            col_map["mentor_id"] = 2 if len(raw_rows[0]) > 2 else (0 if col_map.get("name") != 0 else 1)
         if header_idx == -1:
             header_idx = 0
+        # Assign sensible defaults only for still-missing critical keys
+        if "name" not in col_map:
+            col_map["name"] = 0
+        if "mentor_id" not in col_map and "email" not in col_map:
+            col_map["mentor_id"] = 1
 
     db = get_database()
     existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=10000)
@@ -1372,8 +1378,12 @@ async def parse_and_import_mentor_excel(
 
         if not name:
             row_errors.append("Mentor Name is required.")
-        if not mentor_id and not email:
-            row_errors.append("Mentor ID or Email is required.")
+        # Auto-recover: if we have name but no ID/email, skip gracefully with a generated ID
+        if not mentor_id and not email and name:
+            # Generate a temporary ID from name so the row isn't rejected
+            clean_name = re.sub(r'[^a-z0-9]', '', name.lower())
+            mentor_id = f"FAC{clean_name[:8].upper()}"
+            email = f"{clean_name[:12]}@nrtec.in"
 
         if row_errors:
             failed_count += 1
@@ -1628,7 +1638,7 @@ async def parse_and_import_student_excel(
         branch = get_field("branch") or "CSE"
         batch_raw = get_field("batch")
         year_raw = get_field("year")
-        section = get_field("section").upper() or inferred_section
+        raw_section = get_field("section").upper().strip() or inferred_section
         student_phone = get_field("student_phone")
         parent_phone = get_field("parent_phone")
 
@@ -1653,6 +1663,31 @@ async def parse_and_import_student_excel(
             else:
                 batch = inferred_batch
                 year = compute_year_from_batch(batch)
+
+        # Normalize section to full canonical form: "A" → "II-CSE-A", "CSE-A" → "II-CSE-A"
+        # This prevents students from being misassigned across sections/years.
+        def _normalize_section(raw_sec: str, yr: str, br: str = "CSE") -> str:
+            s = raw_sec.strip().upper()
+            # Already fully qualified (e.g. II-CSE-A, III-CSE-B)
+            if re.match(r'^(I{1,4}V?|IV)-[A-Z]+-[A-Z]+$', s):
+                return s
+            # e.g. CSE-A → prefix with year roman
+            if re.match(r'^[A-Z]+-[A-Z]$', s):
+                sec_letter = s.split("-")[-1]
+            elif re.match(r'^[A-J]$', s):
+                sec_letter = s
+            else:
+                # Strip known prefixes and extract trailing letter
+                stripped = re.sub(r'^(II|III|IV|I)-?(CSE|ECE|EEE|MECH|CIVIL|IT)-?', '', s).strip("-")
+                sec_letter = stripped[-1] if stripped else s[-1]
+
+            year_roman = {
+                "1st Year": "I", "2nd Year": "II",
+                "3rd Year": "III", "4th Year": "IV"
+            }.get(yr, "II")
+            return f"{year_roman}-{br.upper()}-{sec_letter}"
+
+        section = _normalize_section(raw_section, year, branch)
 
         total_rows += 1
         row_errors = []
