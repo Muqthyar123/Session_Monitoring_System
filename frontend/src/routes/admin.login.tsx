@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { MOCK_DEMO_CREDENTIALS } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/admin/login")({
   head: () => ({
@@ -118,9 +117,7 @@ function AdminLoginPage() {
 
           <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">System Administrator Account</p>
-            <p>
-              {MOCK_DEMO_CREDENTIALS.admin.email} / {MOCK_DEMO_CREDENTIALS.admin.password}
-            </p>
+            <p>admin@example.com / demo1234</p>
           </div>
 
           <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">
