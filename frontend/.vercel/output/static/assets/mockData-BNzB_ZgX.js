@@ -1,0 +1,1 @@
+var e=[`1st Year`,`2nd Year`,`3rd Year`,`4th Year`],t={admin:{email:`admin@example.com`,password:`demo1234`},cr:{email:`cr@example.com`,password:`demo1234`},lr:{email:`lr@example.com`,password:`demo1234`}};new Date().toISOString().split(`T`)[0];export{e as n,t};
