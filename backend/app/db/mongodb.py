@@ -404,6 +404,13 @@ async def connect_to_mongo():
             "Please check your MONGODB_URI in environment variables or add 'mongomock-motor' to requirements.txt."
         )
 
+    logger.error(
+        "⚠️  RUNNING IN MOCK DATABASE MODE — DATA WILL NOT PERSIST ON RENDER/VERCEL! "
+        "Set the MONGODB_URI environment variable on your deployment platform to use MongoDB Atlas. "
+        "Current MONGODB_URI: %s",
+        settings.MONGODB_URI,
+    )
+
     mock_client = AsyncMongoMockClient()
     db_manager.client = mock_client
     db_manager.db = mock_client[db_name]
