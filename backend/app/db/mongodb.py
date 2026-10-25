@@ -274,11 +274,17 @@ async def seed_from_uploaded_files_if_needed(db):
 
 
 async def seed_in_memory_db(db):
-    """Seed initial Root Admin user into database, keeping all section, timetable, and CR/LR collections fresh."""
+    """Seed initial Root Admin user only.
+
+    CR/LR accounts are NOT auto-seeded. The Admin must create real CR/LR
+    credentials manually via the CR/LR Management page or Excel upload.
+    Any previously seeded dummy CR/LR accounts are purged on startup so the
+    database starts clean.
+    """
     now = datetime.now(timezone.utc)
     admin_pwd_hash = hash_password("demo1234")
 
-    # Root System Administrator
+    # ── 1. Root System Administrator (only account seeded automatically) ──
     existing_admin = await db.users.find_one({"role": "ADMIN"})
     if not existing_admin:
         await db.users.insert_one(
@@ -297,110 +303,23 @@ async def seed_in_memory_db(db):
             }
         )
 
-    # Seed CR and LR accounts for sections (II-CSE-A to II-CSE-J) if not already present.
-    # Default password for each CR/LR is their roll number (e.g. 22CSA01 for CR of II-CSE-A).
-    # Login can be done using email OR roll number.
-    sections = [
-        "II-CSE-A",
-        "II-CSE-B",
-        "II-CSE-C",
-        "II-CSE-D",
-        "II-CSE-E",
-        "II-CSE-F",
-        "II-CSE-G",
-        "II-CSE-H",
-        "II-CSE-I",
-        "II-CSE-J",
-    ]
-
-    for sec in sections:
-        sec_letter = sec.split("-")[-1]
-        slug = sec_letter.lower()
-
-        cr_roll = f"22CS{sec_letter}01"
-        lr_roll = f"22CS{sec_letter}02"
-        cr_email = f"cr.{slug}@college.edu"
-        lr_email = f"lr.{slug}@college.edu"
-
-        # Password = roll number (unique per CR/LR, not a shared dummy password)
-        cr_pwd_hash = hash_password(cr_roll)
-        lr_pwd_hash = hash_password(lr_roll)
-
-        # CR User — insert if absent, update password/email if stale dummy credentials exist
-        cr_existing = await db.users.find_one(
-            {"$or": [{"email": cr_email}, {"roll_number": cr_roll, "role": "CR"}]}
-        )
-        if not cr_existing:
-            cr_res = await db.users.insert_one(
-                {
-                    "name": f"{sec} CR",
-                    "email": cr_email,
-                    "password_hash": cr_pwd_hash,
-                    "role": "CR",
-                    "roll_number": cr_roll,
-                    "phone": "9876543211",
-                    "year": "2nd Year",
-                    "section": sec,
-                    "is_active": True,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            )
-            cr_id = str(cr_res.inserted_id)
-        else:
-            cr_id = str(cr_existing["_id"])
-            # Migrate: update email to new pattern and set roll-number password if it was the old demo password
-            update_fields: dict = {"email": cr_email, "section": sec, "updated_at": now}
-            if cr_existing.get("password_hash") == hash_password("demo1234"):
-                update_fields["password_hash"] = cr_pwd_hash
-            await db.users.update_one({"_id": cr_existing["_id"]}, {"$set": update_fields})
-
-        # LR User — insert if absent, update password/email if stale dummy credentials exist
-        lr_existing = await db.users.find_one(
-            {"$or": [{"email": lr_email}, {"roll_number": lr_roll, "role": "LR"}]}
-        )
-        if not lr_existing:
-            lr_res = await db.users.insert_one(
-                {
-                    "name": f"{sec} LR",
-                    "email": lr_email,
-                    "password_hash": lr_pwd_hash,
-                    "role": "LR",
-                    "roll_number": lr_roll,
-                    "phone": "9876543212",
-                    "year": "2nd Year",
-                    "section": sec,
-                    "is_active": True,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            )
-            lr_id = str(lr_res.inserted_id)
-        else:
-            lr_id = str(lr_existing["_id"])
-            # Migrate: update email to new pattern and set roll-number password if it was the old demo password
-            update_fields = {"email": lr_email, "section": sec, "updated_at": now}
-            if lr_existing.get("password_hash") == hash_password("demo1234"):
-                update_fields["password_hash"] = lr_pwd_hash
-            await db.users.update_one({"_id": lr_existing["_id"]}, {"$set": update_fields})
-
-        # Upsert Section document
-        await db.sections.update_one(
-            {"section_name": sec},
-            {
-                "$set": {
-                    "year": "2nd Year",
-                    "branch": "CSE",
-                    "department": "CSE",
-                    "section_name": sec,
-                    "assigned_cr_id": cr_id,
-                    "assigned_lr_id": lr_id,
-                    "is_active": True,
-                    "updated_at": now,
-                },
-                "$setOnInsert": {"created_at": now},
-            },
-            upsert=True,
+    # ── 2. Purge any auto-seeded dummy CR/LR accounts ─────────────────────
+    # These were previously seeded with generated emails like cr.a@college.edu
+    # or the old cr@example.com pattern. Remove them so the admin can add
+    # real credentials without seeing stale placeholder accounts.
+    dummy_crlr_result = await db.users.delete_many(
+        {
+            "role": {"$in": ["CR", "LR"]},
+            "$or": [
+                {"email": {"$regex": r"^(cr|lr)\.[a-j]@college\.edu$"}},
+                {"email": {"$regex": r"^(cr|lr)(@|\.cs[a-j]@)example\.com$"}},
+            ],
+        }
+    )
+    if dummy_crlr_result.deleted_count > 0:
+        logger.info(
+            "Purged %d dummy CR/LR seed accounts. Admin must add real credentials.",
+            dummy_crlr_result.deleted_count,
         )
 
 
