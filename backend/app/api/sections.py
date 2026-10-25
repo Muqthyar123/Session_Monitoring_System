@@ -13,6 +13,23 @@ router = APIRouter(prefix="/sections", tags=["Sections"])
 
 import re
 
+def _normalize_academic_year(value: str) -> Optional[str]:
+    token = re.sub(r"[^a-z0-9]", "", (value or "").lower())
+    if token.startswith(("4", "iv", "fourth")): return "4th Year"
+    if token.startswith(("3", "iii", "third")): return "3rd Year"
+    if token.startswith(("2", "ii", "second")): return "2nd Year"
+    if token.startswith(("1", "i", "first")): return "1st Year"
+    return None
+
+
+def _section_inventory_key(year: str, branch: str, section_name: str) -> tuple:
+    name = str(section_name or "").strip().upper()
+    parts = name.split("-")
+    if len(parts) >= 3 and parts[0] in {"I", "II", "III", "IV"}:
+        branch = parts[1]
+    label = parts[-1] if parts else name
+    return (_normalize_academic_year(year or ""), (branch or "CSE").strip().upper(), label)
+
 async def _enrich_section_details(doc: dict) -> dict:
     db = get_database()
     sec_id = str(doc["_id"])
@@ -83,6 +100,42 @@ async def _enrich_section_details(doc: dict) -> dict:
     return doc
 
 
+async def _enrich_section_details_bulk(docs: List[dict]) -> List[dict]:
+    """Enrich the section page with two batch reads instead of three reads per row."""
+    db = get_database()
+    student_counts = {}
+    students = db.students.find({}, {"year": 1, "branch": 1, "department": 1, "section": 1})
+    async for student in students:
+        key = _section_inventory_key(
+            student.get("year", ""), student.get("branch") or student.get("department") or "CSE", student.get("section", "")
+        )
+        student_counts[key] = student_counts.get(key, 0) + 1
+
+    user_names = {}
+    representatives = {}
+    users = db.users.find({"role": {"$in": ["CR", "LR"]}}, {"name": 1, "role": 1, "year": 1, "section": 1})
+    async for user in users:
+        user_names[str(user["_id"])] = user.get("name")
+        key = _section_inventory_key(user.get("year", ""), "CSE", user.get("section", ""))
+        if key[0] and key[2]:
+            representatives.setdefault((key, user.get("role")), user.get("name"))
+
+    enriched_docs = []
+    for doc in docs:
+        year = doc.get("year", "")
+        name = doc.get("section_name", "")
+        branch = doc.get("branch") or doc.get("department") or "CSE"
+        key = _section_inventory_key(year, branch, name)
+        doc["_id"] = str(doc["_id"])
+        doc["branch"] = branch
+        doc["department"] = branch
+        doc["student_count"] = student_counts.get(key, 0)
+        doc["cr_name"] = user_names.get(str(doc.get("assigned_cr_id"))) or representatives.get((key, "CR"))
+        doc["lr_name"] = user_names.get(str(doc.get("assigned_lr_id"))) or representatives.get((key, "LR"))
+        enriched_docs.append(doc)
+    return enriched_docs
+
+
 @router.get("", response_model=ApiResponse[List[SectionResponse]])
 async def list_sections_api(
     year: Optional[str] = Query(None, description="Filter by Academic Year"),
@@ -113,11 +166,31 @@ async def list_sections_api(
     if is_active is not None:
         query["is_active"] = is_active
 
+    timetable_docs = await db.timetables.find({}, {"year": 1, "section": 1}).to_list(length=10000)
+    timetable_inventory = {}
+    for tt in timetable_docs:
+        identity = _section_inventory_key(tt.get("year", ""), "CSE", tt.get("section", ""))
+        if identity[0] and identity[2]:
+            timetable_inventory.setdefault(identity, {
+                "year": identity[0], "branch": identity[1], "section_name": str(tt.get("section")).strip().upper(),
+            })
+
     cursor = db.sections.find(query).sort([("year", 1), ("branch", 1), ("section_name", 1)])
-    sections = []
-    async for doc in cursor:
-        enriched = await _enrich_section_details(doc)
-        sections.append(SectionResponse(**enriched))
+    docs = await cursor.to_list(length=1000)
+    unique_docs = []
+    seen_section_keys = set()
+    for doc in docs:
+        identity = _section_inventory_key(
+            doc.get("year", ""), doc.get("branch") or doc.get("department") or "CSE", doc.get("section_name", "")
+        )
+        if identity not in timetable_inventory or identity in seen_section_keys:
+            continue
+        seen_section_keys.add(identity)
+        doc.update(timetable_inventory[identity])
+        unique_docs.append(doc)
+
+    enriched_docs = await _enrich_section_details_bulk(unique_docs)
+    sections = [SectionResponse(**doc) for doc in enriched_docs]
 
     return ApiResponse(success=True, data=sections)
 

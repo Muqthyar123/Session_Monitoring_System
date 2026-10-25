@@ -11,11 +11,68 @@ from pydantic import EmailStr, TypeAdapter
 from app.core.security import hash_password
 from app.db.mongodb import get_database
 from app.schemas.user import UserRole
-from app.services.student_service import compute_year_from_batch, find_crlr_for_student, infer_batch_from_roll
+from app.services.student_service import compute_year_from_batch, infer_batch_from_roll, normalize_student_section
 
 email_adapter = TypeAdapter(EmailStr)
 
 DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+
+def _cell_to_text(value: Any, number_format: Optional[str] = None) -> str:
+    """Convert spreadsheet values without losing displayed leading zeroes."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)) and float(value).is_integer():
+        text = str(int(value))
+        if number_format and re.fullmatch(r"0+", number_format):
+            return text.zfill(len(number_format))
+        return text
+    return str(value).replace("\ufeff", "").replace("\u200b", "").strip()
+
+
+def _normalize_academic_year_label(value: str) -> Optional[str]:
+    cleaned = re.sub(r"[^a-z0-9]", "", (value or "").lower())
+    aliases = {
+        "1": "1st Year", "1st": "1st Year", "1styear": "1st Year", "first": "1st Year", "firstyear": "1st Year",
+        "i": "1st Year", "iyear": "1st Year", "ibtech": "1st Year",
+        "2": "2nd Year", "2nd": "2nd Year", "2ndyear": "2nd Year", "second": "2nd Year", "secondyear": "2nd Year",
+        "ii": "2nd Year", "iiyear": "2nd Year", "iibtech": "2nd Year",
+        "3": "3rd Year", "3rd": "3rd Year", "3rdyear": "3rd Year", "third": "3rd Year", "thirdyear": "3rd Year",
+        "iii": "3rd Year", "iiiyear": "3rd Year", "iiibtech": "3rd Year",
+        "4": "4th Year", "4th": "4th Year", "4thyear": "4th Year", "fourth": "4th Year", "fourthyear": "4th Year",
+        "iv": "4th Year", "ivyear": "4th Year", "ivbtech": "4th Year",
+        "graduated": "Graduated", "alumni": "Graduated",
+    }
+    return aliases.get(cleaned)
+
+
+def _make_import_summary(
+    *, rows_read: int, blank_rows_skipped: int, duplicate_rows: int,
+    created: int, updated: int, unchanged: int, errors: List[Dict[str, Any]],
+    ignored_rows: int = 0,
+) -> Dict[str, Any]:
+    valid_rows = created + updated + unchanged
+    failed = sum(1 for item in errors if item.get("kind") not in {"duplicate", "warning"})
+    warnings = [item for item in errors if item.get("kind") == "warning"]
+    return {
+        "rows_read": rows_read,
+        "total_rows": rows_read,
+        "valid_rows": valid_rows,
+        "created": created,
+        "updated": updated,
+        "unchanged": unchanged,
+        "blank_rows_skipped": blank_rows_skipped,
+        "duplicate_rows": duplicate_rows,
+        "ignored_rows": ignored_rows,
+        "failed": failed,
+        "inserted": created,
+        "modified": updated,
+        "matched": updated + unchanged,
+        "errors": [item for item in errors if item.get("kind") != "warning"],
+        "warnings": warnings,
+    }
 
 
 # ----------------------------------------------------
@@ -150,24 +207,36 @@ async def parse_and_import_crlr_excel(
     db = get_database()
 
     # Pre-fetch existing emails, roll numbers, and known sections
-    existing_users = await db.users.find({}, {"email": 1, "roll_number": 1}).to_list(length=10000)
-    existing_emails = {str(u["email"]).strip().lower(): str(u["_id"]) for u in existing_users if "email" in u and u["email"]}
-    existing_rolls = {str(u["roll_number"]).strip().upper(): str(u["_id"]) for u in existing_users if u.get("roll_number")}
+    existing_users = await db.users.find({}, {"email": 1, "roll_number": 1, "role": 1}).to_list(length=100000)
+    all_by_email = {str(u["email"]).strip().lower(): u for u in existing_users if u.get("email")}
+    crlr_users = [u for u in existing_users if u.get("role") in {UserRole.CR.value, UserRole.LR.value}]
+    existing_emails = {str(u["email"]).strip().lower(): u for u in crlr_users if u.get("email")}
+    existing_rolls = {str(u["roll_number"]).strip().upper(): u for u in crlr_users if u.get("roll_number")}
 
-    all_db_sections = await db.sections.find({}, {"section_name": 1}).to_list(length=500)
+    all_db_sections = await db.sections.find({}, {"section_name": 1, "year": 1}).to_list(length=None)
     db_sec_names = {s.get("section_name", "").upper(): s.get("section_name") for s in all_db_sections if s.get("section_name")}
+    db_sections_by_year_and_label = {
+        (str(s.get("year") or "").strip().casefold(), str(s.get("section_name") or "").strip().upper().rsplit("-", 1)[-1]): s.get("section_name")
+        for s in all_db_sections if s.get("section_name") and s.get("year")
+    }
 
     seen_emails_in_file = set()
     seen_rolls_in_file = set()
+    total_rows = 0
 
     total_rows = 0
     created_count = 0
     updated_count = 0
+    unchanged_count = 0
     failed_count = 0
+    duplicate_count = 0
+    blank_count = 0
     errors = []
 
+    rows_read = max(0, len(raw_rows) - header_idx - 1)
     for row_idx, row_values in enumerate(raw_rows[header_idx + 1:], start=header_idx + 2):
         if not any(row_values):
+            blank_count += 1
             continue
 
         total_rows += 1
@@ -181,10 +250,11 @@ async def parse_and_import_crlr_excel(
 
         name = get_val("name")
         email = get_val("email").lower()
+        email_provided = bool(email)
         roll = get_val("roll").upper()
         phone = get_val("phone")
         raw_year = get_val("year")
-        raw_dept = get_val("dept").upper() or "CSE"
+        raw_dept = get_val("dept").upper()
         raw_sec = get_val("section").upper()
         raw_role = get_val("role").upper()
 
@@ -200,35 +270,35 @@ async def parse_and_import_crlr_excel(
             clean_roll_email = re.sub(r'[^a-zA-Z0-9]', '', roll.lower())
             email = f"{clean_roll_email}@nrtec.in"
 
+        if not raw_dept:
+            section_branch = re.match(r"^(?:I|II|III|IV)-([A-Z0-9]+)-", raw_sec)
+            if section_branch:
+                raw_dept = section_branch.group(1)
+            else:
+                row_errors.append("Branch/department is required when it is not part of the section value.")
+
         if email:
             try:
                 email_adapter.validate_python(email)
             except Exception:
                 row_errors.append(f"Invalid email format: '{email}'.")
 
-        # Determine Role
+        # Require a valid role instead of silently classifying unknown values as CR.
         if "LR" in raw_role or "LATERAL" in raw_role or "LADIES" in raw_role:
             role = UserRole.LR.value
-        else:
+        elif "CR" in raw_role or "CLASS REPRESENTATIVE" in raw_role:
             role = UserRole.CR.value
+        else:
+            role = ""
+            row_errors.append("Role must identify CR or LR.")
 
         # Normalize Year
-        y_low = raw_year.lower()
-        if "4" in y_low or "iv" in y_low:
-            year = "4th Year"
-            roman = "IV"
-        elif "3" in y_low or "iii" in y_low:
-            year = "3rd Year"
-            roman = "III"
-        elif "2" in y_low or "ii" in y_low:
-            year = "2nd Year"
-            roman = "II"
-        elif "1" in y_low or "i" in y_low:
-            year = "1st Year"
-            roman = "I"
+        year = _normalize_academic_year_label(raw_year)
+        if not year:
+            row_errors.append("Academic year is missing or invalid.")
+            roman = ""
         else:
-            year = raw_year if raw_year else "2nd Year"
-            roman = "II"
+            roman = {"1st Year": "I", "2nd Year": "II", "3rd Year": "III", "4th Year": "IV", "Graduated": "Graduated"}[year]
 
         # Normalize Section to match database convention (e.g. IV-CSE-C2 or II-CSE-D)
         clean_sec = raw_sec
@@ -237,30 +307,32 @@ async def parse_and_import_crlr_excel(
                 clean_sec = clean_sec[len(pfx):].strip()
 
         if clean_sec.startswith("I-") or clean_sec.startswith("II-") or clean_sec.startswith("III-") or clean_sec.startswith("IV-"):
-            section = clean_sec
+            section = db_sections_by_year_and_label.get((year.casefold(), clean_sec.rsplit("-", 1)[-1]), clean_sec)
         else:
             sec_tag = clean_sec.replace("CSE-", "").replace("CSE", "").strip("- ")
             candidate_section = f"{roman}-{raw_dept}-{sec_tag}" if sec_tag else f"{roman}-{raw_dept}"
-            if candidate_section.upper() in db_sec_names:
-                section = db_sec_names[candidate_section.upper()]
-            else:
-                section = candidate_section
+            section = db_sections_by_year_and_label.get((year.casefold(), sec_tag.upper()), db_sec_names.get(candidate_section.upper(), candidate_section))
+        if not raw_sec:
+            row_errors.append("Section is required.")
+        elif db_sec_names and section.upper() not in db_sec_names:
+            row_errors.append(f"Section '{section}' is not present in the uploaded timetable sections.")
 
         # Duplicate checks within file
-        if email and email in seen_emails_in_file:
-            row_errors.append(f"Duplicate email '{email}' within file.")
-        elif email:
-            seen_emails_in_file.add(email)
-
-        if roll and roll in seen_rolls_in_file:
-            row_errors.append(f"Duplicate roll number '{roll}' within file.")
-        elif roll:
-            seen_rolls_in_file.add(roll)
+        duplicate = (email and email in seen_emails_in_file) or (roll and roll in seen_rolls_in_file)
+        if duplicate and not row_errors:
+            duplicate_count += 1
+            errors.append({"row": row_idx, "kind": "duplicate", "errors": ["Duplicate email or roll number within the uploaded file; first valid row is retained."]})
+            continue
 
         if row_errors:
             failed_count += 1
             errors.append({"row": row_idx, "errors": row_errors})
             continue
+
+        if email:
+            seen_emails_in_file.add(email)
+        if roll:
+            seen_rolls_in_file.add(roll)
 
         now = datetime.now(timezone.utc)
         user_roll = roll if roll else None
@@ -268,27 +340,43 @@ async def parse_and_import_crlr_excel(
         default_pwd = user_roll if user_roll else "crlr1234"
 
         # Check existing user
-        target_uid = existing_emails.get(email) or (existing_rolls.get(roll) if roll else None)
+        email_match = all_by_email.get(email) if email else None
+        roll_match = existing_rolls.get(roll) if roll else None
+        target_user = existing_emails.get(email) or roll_match
+        if email_match and email_match.get("role") not in {UserRole.CR.value, UserRole.LR.value}:
+            row_errors.append("Email belongs to a different account role; no account was changed.")
+        if email_match and roll and email_match.get("roll_number") and str(email_match["roll_number"]).strip().upper() != roll:
+            row_errors.append("Email and roll number identify different existing accounts.")
+        if roll_match and email and roll_match.get("email") and str(roll_match["email"]).strip().lower() != email:
+            row_errors.append("Roll number and email identify different existing accounts.")
+        if target_user and target_user.get("role") != role:
+            row_errors.append("Existing account has a different role; role and credentials were preserved.")
+        if row_errors:
+            failed_count += 1
+            errors.append({"row": row_idx, "errors": row_errors})
+            continue
+
+        target_uid = str(target_user["_id"]) if target_user else None
 
         if target_uid:
             # Update existing user safely
-            update_fields = {
-                "name": name,
-                "email": email,
-                "role": role,
-                "year": year,
-                "section": section,
-                "updated_at": now,
-            }
-            if roll:
+            current = target_user
+            update_fields = {"name": name, "year": year, "section": section}
+            if email_provided:
+                update_fields["email"] = email
+            if roll and not current.get("roll_number"):
                 update_fields["roll_number"] = roll
-                update_fields["password_hash"] = hash_password(roll)
             if phone:
                 update_fields["phone"] = phone
-
+            changed = any(current.get(key) != value for key, value in update_fields.items())
+            if changed:
+                update_fields["updated_at"] = now
             query = {"_id": ObjectId(target_uid)} if ObjectId.is_valid(target_uid) else {"_id": target_uid}
-            await db.users.update_one(query, {"$set": update_fields})
-            updated_count += 1
+            if changed:
+                await db.users.update_one(query, {"$set": update_fields})
+                updated_count += 1
+            else:
+                unchanged_count += 1
             user_id_str = str(target_uid)
         else:
             # Create new CR/LR user
@@ -307,9 +395,10 @@ async def parse_and_import_crlr_excel(
             }
             res = await db.users.insert_one(new_user_doc)
             user_id_str = str(res.inserted_id)
-            existing_emails[email] = user_id_str
+            existing_emails[email] = {"_id": res.inserted_id, "email": email, "roll_number": user_roll, "role": role}
+            all_by_email[email] = existing_emails[email]
             if roll:
-                existing_rolls[roll] = user_id_str
+                existing_rolls[roll] = existing_emails[email]
             created_count += 1
 
         # Link CR/LR to db.sections
@@ -323,17 +412,8 @@ async def parse_and_import_crlr_excel(
                 sec_update["lr_name"] = name
 
             await db.sections.update_one(
-                {"section_name": section},
-                {
-                    "$set": sec_update,
-                    "$setOnInsert": {
-                        "section_name": section,
-                        "year": year,
-                        "department": raw_dept,
-                        "created_at": now,
-                    }
-                },
-                upsert=True,
+                {"section_name": section, "year": year},
+                {"$set": sec_update},
             )
 
     # Log audit entry
@@ -351,13 +431,10 @@ async def parse_and_import_crlr_excel(
         }
     )
 
-    return {
-        "total_rows": total_rows,
-        "created": created_count,
-        "updated": updated_count,
-        "failed": failed_count,
-        "errors": errors,
-    }
+    return _make_import_summary(
+        rows_read=rows_read, blank_rows_skipped=blank_count, duplicate_rows=duplicate_count,
+        created=created_count, updated=updated_count, unchanged=unchanged_count, errors=errors,
+    )
 
 
 # ----------------------------------------------------
@@ -747,10 +824,18 @@ async def parse_and_import_timetable_excel(
         if not rows:
             continue
 
-        first_row_non_empty = next((r for r in rows if any(r)), None)
-        first_row_str = " ".join(str(c or "").lower() for c in first_row_non_empty) if first_row_non_empty else ""
-
-        is_tabular = ("subject" in first_row_str and "period" in first_row_str) or ("start time" in first_row_str) or ("start_time" in first_row_str) or ("starttime" in first_row_str)
+        header_row_idx = None
+        header_tokens = []
+        for candidate_idx, candidate in enumerate(rows[:30]):
+            tokens = [re.sub(r"[^a-z0-9]", "", str(c or "").lower()) for c in candidate]
+            has_subject = any("subject" in t or "course" in t for t in tokens)
+            has_period = any("period" in t or "hour" == t for t in tokens)
+            has_time = any(t in {"starttime", "fromtime", "start"} for t in tokens)
+            if has_subject and (has_period or has_time):
+                header_row_idx = candidate_idx
+                header_tokens = tokens
+                break
+        is_tabular = header_row_idx is not None
 
         # Check if sheet is a College Matrix Grid sheet (e.g. contains DAY in top rows)
         is_matrix_grid = False
@@ -772,16 +857,21 @@ async def parse_and_import_timetable_excel(
 
         # Standard Tabular parsing fallback
 
-        header_row = [str(cell).strip() if cell is not None else "" for cell in rows[0]]
-        header_lower = [h.lower() for h in header_row]
-
         col_map = {}
-        for idx, h in enumerate(header_lower):
-            col_map[h] = idx
+        for idx, token in enumerate(header_tokens):
+            if "year" in token: col_map["year"] = idx
+            elif "section" in token or token in {"sec", "class"}: col_map["section"] = idx
+            elif "day" in token: col_map["day"] = idx
+            elif "period" in token or token == "hour": col_map["period"] = idx
+            elif token in {"starttime", "fromtime", "start"}: col_map["start_time"] = idx
+            elif token in {"endtime", "totime", "end"}: col_map["end_time"] = idx
+            elif "subject" in token or "course" in token: col_map["subject"] = idx
+            elif "faculty" in token or "staff" in token or "lecturer" in token: col_map["faculty"] = idx
+            elif "room" in token or "venue" in token: col_map["room"] = idx
 
         default_section = sheet_name.strip().upper() if "-" in sheet_name or len(sheet_name) <= 10 else None
 
-        for row_idx, row_values in enumerate(rows[1:], start=2):
+        for row_idx, row_values in enumerate(rows[header_row_idx + 1:], start=header_row_idx + 2):
             if not any(row_values):
                 continue
 
@@ -789,15 +879,37 @@ async def parse_and_import_timetable_excel(
             row_errors = []
 
             def get_cell(key: str) -> str:
-                idx = col_map.get(key)
+                normalized_key = re.sub(r"[^a-z0-9]", "", key.lower())
+                lookup = {
+                    "starttime": "start_time", "fromtime": "start_time",
+                    "endtime": "end_time", "totime": "end_time",
+                }.get(normalized_key, normalized_key)
+                idx = col_map.get(lookup)
                 if idx is not None and idx < len(row_values) and row_values[idx] is not None:
                     return str(row_values[idx]).strip()
                 return ""
 
-            year = get_cell("year") or "Standard"
-            section = get_cell("section").upper() or default_section
-            if section and not re.match(r"^(I|II|III|IV)-", section):
-                section = f"II-{section}"
+            raw_year = get_cell("year")
+            raw_section = (get_cell("section").upper() or default_section or "").strip()
+            section_year = re.match(r"^(I|II|III|IV)-", raw_section)
+            year = raw_year or ({"I": "1st Year", "II": "2nd Year", "III": "3rd Year", "IV": "4th Year"}.get(section_year.group(1), "Standard") if section_year else "Standard")
+            year_token = year.strip().upper()
+            if "IV" in year_token or "4" in year_token or "FOURTH" in year_token:
+                year = "4th Year"
+            elif "III" in year_token or "3" in year_token or "THIRD" in year_token:
+                year = "3rd Year"
+            elif "II" in year_token or "2" in year_token or "SECOND" in year_token:
+                year = "2nd Year"
+            elif re.search(r"\bI\b", year_token) or "1" in year_token or "FIRST" in year_token:
+                year = "1st Year"
+            else:
+                year = year_token.title()
+            parts = raw_section.split("-")
+            branch = parts[-2] if len(parts) >= 3 and parts[-2].isalpha() else "CSE"
+            # Timetable section labels are the canonical inventory. Preserve the
+            # uploaded spelling (for example, II-B) instead of manufacturing a
+            # different section name during import.
+            section = raw_section
             day = get_cell("day").capitalize()
             period_raw = get_cell("period")
             start_time_raw = get_cell("start time") or get_cell("starttime") or get_cell("start_time")
@@ -1035,22 +1147,22 @@ def extract_raw_rows_from_file(file_bytes: bytes, filename: str) -> List[List[st
     if is_ole or fn_lower.endswith(".xls"):
         try:
             import xlrd
-            wb = xlrd.open_workbook(file_contents=file_bytes)
+            wb = xlrd.open_workbook(file_contents=file_bytes, formatting_info=True)
             all_sheets_rows = []
             for sheet in wb.sheets():
                 for r in range(sheet.nrows):
                     row_vals = sheet.row_values(r)
                     clean_r = []
-                    for c in row_vals:
-                        if isinstance(c, float) and c.is_integer():
-                            clean_r.append(str(int(c)))
-                        elif c is not None:
-                            s = str(c).strip()
-                            if s.endswith(".0"):
-                                s = s[:-2]
-                            clean_r.append(s)
-                        else:
-                            clean_r.append("")
+                    for c_idx, c in enumerate(row_vals):
+                        cell = sheet.cell(r, c_idx)
+                        number_format = None
+                        if cell.ctype == xlrd.XL_CELL_NUMBER:
+                            try:
+                                xf = wb.xf_list[cell.xf_index]
+                                number_format = wb.format_map[xf.format_key].format_str
+                            except Exception:
+                                pass
+                        clean_r.append(_cell_to_text(c, number_format))
                     if any(clean_r):
                         all_sheets_rows.append(clean_r)
             if all_sheets_rows:
@@ -1065,18 +1177,10 @@ def extract_raw_rows_from_file(file_bytes: bytes, filename: str) -> List[List[st
             all_sheets_rows = []
             for ws_name in wb.sheetnames:
                 ws = wb[ws_name]
-                for row in ws.iter_rows(values_only=True):
+                for row in ws.iter_rows():
                     clean_r = []
                     for cell in row:
-                        if isinstance(cell, float) and cell.is_integer():
-                            clean_r.append(str(int(cell)))
-                        elif cell is not None:
-                            s = str(cell).strip()
-                            if s.endswith(".0"):
-                                s = s[:-2]
-                            clean_r.append(s)
-                        else:
-                            clean_r.append("")
+                        clean_r.append(_cell_to_text(cell.value, cell.number_format))
                     if any(clean_r):
                         all_sheets_rows.append(clean_r)
             if all_sheets_rows:
@@ -1315,21 +1419,28 @@ async def parse_and_import_mentor_excel(
             col_map["mentor_id"] = 1
 
     db = get_database()
-    existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=10000)
-    existing_by_id = {str(u.get("mentor_id") or u.get("roll_number") or "").upper(): str(u["_id"]) for u in existing_users if u.get("mentor_id") or u.get("roll_number")}
-    existing_by_email = {str(u["email"]).lower(): str(u["_id"]) for u in existing_users if u.get("email")}
+    existing_users = await db.users.find({"role": UserRole.MENTOR.value}).to_list(length=None)
+    all_users = await db.users.find({}, {"email": 1, "role": 1, "mentor_id": 1, "roll_number": 1}).to_list(length=None)
+    existing_by_id = {str(u.get("mentor_id") or u.get("roll_number") or "").upper(): u for u in existing_users if u.get("mentor_id") or u.get("roll_number")}
+    existing_by_email = {str(u["email"]).strip().lower(): u for u in existing_users if u.get("email")}
+    all_by_email = {str(u["email"]).strip().lower(): u for u in all_users if u.get("email")}
 
     seen_ids_in_file: set = set()
+    seen_emails_in_file: set = set()
     total_rows = 0
     created_count = 0
     updated_count = 0
+    unchanged_count = 0
     failed_count = 0
+    duplicate_count = 0
+    blank_count = 0
     errors = []
+    rows_read = max(0, len(raw_rows) - header_idx - 1)
 
     def clean_val(val: Any) -> str:
         if val is None:
             return ""
-        s = str(val).strip()
+        s = _cell_to_text(val).strip()
         if s.endswith(".0") and re.match(r"^\d+\.0$", s):
             s = s[:-2]
         # Strip special/corrupt unicode characters like â, Â, \xa0, \u200b, \ufeff
@@ -1340,6 +1451,7 @@ async def parse_and_import_mentor_excel(
 
     for row_idx, row_values in enumerate(raw_rows[header_idx + 1:], start=header_idx + 2):
         if not any(row_values):
+            blank_count += 1
             continue
 
         def get_field(col_key: str) -> str:
@@ -1378,12 +1490,8 @@ async def parse_and_import_mentor_excel(
 
         if not name:
             row_errors.append("Mentor Name is required.")
-        # Auto-recover: if we have name but no ID/email, skip gracefully with a generated ID
-        if not mentor_id and not email and name:
-            # Generate a temporary ID from name so the row isn't rejected
-            clean_name = re.sub(r'[^a-z0-9]', '', name.lower())
-            mentor_id = f"FAC{clean_name[:8].upper()}"
-            email = f"{clean_name[:12]}@nrtec.in"
+        if not mentor_id and not email:
+            row_errors.append("A stable Mentor ID or email is required.")
 
         if row_errors:
             failed_count += 1
@@ -1398,19 +1506,35 @@ async def parse_and_import_mentor_excel(
             email = f"{clean_id_email}@nrtec.in"
 
         now = datetime.now(timezone.utc)
-        target_id = existing_by_id.get(mentor_id) or existing_by_email.get(email)
+        id_match = existing_by_id.get(mentor_id)
+        email_match = existing_by_email.get(email)
+        email_owner = all_by_email.get(email)
+        if email_owner and email_owner.get("role") != UserRole.MENTOR.value:
+            row_errors.append("Email belongs to a different account role; no account was changed.")
+        if id_match and email_match and id_match["_id"] != email_match["_id"]:
+            row_errors.append("Mentor ID and email match different existing accounts.")
+        target_user = id_match or email_match
+        if target_user and target_user.get("mentor_id") and str(target_user["mentor_id"]).strip().upper() != mentor_id:
+            row_errors.append("Existing Mentor ID does not match; login identity was preserved.")
+        if target_user and target_user.get("email") and str(target_user["email"]).strip().lower() != email:
+            row_errors.append("Existing email does not match; login identity was preserved.")
+
+        duplicate_in_file = mentor_id in seen_ids_in_file or email in seen_emails_in_file
+        if duplicate_in_file and not row_errors:
+            duplicate_count += 1
+            errors.append({"row": row_idx, "kind": "duplicate", "errors": ["Duplicate Mentor ID or email within the uploaded file; first valid row is retained."]})
+            continue
+        if row_errors:
+            failed_count += 1
+            errors.append({"row": row_idx, "mentor_id": mentor_id or "N/A", "errors": row_errors})
+            continue
+        seen_ids_in_file.add(mentor_id)
+        seen_emails_in_file.add(email)
 
         # Default password is "mentor@1234"
         pwd_to_use = password.strip() if password and password.strip() else "mentor@1234"
 
-        update_fields: Dict[str, Any] = {
-            "name": name,
-            "email": email,
-            "mentor_id": mentor_id,
-            "employee_id": mentor_id,
-            "roll_number": mentor_id,
-            "updated_at": now,
-        }
+        update_fields: Dict[str, Any] = {"name": name}
         if phone:
             update_fields["phone"] = phone
         if designation:
@@ -1419,22 +1543,15 @@ async def parse_and_import_mentor_excel(
             update_fields["department"] = department
         if profile:
             update_fields["profile"] = profile
-        if password:
-            update_fields["password_hash"] = hash_password(pwd_to_use)
-
-        if mentor_id and mentor_id in seen_ids_in_file:
-            if target_id:
-                query = {"_id": ObjectId(target_id)} if ObjectId.is_valid(target_id) else {"_id": target_id}
-                await db.users.update_one(query, {"$set": update_fields})
+        if target_user:
+            changed_fields = {key: value for key, value in update_fields.items() if target_user.get(key) != value}
+            if changed_fields:
+                changed_fields["updated_at"] = now
+                await db.users.update_one({"_id": target_user["_id"]}, {"$set": changed_fields})
+                target_user.update(changed_fields)
                 updated_count += 1
-            continue
-        elif mentor_id:
-            seen_ids_in_file.add(mentor_id)
-
-        if target_id:
-            query = {"_id": ObjectId(target_id)} if ObjectId.is_valid(target_id) else {"_id": target_id}
-            await db.users.update_one(query, {"$set": update_fields})
-            updated_count += 1
+            else:
+                unchanged_count += 1
         else:
             new_doc = {
                 "name": name,
@@ -1453,25 +1570,24 @@ async def parse_and_import_mentor_excel(
                 "updated_at": now,
             }
             res = await db.users.insert_one(new_doc)
-            new_str_id = str(res.inserted_id)
-            existing_by_id[mentor_id] = new_str_id
-            existing_by_email[email] = new_str_id
+            new_doc["_id"] = res.inserted_id
+            existing_by_id[mentor_id] = new_doc
+            existing_by_email[email] = new_doc
+            all_by_email[email] = new_doc
             created_count += 1
 
+    summary = _make_import_summary(
+        rows_read=rows_read, blank_rows_skipped=blank_count, duplicate_rows=duplicate_count,
+        created=created_count, updated=updated_count, unchanged=unchanged_count, errors=errors,
+    )
     await db.audit_logs.insert_one({
         "actor_id": actor_id,
         "action": "IMPORT_MENTORS_EXCEL",
-        "metadata": {"total_rows": total_rows, "created": created_count, "updated": updated_count, "failed": failed_count},
+        "metadata": {key: value for key, value in summary.items() if key not in {"errors", "warnings"}},
         "created_at": datetime.now(timezone.utc),
     })
 
-    return {
-        "total_rows": total_rows,
-        "created": created_count,
-        "updated": updated_count,
-        "failed": failed_count,
-        "errors": errors,
-    }
+    return summary
 
 
 # ----------------------------------------------------
@@ -1537,6 +1653,9 @@ async def parse_and_import_student_excel(
     SECTION_ALIASES = {"section", "sec"}
     PARENT_PHONE_ALIASES = {"parentphone", "parentmobile", "fatherphone", "fathermobile", "guardianphone", "parent"}
     STUDENT_PHONE_ALIASES = {"studentphone", "studentmobile", "phone", "mobile", "mobileno", "phoneno", "contact"}
+    EMAIL_ALIASES = {"email", "studentemail", "emailid", "mailid", "emailaddress"}
+    SERIAL_ALIASES = {"serial", "serialno", "serialnumber", "sno", "slno", "studentsno"}
+    ASSIGNED_CRL_ALIASES = {"assignedcrlr", "crlr", "crlrname", "classrepresentative", "representative"}
 
     for idx, row in enumerate(raw_rows[:30]):
         row_cleaned = [re.sub(r'[^a-z0-9]', '', str(cell).lower()) for cell in row]
@@ -1570,6 +1689,15 @@ async def parse_and_import_student_excel(
                 elif c_norm in PARENT_PHONE_ALIASES or "parent" in c_norm or "father" in c_norm or "guardian" in c_norm:
                     if "parent_phone" not in temp_map:
                         temp_map["parent_phone"] = c_idx
+                elif c_norm in EMAIL_ALIASES or "email" in c_norm or "mail" in c_norm:
+                    if "student_email" not in temp_map:
+                        temp_map["student_email"] = c_idx
+                elif c_norm in SERIAL_ALIASES:
+                    if "serial_number" not in temp_map:
+                        temp_map["serial_number"] = c_idx
+                elif c_norm in ASSIGNED_CRL_ALIASES or ("crlr" in c_norm and "phone" not in c_norm):
+                    if "assigned_crlr" not in temp_map:
+                        temp_map["assigned_crlr"] = c_idx
                 elif c_norm in STUDENT_PHONE_ALIASES or "phone" in c_norm or "mobile" in c_norm:
                     if "student_phone" not in temp_map:
                         temp_map["student_phone"] = c_idx
@@ -1580,39 +1708,68 @@ async def parse_and_import_student_excel(
                 break
 
     if header_idx == -1:
-        header_idx = 0
-        col_map = {"name": 0, "roll_number": 1, "branch": 2, "batch": 3, "section": 4, "parent_phone": 5, "student_phone": 6}
-
-    if "name" not in col_map and "roll_number" not in col_map:
-        raise ValueError("Invalid Student Roster file format! The uploaded file does not contain required Student headers (Roll Number and Student Name). Please upload a valid Student Roster Excel/CSV file.")
-
-    inferred_year = "2nd Year"
-    inferred_batch = 2029
-    if "3" in fn_lower or "iii" in fn_lower:
-        inferred_year = "3rd Year"
-        inferred_batch = 2028
-    elif "4" in fn_lower or "iv" in fn_lower:
-        inferred_year = "4th Year"
-        inferred_batch = 2027
-    elif "1" in fn_lower or "i" in fn_lower:
-        inferred_year = "1st Year"
-        inferred_batch = 2030
-
-    inferred_section = "A"
-    sec_match = re.search(r'([i|v|x]+-cse-[a-z]+|cse-[a-z]+|section-[a-z]+)', fn_lower)
-    if sec_match:
-        inferred_section = sec_match.group(1).upper()
+        raise ValueError("Could not find a student roster header row with both Student Name and Roll Number.")
+    if "name" not in col_map or "roll_number" not in col_map:
+        raise ValueError("Student roster must include Student Name and Roll Number columns.")
+    if "section" not in col_map:
+        raise ValueError("Student roster must include a Section column.")
 
     db = get_database()
-    existing_students = await db.students.find({}, {"roll_number": 1}).to_list(length=10000)
-    existing_rolls = {s["roll_number"].upper(): str(s["_id"]) for s in existing_students if s.get("roll_number")}
+    existing_students = await db.students.find({}).to_list(length=None)
+    existing_rolls: Dict[str, Dict[str, Any]] = {}
+    conflicting_existing_rolls = set()
+    for student in existing_students:
+        key = str(student.get("roll_number") or "").strip().upper()
+        if not key:
+            continue
+        if key in existing_rolls:
+            conflicting_existing_rolls.add(key)
+            existing_rolls.pop(key, None)
+        elif key not in conflicting_existing_rolls:
+            existing_rolls[key] = student
+    section_docs = await db.sections.find({}, {"year": 1, "section_name": 1, "branch": 1, "department": 1, "assigned_cr_id": 1, "assigned_lr_id": 1}).to_list(length=None)
+    timetable_docs = await db.timetables.find({}, {"year": 1, "section": 1}).to_list(length=None)
+    crlr_users = await db.users.find(
+        {"role": {"$in": [UserRole.CR.value, UserRole.LR.value]}},
+        {"name": 1, "email": 1, "roll_number": 1, "mentor_id": 1, "year": 1, "section": 1},
+    ).to_list(length=None)
+    crlr_by_identity: Dict[str, Dict[str, Any]] = {}
+    crlr_by_section: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for user in crlr_users:
+        for identity in (user.get("name"), user.get("email"), user.get("roll_number"), user.get("mentor_id")):
+            if identity:
+                crlr_by_identity[str(identity).strip().casefold()] = user
+        if user.get("year") and user.get("section"):
+            section_value = str(user["section"]).strip().upper()
+            tail = section_value.rsplit("-", 1)[-1]
+            crlr_by_section[(str(user["year"]).strip().casefold(), section_value)] = user
+            crlr_by_section[(str(user["year"]).strip().casefold(), tail)] = user
+    section_by_identity: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for section_doc in section_docs:
+        if section_doc.get("year") and section_doc.get("section_name"):
+            section_by_identity[(str(section_doc["year"]).strip().casefold(), str(section_doc["section_name"]).strip().upper())] = section_doc
+    timetable_sections = {
+        ((doc.get("year") or "").strip().lower(), (doc.get("section_name") or "").strip().upper())
+        for doc in section_docs if doc.get("section_name")
+    }
+    timetable_section_by_key: Dict[Tuple[str, str], str] = {}
+    for timetable in timetable_docs:
+        tt_year = _normalize_academic_year_label(str(timetable.get("year") or ""))
+        tt_section = str(timetable.get("section") or "").strip().upper()
+        if tt_year and tt_section:
+            timetable_section_by_key.setdefault((tt_year.casefold(), tt_section.rsplit("-", 1)[-1]), tt_section)
 
     seen_rolls_in_file = set()
     total_rows = 0
     created_count = 0
     updated_count = 0
+    unchanged_count = 0
     failed_count = 0
+    duplicate_count = 0
+    blank_count = 0
+    ignored_count = 0
     errors = []
+    rows_read = max(0, len(raw_rows) - header_idx - 1)
 
     def clean_val(val: Any) -> str:
         if val is None:
@@ -1635,117 +1792,139 @@ async def parse_and_import_student_excel(
 
         name = get_field("name")
         roll = get_field("roll_number").upper()
-        branch = get_field("branch") or "CSE"
+        branch = get_field("branch").upper()
         batch_raw = get_field("batch")
         year_raw = get_field("year")
-        raw_section = get_field("section").upper().strip() or inferred_section
+        raw_section = get_field("section").upper().strip()
         student_phone = get_field("student_phone")
         parent_phone = get_field("parent_phone")
+        student_email = get_field("student_email").lower()
+        serial_number = get_field("serial_number")
+        assigned_crlr = get_field("assigned_crlr")
 
         if not roll and not name:
+            blank_count += 1
             continue
         if roll in ["ROLL NUMBER", "ROLL NO", "PIN", "HT NO", "S.NO", "ROLLNUMBER"]:
+            ignored_count += 1
             continue
 
-        # Calculate year and batch
+        # Current year comes from an explicit year field when provided. If the
+        # source workbook has only a graduation batch, use the existing batch model.
+        inferred_from_roll = infer_batch_from_roll(roll)
+        row_errors: List[str] = []
+        year = _normalize_academic_year_label(year_raw)
+        batch: Any = None
+        if year_raw and not year:
+            row_errors.append(f"Academic year '{year_raw}' is invalid.")
         if batch_raw:
-            batch = int(batch_raw) if str(batch_raw).strip().isdigit() else batch_raw
+            batch_match = re.search(r"20\d{2}", batch_raw)
+            if batch_match:
+                batch = int(batch_match.group(0))
+            else:
+                row_errors.append(f"Batch '{batch_raw}' is invalid.")
+        elif inferred_from_roll:
+            batch = inferred_from_roll
+        if not year and not year_raw and batch is not None:
             year = compute_year_from_batch(batch)
-        elif year_raw:
-            year = year_raw
-            inferred_from_roll = infer_batch_from_roll(roll)
-            batch = inferred_from_roll if inferred_from_roll else inferred_batch
-        else:
-            inferred_from_roll = infer_batch_from_roll(roll)
-            if inferred_from_roll:
-                batch = inferred_from_roll
-                year = compute_year_from_batch(batch)
-            else:
-                batch = inferred_batch
-                year = compute_year_from_batch(batch)
-
-        # Normalize section to full canonical form: "A" → "II-CSE-A", "CSE-A" → "II-CSE-A"
-        # This prevents students from being misassigned across sections/years.
-        def _normalize_section(raw_sec: str, yr: str, br: str = "CSE") -> str:
-            s = raw_sec.strip().upper()
-            # Already fully qualified (e.g. II-CSE-A, III-CSE-B)
-            if re.match(r'^(I{1,4}V?|IV)-[A-Z]+-[A-Z]+$', s):
-                return s
-            # e.g. CSE-A → prefix with year roman
-            if re.match(r'^[A-Z]+-[A-Z]$', s):
-                sec_letter = s.split("-")[-1]
-            elif re.match(r'^[A-J]$', s):
-                sec_letter = s
-            else:
-                # Strip known prefixes and extract trailing letter
-                stripped = re.sub(r'^(II|III|IV|I)-?(CSE|ECE|EEE|MECH|CIVIL|IT)-?', '', s).strip("-")
-                sec_letter = stripped[-1] if stripped else s[-1]
-
-            year_roman = {
-                "1st Year": "I", "2nd Year": "II",
-                "3rd Year": "III", "4th Year": "IV"
-            }.get(yr, "II")
-            return f"{year_roman}-{br.upper()}-{sec_letter}"
-
-        section = _normalize_section(raw_section, year, branch)
+        if not year:
+            row_errors.append("Academic year is required; provide a valid year or a valid batch/roll number.")
+        if not branch:
+            row_errors.append("Branch/department is required.")
+        if not raw_section:
+            row_errors.append("Section is required.")
+        section = normalize_student_section(raw_section, year, branch) if raw_section and year and branch else ""
+        inventory_section = timetable_section_by_key.get((year.casefold(), section.rsplit("-", 1)[-1].upper())) if section and year else None
+        if inventory_section:
+            section = inventory_section
 
         total_rows += 1
-        row_errors = []
 
         if not name:
             row_errors.append("Student Name is required.")
         if not roll:
             row_errors.append("Roll Number is required.")
+        if roll and roll in conflicting_existing_rolls:
+            row_errors.append("This roll number matches multiple existing database records; resolve the conflict before importing it.")
 
-        if roll and roll in seen_rolls_in_file:
-            row_errors.append(f"Duplicate roll number '{roll}' within file.")
-        elif roll:
-            seen_rolls_in_file.add(roll)
+        if roll and roll in seen_rolls_in_file and not row_errors:
+            duplicate_count += 1
+            errors.append({"row": row_idx, "roll_number": roll, "kind": "duplicate", "errors": ["Duplicate roll number within the uploaded file; first valid row is retained."]})
+            continue
 
         if row_errors:
             failed_count += 1
             errors.append({"row": row_idx, "roll_number": roll or "N/A", "errors": row_errors})
             continue
+        seen_rolls_in_file.add(roll)
 
-        crlr_id, crlr_name = await find_crlr_for_student(db, year, section)
+        if timetable_sections and (year.lower(), section.upper()) not in timetable_sections:
+            errors.append({"row": row_idx, "roll_number": roll, "kind": "warning", "errors": [f"Section '{section}' is not in the timetable inventory for {year}; the uploaded assignment was preserved."]})
+
+        representative = crlr_by_section.get((year.casefold(), section.upper())) or crlr_by_section.get((year.casefold(), section.rsplit("-", 1)[-1].upper()))
+        if not representative:
+            section_doc = section_by_identity.get((year.casefold(), section.upper()))
+            assigned_id = (section_doc or {}).get("assigned_cr_id") or (section_doc or {}).get("assigned_lr_id")
+            representative = next((u for u in crlr_users if str(u.get("_id")) == str(assigned_id)), None)
+        crlr_id = str(representative["_id"]) if representative else None
+        crlr_name = representative.get("name") if representative else None
+        if assigned_crlr:
+            assigned_user = crlr_by_identity.get(assigned_crlr.casefold())
+            crlr_id = str(assigned_user["_id"]) if assigned_user else None
+            crlr_name = assigned_user.get("name") if assigned_user else assigned_crlr
 
         now = datetime.now(timezone.utc)
         student_doc = {
-            "batch": batch,
             "branch": branch,
             "year": year,
             "name": name,
             "roll_number": roll,
             "section": section,
-            "student_phone": student_phone if student_phone else None,
-            "parent_phone": parent_phone if parent_phone else None,
-            "crlr_id": crlr_id,
-            "crlr_name": crlr_name,
             "updated_at": now,
         }
+        if batch is not None:
+            student_doc["batch"] = batch
+        if student_phone:
+            student_doc["student_phone"] = student_phone
+        if parent_phone:
+            student_doc["parent_phone"] = parent_phone
+        if student_email:
+            student_doc["student_email"] = student_email
+        if serial_number:
+            student_doc["serial_number"] = serial_number
+        if assigned_crlr or crlr_id:
+            student_doc["crlr_id"] = crlr_id
+            student_doc["crlr_name"] = crlr_name
 
         if roll in existing_rolls:
-            s_id = existing_rolls[roll]
-            await db.students.update_one({"_id": ObjectId(s_id)}, {"$set": student_doc})
-            updated_count += 1
+            existing = existing_rolls[roll]
+            comparable = {key: value for key, value in student_doc.items() if key != "updated_at"}
+            if any(existing.get(key) != value for key, value in comparable.items()):
+                student_doc["roll_number_normalized"] = roll
+                await db.students.update_one({"_id": existing["_id"]}, {"$set": student_doc})
+                existing.update(comparable)
+                updated_count += 1
+            else:
+                unchanged_count += 1
         else:
             student_doc["created_at"] = now
+            student_doc["roll_number_normalized"] = roll
             res = await db.students.insert_one(student_doc)
-            existing_rolls[roll] = str(res.inserted_id)
+            student_doc["_id"] = res.inserted_id
+            existing_rolls[roll] = student_doc
             created_count += 1
 
+    summary = _make_import_summary(
+        rows_read=rows_read, blank_rows_skipped=blank_count, duplicate_rows=duplicate_count,
+        created=created_count, updated=updated_count, unchanged=unchanged_count,
+        errors=errors, ignored_rows=ignored_count,
+    )
     await db.audit_logs.insert_one({
         "actor_id": actor_id,
         "action": "IMPORT_STUDENTS_EXCEL",
-        "metadata": {"total_rows": total_rows, "created": created_count, "updated": updated_count, "failed": failed_count},
+        "metadata": {key: value for key, value in summary.items() if key not in {"errors", "warnings"}},
         "created_at": datetime.now(timezone.utc),
     })
 
-    return {
-        "total_rows": total_rows,
-        "created": created_count,
-        "updated": updated_count,
-        "failed": failed_count,
-        "errors": errors,
-    }
+    return summary
 

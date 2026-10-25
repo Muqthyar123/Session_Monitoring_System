@@ -27,7 +27,7 @@ async def list_mentors_api(
     search: Optional[str] = Query(None),
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
-    users = await get_users(role=UserRole.MENTOR, search=search, limit=500)
+    users = await get_users(role=UserRole.MENTOR, search=search, limit=10000)
     return ApiResponse(success=True, data=users)
 
 

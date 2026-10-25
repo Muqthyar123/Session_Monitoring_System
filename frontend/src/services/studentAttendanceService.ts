@@ -81,12 +81,12 @@ export async function submitStudentAttendance(payload: {
   });
 }
 
-export async function getAbsenteeYears(): Promise<string[]> {
-  return request<string[]>("/mentor/absentees/years");
+export async function getAbsenteeYears(): Promise<Array<{ year: string; studentCount: number; absenteeCount: number; unassignedStudentCount: number }>> {
+  return request<Array<{ year: string; studentCount: number; absenteeCount: number; unassignedStudentCount: number }>>("/mentor/absentees/years");
 }
 
-export async function getAbsenteeSections(year: string): Promise<string[]> {
-  return request<string[]>(`/mentor/absentees/sections?year=${encodeURIComponent(year)}`);
+export async function getAbsenteeSections(year: string): Promise<Array<{ section: string; year: string; studentCount: number; absenteeCount: number }>> {
+  return request<Array<{ section: string; year: string; studentCount: number; absenteeCount: number }>>(`/mentor/absentees/sections?year=${encodeURIComponent(year)}`);
 }
 
 export async function getAbsenteeStudents(year: string, section: string, date?: string): Promise<AbsenteeStudentItem[]> {

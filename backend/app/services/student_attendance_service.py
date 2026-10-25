@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import re
 import zoneinfo
 from typing import List, Optional, Dict, Any
 from bson import ObjectId
@@ -168,10 +169,21 @@ async def get_absentee_years() -> List[str]:
     att_years = await db.student_attendance.distinct("year")
     stu_years = await db.students.distinct("year")
     
-    all_years = sorted(list(set([y for y in (att_years + stu_years) if y])))
-    if not all_years:
-        all_years = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
-    return all_years
+    def normalize_year(raw: str) -> Optional[str]:
+        token = re.sub(r"[^a-z0-9]", "", raw.lower())
+        for aliases, canonical in (
+            ({"1", "1st", "1styear", "first", "firstyear", "i", "iyear"}, "1st Year"),
+            ({"2", "2nd", "2ndyear", "second", "secondyear", "ii", "iiyear"}, "2nd Year"),
+            ({"3", "3rd", "3rdyear", "third", "thirdyear", "iii", "iiiyear"}, "3rd Year"),
+            ({"4", "4th", "4thyear", "fourth", "fourthyear", "iv", "ivyear"}, "4th Year"),
+            ({"graduated", "alumni"}, "Graduated"),
+        ):
+            if token in aliases:
+                return canonical
+        return None
+    order = {"1st Year": 0, "2nd Year": 1, "3rd Year": 2, "4th Year": 3, "Graduated": 4}
+    all_years = {normalize_year(str(y)) for y in att_years + stu_years if y}
+    return sorted((year for year in all_years if year), key=lambda year: order.get(year, 99))
 
 
 async def get_absentee_sections(year: str) -> List[str]:
@@ -182,7 +194,8 @@ async def get_absentee_sections(year: str) -> List[str]:
     # Import student service helpers
     from app.services.student_service import build_year_filter_clause
 
-    # 1. Sections from uploaded timetables for this year
+    # Sections come from the timetable inventory where available. Student records
+    # are a fallback for installations that have not uploaded timetables yet.
     tt_secs = await db.timetables.distinct("section", {"year": year_clean})
     
     # Also check roman numeral prefix in timetables (e.g. II-A for 2nd Year, III-A for 3rd Year)
@@ -194,14 +207,10 @@ async def get_absentee_sections(year: str) -> List[str]:
             if s and (s.startswith(f"{r_prefix}-") or f"-{r_prefix}-" in s):
                 tt_secs.append(s)
 
-    # 2. Sections from uploaded students for this year
     year_clause = build_year_filter_clause(year_clean)
     stu_secs = await db.students.distinct("section", year_clause) if year_clause else await db.students.distinct("section", {"year": year_clean})
-
-    # 3. Sections from student attendance records
-    att_secs = await db.student_attendance.distinct("section", {"year": year_clean})
-
-    all_secs = sorted(list(set([s.upper().strip() for s in (tt_secs + stu_secs + att_secs) if s and s.strip()])))
+    source_secs = tt_secs or stu_secs
+    all_secs = sorted(list(set([s.upper().strip() for s in source_secs if s and s.strip()])))
     return all_secs
 
 
@@ -453,21 +462,21 @@ async def get_students_analytics_summary(year: str, section: str) -> List[Studen
     cursor = db.students.find(query).sort("roll_number", 1)
     students_docs = await cursor.to_list(length=5000)
 
-    # If nothing matched with year, try section only as a fallback
-    if not students_docs:
-        students_docs = await db.students.find({"section": {"$in": sec_candidates}}).sort("roll_number", 1).to_list(length=5000)
-
     distinct_dates = await db.student_attendance_submissions.distinct(
-        "date", {"section": {"$in": sec_candidates}}
+        "date", {"year": year_clean, "section": {"$in": sec_candidates}}
     )
     total_days = len(distinct_dates) if distinct_dates else 0
     if total_days == 0:
-        att_dates = await db.student_attendance.distinct("date", {"section": {"$in": sec_candidates}})
+        att_dates = await db.student_attendance.distinct("date", {"year": year_clean, "section": {"$in": sec_candidates}})
         total_days = len(att_dates) if att_dates else 0
 
+    student_rolls = [str(doc.get("roll_number") or "").strip().upper() for doc in students_docs]
     abs_docs = await db.student_attendance.find({
+        "year": year_clean,
+        "section": {"$in": sec_candidates},
         "status": "Absent",
-    }).to_list(length=20000)
+        "roll_number": {"$in": student_rolls},
+    }).to_list(length=None) if student_rolls else []
 
     abs_counts = {}
     for doc in abs_docs:

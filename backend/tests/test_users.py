@@ -114,4 +114,7 @@ async def test_crlr_excel_import(client: AsyncClient):
     res = await client.post("/api/admin/users/import", files=files, headers=headers)
     assert res.status_code == 200
     summary = res.json()["data"]
-    assert summary["created"] >= 1
+    # An empty template must be accepted as a no-op; importing it must not
+    # create a placeholder or corrupt administrator/CR/LR account.
+    assert summary["created"] == 0
+    assert summary["updated"] == 0

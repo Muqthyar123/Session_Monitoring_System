@@ -109,7 +109,7 @@ async def get_users(
     year: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = 0,
-    limit: int = 500,
+    limit: int = 10000,
 ) -> List[UserResponse]:
     db = get_database()
     query = {}
@@ -133,7 +133,12 @@ async def get_users(
             {"department": {"$regex": search, "$options": "i"}},
         ]
 
-    cursor = db.users.find(query).skip(skip).limit(limit).sort("created_at", -1)
+    cursor = (
+        db.users.find(query, {"password_hash": 0})
+        .sort("created_at", -1)
+        .skip(skip)
+        .limit(min(max(limit, 1), 10000))
+    )
     users = []
     async for u in cursor:
         u["_id"] = str(u["_id"])

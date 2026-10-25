@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status, HTTPException
 from app.core.dependencies import get_current_user, require_roles
 from app.schemas.common import ApiResponse
 from app.schemas.timetable import TimetablePeriodResponse
@@ -48,6 +48,9 @@ async def upload_timetable_api(
         summary = await parse_and_import_timetable_excel(
             file_bytes, filename=file.filename, actor_id=admin["id"]
         )
+        if summary.get("inserted", 0) > 0:
+            from app.services.section_service import reconcile_sections_with_timetables
+            summary["section_reconciliation"] = await reconcile_sections_with_timetables()
         save_mock_db_to_disk_sync()
     except ValueError as val_err:
         raise HTTPException(status_code=400, detail=str(val_err))

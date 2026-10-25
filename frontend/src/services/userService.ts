@@ -56,7 +56,7 @@ export async function uploadCRLRExcel(file: File): Promise<{ message: string }> 
   });
 
   return {
-    message: res.message || `Import completed successfully: ${res.created} users created, ${res.updated} updated.`,
+    message: res.message || `Import complete: ${res.created} created, ${res.updated} updated, ${res.failed} failed.`,
   };
 }
 

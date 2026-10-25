@@ -59,7 +59,7 @@ function MentorDashboardPage() {
       {loading ? (
         <LoadingState label="Loading mentor dashboard statistics..." />
       ) : error ? (
-        <ErrorState title="Failed to load dashboard" description={error.message} retry={reload} />
+        <ErrorState title="Failed to load dashboard" description={error} retry={reload} />
       ) : data ? (
         <div className="space-y-6">
           {/* Mentor Profile Overview Banner */}

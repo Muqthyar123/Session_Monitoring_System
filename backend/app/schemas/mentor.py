@@ -6,6 +6,7 @@ class MentorYearCard(BaseModel):
     year: str
     student_count: int = Field(0, alias="studentCount")
     absentee_count: int = Field(0, alias="absenteeCount")
+    unassigned_student_count: int = Field(0, alias="unassignedStudentCount")
 
     model_config = ConfigDict(populate_by_name=True)
 

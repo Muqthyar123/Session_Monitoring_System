@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, Plus, Search, Pencil, Trash2, RotateCcw, Phone, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
@@ -44,13 +44,13 @@ import {
   createStudent,
   deleteStudent,
   downloadStudentTemplate,
-  getStudents,
   resetStudents,
   updateStudent,
   uploadStudentExcel,
+  getStudentsPage,
+  getStudentFilterOptions,
   type StudentItem,
 } from "@/services/studentService";
-import { MOCK_YEARS } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/admin/students")({
   head: () => ({
@@ -63,11 +63,6 @@ export const Route = createFileRoute("/admin/students")({
 });
 
 const ALL = "ALL";
-const SECTIONS = [
-  "CSE-A", "CSE-B", "CSE-C", "CSE-D", "CSE-E",
-  "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"
-];
-
 const BATCH_OPTIONS = [
   { batch: 2027, label: "2027 (4th Year)" },
   { batch: 2028, label: "2028 (3rd Year)" },
@@ -95,22 +90,17 @@ export function computeYearFromBatch(batch?: number | string): string {
   if (!batch) return "—";
   const b = typeof batch === "string" ? parseInt(batch, 10) : batch;
   if (isNaN(b)) return "—";
-  const map: Record<number, string> = {
-    2027: "4th Year",
-    2028: "3rd Year",
-    2029: "2nd Year",
-    2030: "1st Year",
-  };
-  if (map[b]) return map[b];
-  const yr = 2031 - b;
-  if (yr === 4) return "4th Year";
-  if (yr === 3) return "3rd Year";
-  if (yr === 2) return "2nd Year";
-  if (yr === 1) return "1st Year";
-  if (yr > 4) return "Graduated";
-  if (yr <= 0) return "1st Year";
-  return `${yr}th Year`;
+  const now = new Date();
+  const academicBase = (now.getMonth() + 1) >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  const diff = b - academicBase;
+  if (diff <= 0) return "Graduated";
+  if (diff === 1) return "4th Year";
+  if (diff === 2) return "3rd Year";
+  if (diff === 3) return "2nd Year";
+  if (diff >= 4) return "1st Year";
+  return "—";
 }
+
 
 interface StudentFormState {
   name: string;
@@ -140,21 +130,32 @@ function AdminStudentsPage() {
     return sessionStorage.getItem("admin_students_section") || ALL;
   });
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const handleYearFilterChange = (y: string) => {
     setYearFilter(y);
+    setPage(1);
     sessionStorage.setItem("admin_students_year", y);
   };
 
   const handleSectionFilterChange = (s: string) => {
     setSectionFilter(s);
+    setPage(1);
     sessionStorage.setItem("admin_students_section", s);
   };
 
-  const { data, loading, error, reload } = useAsyncData(
-    () => getStudents(yearFilter, sectionFilter),
-    [yearFilter, sectionFilter]
+  const { data: pageData, loading, error, reload } = useAsyncData(
+    () => getStudentsPage({ year: yearFilter, section: sectionFilter, search: debouncedSearch, page, pageSize }),
+    [yearFilter, sectionFilter, debouncedSearch, page]
   );
+  const { data: filterOptions } = useAsyncData(() => getStudentFilterOptions(), []);
+  const data = Array.isArray(pageData) ? pageData : (pageData?.items ?? []);
   const timetableUploads = useAsyncData(() => getTimetableUploads(), []);
 
   const studentExportColumns = [
@@ -180,35 +181,7 @@ function AdminStudentsPage() {
     { key: "crlrName", header: "Assigned CR/LR", transform: (v: any) => v || "" },
   ];
 
-  const filteredStudents = useMemo(() => {
-    if (!data) return [];
-    let list = data;
-    if (yearFilter && yearFilter !== ALL) {
-      list = list.filter((s) => {
-        const effBatch = s.batch || inferBatchFromRoll(s.rollNumber);
-        const effYear = effBatch ? computeYearFromBatch(effBatch) : (s.year || "");
-        return (
-          effYear.toLowerCase() === yearFilter.toLowerCase() ||
-          (s.year && s.year.toLowerCase() === yearFilter.toLowerCase())
-        );
-      });
-    }
-    if (sectionFilter && sectionFilter !== ALL) {
-      list = list.filter((s) => s.section === sectionFilter || s.section.toUpperCase().includes(sectionFilter.toUpperCase()));
-    }
-    const term = search.trim().toLowerCase();
-    if (!term) return list;
-    return list.filter(
-      (s) =>
-        s.name.toLowerCase().includes(term) ||
-        s.rollNumber.toLowerCase().includes(term) ||
-        (s.batch && s.batch.toString().includes(term)) ||
-        (s.branch && s.branch.toLowerCase().includes(term)) ||
-        (s.crlrName && s.crlrName.toLowerCase().includes(term)) ||
-        (s.studentPhone && s.studentPhone.toLowerCase().includes(term)) ||
-        (s.parentPhone && s.parentPhone.toLowerCase().includes(term))
-    );
-  }, [data, yearFilter, sectionFilter, search]);
+  const filteredStudents = data;
 
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -260,14 +233,14 @@ function AdminStudentsPage() {
       return Array.from(new Set(fromStudents)).sort();
     }
 
-    return SECTIONS;
+    return [];
   }, [formCalculatedYear, timetableUploads.data, data]);
 
   const availableFilterSections = useMemo(() => {
     const fromTimetable = (timetableUploads.data ?? []).map((t) => t.section).filter(Boolean);
     const fromStudents = (data ?? []).map((s) => s.section).filter(Boolean);
-    return Array.from(new Set([...fromTimetable, ...fromStudents, ...SECTIONS])).sort();
-  }, [timetableUploads.data, data]);
+    return Array.from(new Set([...(filterOptions?.sections ?? []), ...fromTimetable, ...fromStudents])).sort();
+  }, [timetableUploads.data, data, filterOptions?.sections]);
 
   const openCreateDialog = () => {
     setEditing(null);
@@ -563,7 +536,7 @@ function AdminStudentsPage() {
                 <Input
                   placeholder="Search student or roll number..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                   className="pl-9"
                 />
               </div>
@@ -575,7 +548,7 @@ function AdminStudentsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={ALL}>All Years</SelectItem>
-                    {MOCK_YEARS.map((y) => (
+                    {(filterOptions?.years ?? []).map((y) => (
                       <SelectItem key={y} value={y}>
                         {y}
                       </SelectItem>
@@ -609,7 +582,7 @@ function AdminStudentsPage() {
             {loading ? (
               <LoadingState label="Loading students..." />
             ) : error ? (
-              <ErrorState title="Failed to load students" description={error.message} retry={reload} />
+              <ErrorState title="Failed to load students" description={error} retry={reload} />
             ) : filteredStudents.length === 0 ? (
               <EmptyState
                 title="No students found"
@@ -621,7 +594,17 @@ function AdminStudentsPage() {
                 }
               />
             ) : (
-              <DataTable columns={columns} data={filteredStudents} getRowId={(r) => r.id || (r as any)._id || r.rollNumber} />
+              <>
+                <DataTable columns={columns} data={filteredStudents} getRowId={(r) => r.id || (r as any)._id || r.rollNumber} showPagination={false} />
+                <div className="flex items-center justify-between px-2 text-sm text-muted-foreground">
+                  <span>Showing {pageData?.total ? (page - 1) * pageSize + 1 : 0}–{Math.min(page * pageSize, pageData?.total ?? 0)} of {pageData?.total ?? 0}</span>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button>
+                    <span>Page {page} of {Math.max(pageData?.total_pages ?? 0, 1)}</span>
+                    <Button size="sm" variant="outline" disabled={page >= (pageData?.total_pages ?? 0)} onClick={() => setPage((value) => value + 1)}>Next</Button>
+                  </div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>

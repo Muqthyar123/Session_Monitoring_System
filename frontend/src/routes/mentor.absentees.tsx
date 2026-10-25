@@ -700,7 +700,7 @@ function MentorAbsenteesPage() {
             {loadingYears ? (
               <LoadingState label="Loading academic years..." />
             ) : errorYears ? (
-              <ErrorState title="Failed to load years" description={errorYears.message} retry={reloadYears} />
+              <ErrorState title="Failed to load years" description={errorYears} retry={reloadYears} />
             ) : !yearCards || yearCards.length === 0 ? (
               <EmptyState
                 title="No absentees reported today"
@@ -759,7 +759,7 @@ function MentorAbsenteesPage() {
             {loadingSections ? (
               <LoadingState label={`Loading sections for ${selectedYear}...`} />
             ) : errorSections ? (
-              <ErrorState title="Failed to load sections" description={errorSections.message} retry={reloadSections} />
+              <ErrorState title="Failed to load sections" description={errorSections} retry={reloadSections} />
             ) : !sectionCards || sectionCards.length === 0 ? (
               <EmptyState
                 title={`No absentee records in ${selectedYear}`}
@@ -872,7 +872,7 @@ function MentorAbsenteesPage() {
             {loadingAbsentees ? (
               <LoadingState label="Loading absentee details..." />
             ) : errorAbsentees ? (
-              <ErrorState title="Failed to load absentees" description={errorAbsentees.message} retry={reloadAbsentees} />
+              <ErrorState title="Failed to load absentees" description={errorAbsentees} retry={reloadAbsentees} />
             ) : !absentees || absentees.length === 0 ? (
               <EmptyState
                 title="No absentees reported today"

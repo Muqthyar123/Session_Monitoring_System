@@ -62,21 +62,15 @@ export function computeYearFromBatch(batch?: number | string): string {
   if (!batch) return "—";
   const b = typeof batch === "string" ? parseInt(batch, 10) : batch;
   if (isNaN(b)) return "—";
-  const map: Record<number, string> = {
-    2027: "4th Year",
-    2028: "3rd Year",
-    2029: "2nd Year",
-    2030: "1st Year",
-  };
-  if (map[b]) return map[b];
-  const yr = 2031 - b;
-  if (yr === 4) return "4th Year";
-  if (yr === 3) return "3rd Year";
-  if (yr === 2) return "2nd Year";
-  if (yr === 1) return "1st Year";
-  if (yr > 4) return "Graduated";
-  if (yr <= 0) return "1st Year";
-  return `${yr}th Year`;
+  const now = new Date();
+  const academicBase = (now.getMonth() + 1) >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  const diff = b - academicBase;
+  if (diff <= 0) return "Graduated";
+  if (diff === 1) return "4th Year";
+  if (diff === 2) return "3rd Year";
+  if (diff === 3) return "2nd Year";
+  if (diff >= 4) return "1st Year";
+  return "—";
 }
 
 function MentorStudentsPage() {
@@ -375,7 +369,7 @@ function MentorStudentsPage() {
             {loadingYears ? (
               <LoadingState label="Loading academic years..." />
             ) : errorYears ? (
-              <ErrorState title="Failed to load years" description={errorYears.message} retry={reloadYears} />
+              <ErrorState title="Failed to load years" description={errorYears} retry={reloadYears} />
             ) : !yearCards || yearCards.length === 0 ? (
               <EmptyState
                 title="No academic years available"
@@ -427,7 +421,7 @@ function MentorStudentsPage() {
             {loadingSections ? (
               <LoadingState label={`Loading sections for ${selectedYear}...`} />
             ) : errorSections ? (
-              <ErrorState title="Failed to load sections" description={errorSections.message} retry={reloadSections} />
+              <ErrorState title="Failed to load sections" description={errorSections} retry={reloadSections} />
             ) : !sectionCards || sectionCards.length === 0 ? (
               <EmptyState
                 title={`No sections found for ${selectedYear}`}
@@ -547,7 +541,7 @@ function MentorStudentsPage() {
               {loadingStudents ? (
                 <LoadingState label="Loading students..." />
               ) : errorStudents ? (
-                <ErrorState title="Failed to load students" description={errorStudents.message} retry={reloadStudents} />
+                <ErrorState title="Failed to load students" description={errorStudents} retry={reloadStudents} />
               ) : filteredSectionStudents.length === 0 ? (
                 <EmptyState
                   title="No students found"

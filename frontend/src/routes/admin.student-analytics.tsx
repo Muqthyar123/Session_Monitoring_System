@@ -58,8 +58,6 @@ export const Route = createFileRoute("/admin/student-analytics")({
   component: AdminStudentAbsenteesPage,
 });
 
-const DEFAULT_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
-const DEFAULT_SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 function AdminStudentAbsenteesPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(() => {
@@ -97,11 +95,11 @@ function AdminStudentAbsenteesPage() {
     loading: loadingYears,
     error: errorYears,
     reload: reloadYears,
-  } = useAsyncData(() => getAbsenteeYears().catch(() => DEFAULT_YEARS), []);
+  } = useAsyncData(() => getAbsenteeYears(), []);
 
-  const normalizedYears: { year: string; studentCount?: number; absenteeCount?: number }[] = useMemo(() => {
+  const normalizedYears: { year: string; studentCount?: number; absenteeCount?: number; unassignedStudentCount?: number }[] = useMemo(() => {
     if (!dbYears || !Array.isArray(dbYears)) {
-      return DEFAULT_YEARS.map((y) => ({ year: y }));
+      return [];
     }
     return dbYears.map((item: any) => {
       if (typeof item === "string") return { year: item };
@@ -109,6 +107,7 @@ function AdminStudentAbsenteesPage() {
         year: item.year || "2nd Year",
         studentCount: item.studentCount,
         absenteeCount: item.absenteeCount,
+        unassignedStudentCount: item.unassignedStudentCount,
       };
     });
   }, [dbYears]);
@@ -120,7 +119,7 @@ function AdminStudentAbsenteesPage() {
     error: errorSections,
     reload: reloadSections,
   } = useAsyncData(
-    () => (selectedYear ? getAbsenteeSections(selectedYear).catch(() => DEFAULT_SECTIONS) : Promise.resolve([])),
+    () => (selectedYear ? getAbsenteeSections(selectedYear) : Promise.resolve([])),
     [selectedYear]
   );
 
@@ -133,8 +132,9 @@ function AdminStudentAbsenteesPage() {
     for (const item of dbSections) {
       const rawSec = typeof item === "string" ? item : (item.section || "");
       const cleanSec = rawSec.trim();
-      if (cleanSec && !seen.has(cleanSec)) {
-        seen.add(cleanSec);
+      const key = cleanSec.toUpperCase();
+      if (cleanSec && !seen.has(key)) {
+        seen.add(key);
         list.push({
           section: cleanSec,
           studentCount: typeof item === "object" ? item.studentCount : undefined,
@@ -432,7 +432,7 @@ function AdminStudentAbsenteesPage() {
           {loadingYears ? (
             <LoadingState label="Loading academic years..." />
           ) : errorYears ? (
-            <ErrorState title="Failed to load years" description={errorYears.message} retry={reloadYears} />
+            <ErrorState title="Failed to load years" description={errorYears} retry={reloadYears} />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {normalizedYears.map((item) => (
@@ -457,6 +457,11 @@ function AdminStudentAbsenteesPage() {
                           {item.absenteeCount} absent
                         </Badge>
                       </div>
+                    )}
+                    {!!item.unassignedStudentCount && (
+                      <p className="text-xs text-amber-700">
+                        {item.unassignedStudentCount} student(s) have no matching section in the uploaded timetables.
+                      </p>
                     )}
                     <div className="flex items-center justify-end text-xs font-semibold text-primary pt-2 border-t">
                       View Sections <ChevronRight className="size-4 ml-1" />
@@ -487,7 +492,7 @@ function AdminStudentAbsenteesPage() {
           {loadingSections ? (
             <LoadingState label={`Loading sections for ${selectedYear}...`} />
           ) : errorSections ? (
-            <ErrorState title="Failed to load sections" description={errorSections.message} retry={reloadSections} />
+            <ErrorState title="Failed to load sections" description={errorSections} retry={reloadSections} />
           ) : normalizedSections.length === 0 ? (
             <EmptyState
               title="No Sections Found"
@@ -591,7 +596,7 @@ function AdminStudentAbsenteesPage() {
           {loadingAbsentees ? (
             <LoadingState label="Loading marked absentees for section..." />
           ) : errorAbsentees ? (
-            <ErrorState title="Failed to load absentees" description={errorAbsentees.message} retry={reloadAbsentees} />
+            <ErrorState title="Failed to load absentees" description={errorAbsentees} retry={reloadAbsentees} />
           ) : !absenteesList || absenteesList.length === 0 ? (
             <EmptyState
               title="All Students Present!"

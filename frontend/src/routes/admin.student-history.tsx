@@ -54,8 +54,6 @@ export const Route = createFileRoute("/admin/student-history")({
   component: AdminStudentHistoryPage,
 });
 
-const DEFAULT_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
-const DEFAULT_SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 function AdminStudentHistoryPage() {
   const [selectedYear, setSelectedYear] = useState<string | null>(() => {
@@ -90,11 +88,11 @@ function AdminStudentHistoryPage() {
   const {
     data: dbYears,
     loading: loadingYears,
-  } = useAsyncData(() => getAbsenteeYears().catch(() => DEFAULT_YEARS), []);
+  } = useAsyncData(() => getAbsenteeYears(), []);
 
-  const normalizedYears: { year: string; studentCount?: number; absenteeCount?: number }[] = useMemo(() => {
+  const normalizedYears: { year: string; studentCount?: number; absenteeCount?: number; unassignedStudentCount?: number }[] = useMemo(() => {
     if (!dbYears || !Array.isArray(dbYears)) {
-      return DEFAULT_YEARS.map((y) => ({ year: y }));
+      return [];
     }
     return dbYears.map((item: any) => {
       if (typeof item === "string") return { year: item };
@@ -102,6 +100,7 @@ function AdminStudentHistoryPage() {
         year: item.year || "2nd Year",
         studentCount: item.studentCount,
         absenteeCount: item.absenteeCount,
+        unassignedStudentCount: item.unassignedStudentCount,
       };
     });
   }, [dbYears]);
@@ -111,7 +110,7 @@ function AdminStudentHistoryPage() {
     data: dbSections,
     loading: loadingSections,
   } = useAsyncData(
-    () => (selectedYear ? getAbsenteeSections(selectedYear).catch(() => DEFAULT_SECTIONS) : Promise.resolve([])),
+    () => (selectedYear ? getAbsenteeSections(selectedYear) : Promise.resolve([])),
     [selectedYear]
   );
 
@@ -124,8 +123,9 @@ function AdminStudentHistoryPage() {
     for (const item of dbSections) {
       const rawSec = typeof item === "string" ? item : (item.section || "");
       const cleanSec = rawSec.trim();
-      if (cleanSec && !seen.has(cleanSec)) {
-        seen.add(cleanSec);
+      const key = cleanSec.toUpperCase();
+      if (cleanSec && !seen.has(key)) {
+        seen.add(key);
         list.push({
           section: cleanSec,
           studentCount: typeof item === "object" ? item.studentCount : undefined,
@@ -335,6 +335,11 @@ function AdminStudentHistoryPage() {
                         </Badge>
                       ) : null}
                     </div>
+                    {!!item.unassignedStudentCount && (
+                      <p className="mt-2 text-xs text-amber-700">
+                        {item.unassignedStudentCount} lack a matching timetable section
+                      </p>
+                    )}
                     <div className="mt-4 flex items-center justify-end text-xs font-semibold text-primary">
                       View Sections <ChevronRight className="size-4 ml-1" />
                     </div>
@@ -444,7 +449,7 @@ function AdminStudentHistoryPage() {
           {loadingSummary ? (
             <LoadingState label="Loading student attendance roster..." />
           ) : errorSummary ? (
-            <ErrorState title="Failed to load roster" description={errorSummary.message} retry={reloadSummary} />
+            <ErrorState title="Failed to load roster" description={errorSummary} retry={reloadSummary} />
           ) : !summaryList || summaryList.length === 0 ? (
             <EmptyState
               title="No student records found"
@@ -599,7 +604,7 @@ function AdminStudentHistoryPage() {
                 {loadingHistory ? (
                   <LoadingState label="Loading complete absence logs..." />
                 ) : errorHistory ? (
-                  <ErrorState title="Failed to load history" description={errorHistory.message} />
+                  <ErrorState title="Failed to load history" description={errorHistory} />
                 ) : !historyList || historyList.length === 0 ? (
                   <div className="rounded-md bg-emerald-500/10 p-4 text-center text-xs text-emerald-700 dark:text-emerald-400">
                     <CheckCircle2 className="size-5 mx-auto mb-1 text-emerald-600" />

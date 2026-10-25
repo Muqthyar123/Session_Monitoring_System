@@ -119,7 +119,7 @@ export async function uploadMentorExcel(file: File): Promise<{ message: string; 
   });
 
   return {
-    message: res.message || `Import complete: ${res.created} created, ${res.updated} updated.`,
+    message: res.message || `Import complete: ${res.created} created, ${res.updated} updated, ${res.failed} failed.`,
     created: res.created,
     failed: res.failed,
   };

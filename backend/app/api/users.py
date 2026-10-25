@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status, HTTPException
 from app.core.dependencies import require_roles
 from app.schemas.common import ApiResponse
 from app.schemas.user import UserCreate, UserResponse, UserRole, UserUpdate
@@ -27,7 +27,7 @@ async def list_users_api(
     year: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(500, ge=1, le=1000),
+    limit: int = Query(10000, ge=1, le=10000),
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
     users = await get_users(role=role, crlr_only=crlr_only, section=section, year=year, search=search, skip=skip, limit=limit)

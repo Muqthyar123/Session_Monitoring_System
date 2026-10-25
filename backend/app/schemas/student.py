@@ -12,6 +12,8 @@ class StudentBase(BaseModel):
     section: str = Field(..., min_length=1, max_length=50)
     student_phone: Optional[str] = Field(None, alias="studentPhone")
     parent_phone: Optional[str] = Field(None, alias="parentPhone")
+    student_email: Optional[str] = Field(None, alias="studentEmail")
+    serial_number: Optional[str] = Field(None, alias="serialNumber")
     crlr_id: Optional[str] = Field(None, alias="crlrId")
     crlr_name: Optional[str] = Field(None, alias="crlrName")
     mentor_id: Optional[str] = Field(None, alias="mentorId")

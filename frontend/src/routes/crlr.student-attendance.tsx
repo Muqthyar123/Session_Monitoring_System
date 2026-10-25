@@ -341,7 +341,7 @@ function CRLRStudentAttendancePage() {
                 {loading || loadingStatus ? (
                   <LoadingState label="Loading section students..." />
                 ) : error ? (
-                  <ErrorState title="Failed to load students" description={error.message} retry={reload} />
+                  <ErrorState title="Failed to load students" description={error} retry={reload} />
                 ) : !students || students.length === 0 ? (
                   <EmptyState
                     title="No students found in section"

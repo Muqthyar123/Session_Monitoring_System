@@ -6,10 +6,12 @@ import os
 from pathlib import Path
 import threading
 from typing import Optional
+from urllib.parse import urlsplit
 
 import certifi
 from bson import json_util
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from pymongo.errors import OperationFailure
 try:
     from mongomock_motor import AsyncMongoMockClient
     import mongomock
@@ -355,7 +357,8 @@ async def connect_to_mongo():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Connecting to MongoDB at %s...", settings.MONGODB_URI)
+    mongo_host = urlsplit(settings.MONGODB_URI).hostname or "configured MongoDB host"
+    logger.info("Connecting to MongoDB host %s...", mongo_host)
 
     client_kwargs = {
         "serverSelectionTimeoutMS": settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
@@ -364,7 +367,10 @@ async def connect_to_mongo():
     if "mongodb+srv" in settings.MONGODB_URI or "tls=true" in settings.MONGODB_URI.lower():
         client_kwargs["tlsCAFile"] = certifi.where()
 
-    # Attempt connecting to external MongoDB
+    atlas_failure_message = "MongoDB Atlas connection failed. Check the cluster status and Network Access allowlist."
+
+    # Attempt connecting once with certificate verification enabled. Retrying
+    # with invalid certificates cannot fix authentication failures and weakens TLS.
     try:
         real_client = AsyncIOMotorClient(settings.MONGODB_URI, **client_kwargs)
         await real_client.admin.command("ping")
@@ -376,26 +382,18 @@ async def connect_to_mongo():
         logger.info("MongoDB connection successful. Connected to real database: %s", db_name)
         return
     except Exception as e:
-        logger.warning(
-            "Primary MongoDB connection attempt failed (%s). Attempting TLS fallback...",
-            str(e),
-        )
-        try:
-            client_kwargs["tlsAllowInvalidCertificates"] = True
-            real_client = AsyncIOMotorClient(settings.MONGODB_URI, **client_kwargs)
-            await real_client.admin.command("ping")
-            db_manager.client = real_client
-            db_manager.db = real_client[db_name]
-            db_manager.is_mock_mode = False
-            await ensure_indexes(db_manager.db)
-            await seed_in_memory_db(db_manager.db)
-            logger.info("MongoDB connection successful with TLS options. Connected to database: %s", db_name)
-            return
-        except Exception as retry_err:
-            logger.warning(
-                "Unable to reach external MongoDB Atlas (%s). Switching to Persistent Mock Database Mode...",
-                str(retry_err),
+        if isinstance(e, OperationFailure) and "auth" in str(e).lower():
+            atlas_failure_message = (
+                "MongoDB Atlas authentication failed. Verify the Database Access username and password "
+                "in MONGODB_URI; an Atlas API key is not a database password."
             )
+        logger.warning("MongoDB connection attempt failed (%s).", type(e).__name__)
+
+    # Never accept writes to a local mock when an Atlas URI was explicitly
+    # configured. Doing so makes successful uploads look durable when they
+    # are not. Require Atlas connectivity instead.
+    if settings.MONGODB_URI.lower().startswith("mongodb+srv://"):
+        raise RuntimeError(atlas_failure_message)
 
     # In-Memory Fallback Mock Database with Durable File-Backed Persistence
     if AsyncMongoMockClient is None:
@@ -407,8 +405,8 @@ async def connect_to_mongo():
     logger.error(
         "⚠️  RUNNING IN MOCK DATABASE MODE — DATA WILL NOT PERSIST ON RENDER/VERCEL! "
         "Set the MONGODB_URI environment variable on your deployment platform to use MongoDB Atlas. "
-        "Current MONGODB_URI: %s",
-        settings.MONGODB_URI,
+        "Configured MongoDB host: %s",
+        mongo_host,
     )
 
     mock_client = AsyncMongoMockClient()

@@ -18,16 +18,24 @@ export function LoadingState({ rows = 4, label }: { rows?: number; label?: strin
   );
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorState({ message, onRetry, title, description, retry }: {
+  message?: string;
+  onRetry?: () => void;
+  title?: string;
+  description?: string;
+  retry?: () => void;
+}) {
+  const detail = description ?? message ?? "An unexpected error occurred while loading this data.";
+  const retryAction = retry ?? onRetry;
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <AlertTriangle className="size-8 text-destructive" />
       <div>
-        <p className="font-medium">Something went wrong</p>
-        <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+        <p className="font-medium">{title ?? "Something went wrong"}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
       </div>
-      {onRetry ? (
-        <Button variant="outline" size="sm" onClick={onRetry}>
+      {retryAction ? (
+        <Button variant="outline" size="sm" onClick={retryAction}>
           Retry
         </Button>
       ) : null}

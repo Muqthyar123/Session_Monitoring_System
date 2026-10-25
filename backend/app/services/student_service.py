@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timezone
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from bson import ObjectId
 from fastapi import HTTPException, status
@@ -28,22 +28,28 @@ def infer_batch_from_roll(roll: Optional[str]) -> Optional[int]:
 
 def compute_year_from_batch(batch_val: Any) -> str:
     """
-    Computes academic year from batch graduation year dynamically based on current year.
-    Uses current academic year (July-June cycle) so it stays correct automatically.
-    e.g., if today is Oct 2026: batching_base = 2027
-    - 2027 -> 1st Year, 2028 -> 2nd Year, 2029 -> 3rd Year, 2030 -> 4th Year
+    Computes academic year from batch graduation year dynamically based on current date.
+    Academic year runs on a July-June cycle:
+    - Current Academic Year starts in Y (July Y to June Y+1).
+      senior_batch (4th Year graduating class) = now.year if now.month < 7 else now.year + 1
+      academic_base = now.year if now.month >= 7 else now.year - 1
+    - 2027 -> 4th Year (diff = 1)
+    - 2028 -> 3rd Year (diff = 2)
+    - 2029 -> 2nd Year (diff = 3)
+    - 2030 -> 1st Year (diff = 4)
+    - 2031+ -> 1st Year (diff >= 5)
+    - <= 2026 -> Graduated (diff <= 0)
     """
     if not batch_val:
         return "2nd Year"
     try:
         now = datetime.now(timezone.utc)
-        # Academic year starts July: if month >= 7, current academic year = now.year + 1
-        academic_base = now.year + 1 if now.month >= 7 else now.year
+        academic_base = now.year if now.month >= 7 else now.year - 1
 
         m = re.search(r'\b(20\d{2})\b', str(batch_val))
         if m:
             b_num = int(m.group(1))
-            diff = b_num - academic_base  # positive = years until graduation
+            diff = b_num - academic_base
             if diff <= 0:
                 return "Graduated"
             elif diff == 1:
@@ -52,8 +58,6 @@ def compute_year_from_batch(batch_val: Any) -> str:
                 return "3rd Year"
             elif diff == 3:
                 return "2nd Year"
-            elif diff == 4:
-                return "1st Year"
             else:
                 return "1st Year"
 
@@ -88,47 +92,43 @@ def compute_year_from_batch(batch_val: Any) -> str:
     return "2nd Year"
 
 
+def normalize_student_section(value: str, year: str, branch: str = "CSE") -> str:
+    raw = (value or "").strip().upper()
+    branch = (branch or "CSE").strip().upper()
+    roman = {"1st Year": "I", "2nd Year": "II", "3rd Year": "III", "4th Year": "IV"}.get(year, "II")
+    raw = re.sub(r"^SECTION\s*[-:]?\s*", "", raw)
+    match = re.match(r"^(?:I|II|III|IV)-[A-Z]+-([A-Z0-9]+)$", raw)
+    if match:
+        label = match.group(1)
+    elif "-" in raw:
+        label = raw.rsplit("-", 1)[-1]
+    else:
+        label = raw
+    return f"{roman}-{branch}-{label}" if label else f"{roman}-{branch}"
+
+
 async def find_crlr_for_student(db, year: str, section: str) -> Tuple[Optional[str], Optional[str]]:
     """Finds CR/LR user ID and name for a given year and section."""
     clean_sec = section.strip().upper()
-    sec_norm = (
-        clean_sec.replace("II-", "")
-        .replace("I-", "")
-        .replace("III-", "")
-        .replace("IV-", "")
-        .replace("CSE-", "")
-        .replace("SECTION", "")
-        .strip()
-    )
+    sec_norm = re.sub(r"^(?:I|II|III|IV)-", "", clean_sec)
+    sec_norm = re.sub(r"^[A-Z]+-", "", sec_norm).strip()
+    parts = clean_sec.split("-")
+    branch = parts[1] if len(parts) >= 3 else "CSE"
+    aliases = list({clean_sec, f"{branch}-{sec_norm}", sec_norm})
 
-    user = await db.users.find_one(
-        {
-            "role": {"$in": ["CR", "LR"]},
-            "$or": [
-                {"section": section},
-                {"section": clean_sec},
-                {"section": f"II-CSE-{sec_norm}"},
-                {"section": f"CSE-{sec_norm}"},
-                {"section": sec_norm},
-                {"section": {"$regex": f"{sec_norm}$", "$options": "i"}},
-            ],
-        }
-    )
+    user = await db.users.find_one({
+        "role": {"$in": ["CR", "LR"]},
+        "year": year,
+        "section": {"$in": aliases},
+    })
 
     if user:
         return str(user["_id"]), user.get("name")
 
-    sec_doc = await db.sections.find_one(
-        {
-            "$or": [
-                {"section_name": section},
-                {"section_name": clean_sec},
-                {"section_name": f"II-CSE-{sec_norm}"},
-                {"section_name": f"CSE-{sec_norm}"},
-                {"section_name": sec_norm},
-            ]
-        }
-    )
+    sec_doc = await db.sections.find_one({
+        "year": year,
+        "section_name": {"$in": aliases},
+    })
     if sec_doc:
         cr_id = sec_doc.get("assigned_cr_id") or sec_doc.get("assigned_lr_id")
         if cr_id and ObjectId.is_valid(cr_id):
@@ -156,9 +156,9 @@ async def create_student(data: StudentCreate, actor_id: Optional[str] = None) ->
     if batch is None:
         batch = 2029
 
-    year = compute_year_from_batch(batch)
-    branch = (data.branch or "CSE").strip()
-    sec_clean = data.section.strip().upper()
+    year = data.year.strip() if data.year else compute_year_from_batch(batch)
+    branch = (data.branch or "CSE").strip().upper()
+    sec_clean = normalize_student_section(data.section, year, branch)
 
     crlr_id, crlr_name = await find_crlr_for_student(db, year, sec_clean)
 
@@ -196,14 +196,18 @@ async def create_student(data: StudentCreate, actor_id: Optional[str] = None) ->
 
 async def sync_all_students_batch_and_year(db) -> int:
     """
-    Synchronizes batch and academic year for all students in MongoDB:
-    - Roll starting with 23... -> Batch 2027 -> 4th Year
-    - Roll starting with 24... -> Batch 2028 -> 3rd Year
-    - Roll starting with 25... -> Batch 2029 -> 2nd Year
-    - Roll starting with 26... -> Batch 2030 -> 1st Year
+    Synchronizes batch, academic year, and section for all students in MongoDB:
+    - Batch 2027 -> 4th Year -> IV-CSE-...
+    - Batch 2028 -> 3rd Year -> III-CSE-...
+    - Batch 2029 -> 2nd Year -> II-CSE-...
+    - Batch 2030 -> 1st Year -> I-CSE-...
+    Also guarantees that all respective section documents exist in db.sections.
     """
     cursor = db.students.find({})
-    updated_cnt = 0
+    now = datetime.now(timezone.utc)
+    needed_sections = set()
+    bulk_ops = []
+
     async for s in cursor:
         roll = s.get("roll_number")
         batch = s.get("batch")
@@ -211,45 +215,115 @@ async def sync_all_students_batch_and_year(db) -> int:
         eff_batch = batch if batch else inferred
         if eff_batch:
             eff_year = compute_year_from_batch(eff_batch)
-            if s.get("batch") != eff_batch or s.get("year") != eff_year:
-                await db.students.update_one(
-                    {"_id": s["_id"]},
-                    {"$set": {"batch": eff_batch, "year": eff_year, "updated_at": datetime.now(timezone.utc)}}
-                )
-                updated_cnt += 1
+            branch = s.get("branch") or "CSE"
+            raw_sec = s.get("section") or "A"
+            eff_sec = normalize_student_section(raw_sec, eff_year, branch)
+
+            updates = {}
+            if s.get("batch") != eff_batch:
+                updates["batch"] = eff_batch
+            if s.get("year") != eff_year:
+                updates["year"] = eff_year
+            if s.get("section") != eff_sec:
+                updates["section"] = eff_sec
+
+            if updates:
+                updates["updated_at"] = now
+                bulk_ops.append((s["_id"], updates))
+
+            needed_sections.add((eff_year, eff_sec, branch))
+
+    updated_cnt = 0
+    for doc_id, upd in bulk_ops:
+        await db.students.update_one({"_id": doc_id}, {"$set": upd})
+        updated_cnt += 1
+
+    # Ensure sections exist in db.sections
+    existing_sections = await db.sections.find({}, {"year": 1, "section_name": 1}).to_list(length=None)
+    existing_pairs = set((d.get("year"), d.get("section_name")) for d in existing_sections)
+    for y, sec, b in needed_sections:
+        if (y, sec) not in existing_pairs:
+            await db.sections.insert_one({
+                "year": y,
+                "section_name": sec,
+                "branch": b,
+                "department": b,
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+            })
+            existing_pairs.add((y, sec))
+
     return updated_cnt
 
 
 def build_year_filter_clause(year: str) -> dict:
-    """Builds a MongoDB filter clause that matches an academic year by year name, batch, or roll prefix."""
+    """Match year labels as well as matching batches for the given academic year."""
     y_clean = year.strip()
-    if "4" in y_clean or "iv" in y_clean.lower():
-        target_batch = 2027
-        roll_prefix = "23"
-        aliases = ["4th Year", "4th", "IV", "IV Year", "4", "IV B.Tech", "IV-Year", "4-Year"]
-    elif "3" in y_clean or "iii" in y_clean.lower():
-        target_batch = 2028
-        roll_prefix = "24"
-        aliases = ["3rd Year", "3rd", "III", "III Year", "3", "III B.Tech", "III-Year", "3-Year"]
-    elif "2" in y_clean or "ii" in y_clean.lower():
-        target_batch = 2029
-        roll_prefix = "25"
-        aliases = ["2nd Year", "2nd", "II", "II Year", "2", "II B.Tech", "II-Year", "2-Year"]
-    elif "1" in y_clean or "i" in y_clean.lower():
-        target_batch = 2030
-        roll_prefix = "26"
-        aliases = ["1st Year", "1st", "I", "I Year", "1", "I B.Tech", "I-Year", "1-Year"]
-    else:
-        return {"year": y_clean}
-
-    return {
-        "$or": [
-            {"batch": target_batch},
-            {"batch": str(target_batch)},
-            {"roll_number": {"$regex": f"^{roll_prefix}", "$options": "i"}},
-            {"year": {"$in": aliases}},
-        ]
+    label = re.sub(r"[^a-z0-9]", "", y_clean.lower())
+    alias_groups = {
+        "1st Year": {"1styear", "firstyear", "iyear", "i", "1", "1st"},
+        "2nd Year": {"2ndyear", "secondyear", "iiyear", "ii", "2", "2nd"},
+        "3rd Year": {"3rdyear", "thirdyear", "iiiyear", "iii", "3", "3rd"},
+        "4th Year": {"4thyear", "fourthyear", "ivyear", "iv", "4", "4th"},
+        "Graduated": {"graduated", "alumni"},
     }
+    now = datetime.now(timezone.utc)
+    academic_base = now.year if now.month >= 7 else now.year - 1
+    batch_map = {
+        "4th Year": [academic_base + 1],
+        "3rd Year": [academic_base + 2],
+        "2nd Year": [academic_base + 3],
+        "1st Year": [academic_base + 4, academic_base + 5],
+    }
+    for canonical, aliases in alias_groups.items():
+        if label == re.sub(r"[^a-z0-9]", "", canonical.lower()) or label in aliases:
+            labels = {canonical}
+            labels.update({"1st Year", "1st", "First Year", "I Year", "I", "1"} if canonical == "1st Year" else set())
+            labels.update({"2nd Year", "2nd", "Second Year", "II Year", "II", "2"} if canonical == "2nd Year" else set())
+            labels.update({"3rd Year", "3rd", "Third Year", "III Year", "III", "3"} if canonical == "3rd Year" else set())
+            labels.update({"4th Year", "4th", "Fourth Year", "IV Year", "IV", "4"} if canonical == "4th Year" else set())
+            labels.update({"Graduated", "Alumni"} if canonical == "Graduated" else set())
+
+            target_batches = batch_map.get(canonical, [])
+            or_clauses = [{"year": {"$in": sorted(labels)}}]
+            for b in target_batches:
+                or_clauses.extend([{"batch": b}, {"batch": str(b)}])
+            return {"$or": or_clauses} if len(or_clauses) > 1 else or_clauses[0]
+    return {"year": y_clean}
+
+
+def build_students_query(
+    year: Optional[str] = None,
+    section: Optional[str] = None,
+    search: Optional[str] = None,
+    branch: Optional[str] = None,
+) -> dict:
+    clauses: List[dict] = []
+    if year and year.upper() != "ALL":
+        clauses.append(build_year_filter_clause(year))
+    if branch and branch.upper() != "ALL":
+        branch_value = re.escape(branch.strip())
+        clauses.append({"$or": [
+            {"branch": {"$regex": f"^{branch_value}$", "$options": "i"}},
+            {"department": {"$regex": f"^{branch_value}$", "$options": "i"}},
+        ]})
+    if section and section.upper() != "ALL":
+        sec_clean = section.strip().upper()
+        label = sec_clean.rsplit("-", 1)[-1]
+        clauses.append({"$or": [
+            {"section": sec_clean},
+            {"section": {"$regex": f"-{re.escape(label)}$", "$options": "i"}},
+        ]})
+    if search and search.strip():
+        term = re.escape(search.strip())
+        clauses.append({"$or": [
+            {"name": {"$regex": term, "$options": "i"}},
+            {"roll_number": {"$regex": term, "$options": "i"}},
+        ]})
+    if not clauses:
+        return {}
+    return clauses[0] if len(clauses) == 1 else {"$and": clauses}
 
 
 async def get_students(
@@ -258,81 +332,12 @@ async def get_students(
     search: Optional[str] = None,
     branch: Optional[str] = None,
     skip: int = 0,
-    limit: int = 500,
+    limit: int = 10000,
 ) -> List[StudentResponse]:
     db = get_database()
-    query = {}
-
-    if branch and branch.upper() != "ALL":
-        b_clean = branch.strip().upper()
-        branch_clause = {
-            "$or": [
-                {"branch": b_clean},
-                {"branch": {"$regex": f"^{b_clean}$", "$options": "i"}},
-                {"department": b_clean},
-                {"department": {"$regex": f"^{b_clean}$", "$options": "i"}},
-            ]
-        }
-        query["$and"] = [branch_clause]
-
-    if year and year.upper() != "ALL":
-        year_clause = build_year_filter_clause(year)
-        if "$and" in query:
-            query["$and"].append(year_clause)
-        elif "$or" in query:
-            existing_or = query.pop("$or")
-            query["$and"] = [{"$or": existing_or}, year_clause]
-        else:
-            query.update(year_clause)
-
-    if section and section.upper() != "ALL":
-        sec_clean = section.strip().upper()
-        sec_norm = (
-            sec_clean.replace("II-", "")
-            .replace("I-", "")
-            .replace("III-", "")
-            .replace("IV-", "")
-            .replace("CSE-", "")
-            .replace("SECTION", "")
-            .strip()
-        )
-        sec_candidates = [section, sec_clean, sec_norm, f"CSE-{sec_norm}", f"II-CSE-{sec_norm}"]
-        sec_clause = {"$or": [{"section": c} for c in set(sec_candidates) if c]}
-        if "$and" in query:
-            query["$and"].append(sec_clause)
-        elif "$or" in query:
-            existing_or = query.pop("$or")
-            query["$and"] = [{"$or": existing_or}, sec_clause]
-        else:
-            query.update(sec_clause)
-
-    if search:
-        search_clause = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"roll_number": {"$regex": search, "$options": "i"}},
-            {"section": {"$regex": search, "$options": "i"}},
-        ]
-        if "$and" in query:
-            query["$and"].append({"$or": search_clause})
-        elif "$or" in query:
-            existing_or = query.pop("$or")
-            query["$and"] = [{"$or": existing_or}, {"$or": search_clause}]
-        else:
-            query["$or"] = search_clause
-
-    cursor = db.students.find(query).skip(skip).limit(limit).sort("roll_number", 1)
+    query = build_students_query(year, section, search, branch)
+    cursor = db.students.find(query).skip(max(skip, 0)).limit(min(max(limit, 1), 10000)).sort("roll_number", 1)
     students = []
-    target_year = None
-    if year and year.upper() != "ALL":
-        if "4" in year or "iv" in year.lower():
-            target_year = "4th Year"
-        elif "3" in year or "iii" in year.lower():
-            target_year = "3rd Year"
-        elif "2" in year or "ii" in year.lower():
-            target_year = "2nd Year"
-        elif "1" in year or "i" in year.lower():
-            target_year = "1st Year"
-
     async for s in cursor:
         s["_id"] = str(s["_id"])
         if not s.get("batch") and s.get("roll_number"):
@@ -341,11 +346,31 @@ async def get_students(
             s["year"] = compute_year_from_batch(s["batch"])
         elif not s.get("year"):
             s["year"] = "2nd Year"
-
-        if target_year and s.get("year") != target_year:
-            continue
         students.append(StudentResponse(**s))
     return students
+
+
+async def get_students_page(
+    *, year: Optional[str] = None, section: Optional[str] = None,
+    search: Optional[str] = None, branch: Optional[str] = None,
+    page: int = 1, page_size: int = 25,
+) -> Dict[str, Any]:
+    db = get_database()
+    safe_page = max(page, 1)
+    safe_size = min(max(page_size, 1), 200)
+    query = build_students_query(year, section, search, branch)
+    total = await db.students.count_documents(query)
+    items = await get_students(
+        year=year, section=section, search=search, branch=branch,
+        skip=(safe_page - 1) * safe_size, limit=safe_size,
+    )
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_size,
+        "total_pages": (total + safe_size - 1) // safe_size,
+    }
 
 
 def _build_student_query(student_id: str) -> dict:
@@ -376,9 +401,13 @@ async def update_student(student_id: str, data: StudentUpdate, actor_id: Optiona
     elif data.year is not None:
         updates["year"] = data.year.strip()
     if data.branch is not None:
-        updates["branch"] = data.branch.strip()
-    if data.section is not None:
-        updates["section"] = data.section.strip().upper()
+        updates["branch"] = data.branch.strip().upper()
+    if data.section is not None or data.year is not None or data.branch is not None or data.batch is not None:
+        updates["section"] = normalize_student_section(
+            data.section if data.section is not None else s.get("section", "A"),
+            updates.get("year", s.get("year") or "2nd Year"),
+            updates.get("branch", s.get("branch") or "CSE"),
+        )
     if data.student_phone is not None:
         updates["student_phone"] = data.student_phone.strip() if data.student_phone else None
     if data.parent_phone is not None:

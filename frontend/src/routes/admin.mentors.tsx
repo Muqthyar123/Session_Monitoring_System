@@ -371,7 +371,7 @@ function AdminMentorsPage() {
             {loading ? (
               <LoadingState label="Loading mentors..." />
             ) : error ? (
-              <ErrorState title="Failed to load mentors" description={error.message} retry={reload} />
+              <ErrorState title="Failed to load mentors" description={error} retry={reload} />
             ) : rows.length === 0 ? (
               <EmptyState
                 title="No mentors found"

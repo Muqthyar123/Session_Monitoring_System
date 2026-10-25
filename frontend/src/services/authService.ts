@@ -51,6 +51,10 @@ export async function login(
   return authUser;
 }
 
+export async function validateSession(): Promise<void> {
+  await request<LoginResponsePayload["user"]>("/auth/me");
+}
+
 export function persistUser(user: AuthUser | null) {
   setStoredUser(user);
   if (!user) {

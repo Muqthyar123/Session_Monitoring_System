@@ -2,8 +2,23 @@
  * Centralized Frontend API Client for FastAPI Backend Integration
  */
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+export function getApiBaseUrl(): string {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+    if (isLocalhost) {
+      // If we are browsing on localhost, always talk to local backend on port 8000
+      // unless an explicit local url is set
+      if (!envUrl || envUrl.includes("onrender.com") || envUrl.includes("vercel.app")) {
+        return "http://localhost:8000/api";
+      }
+    }
+  }
+  return (envUrl || "http://localhost:8000/api").replace(/\/+$/, "");
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 const TOKEN_KEY = "fams.auth.token";
 const USER_KEY = "fams.auth.user";
@@ -57,7 +72,8 @@ export async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getStoredToken();
+  const isLoginRequest = path === "/auth/login";
+  const token = isLoginRequest ? null : getStoredToken();
   const headers: Record<string, string> = {};
 
   if (token) {
@@ -77,13 +93,17 @@ export async function request<T>(
     },
   };
 
-  const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+  const baseUrl = getApiBaseUrl();
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = path.startsWith("http") ? path : `${baseUrl}${cleanPath}`;
 
   try {
     const response = await fetch(url, mergedOptions);
 
-    if (response.status === 401) {
-      // Clear token and user on 401 Unauthorized
+    if (response.status === 401 && path === "/auth/me" && token) {
+      // Validate and clear a stale session during startup. Other request-level
+      // 401s stay attached to their operation so a failed upload cannot send
+      // the administrator away from the page before its error is shown.
       setStoredToken(null);
       setStoredUser(null);
       if (typeof window !== "undefined") {
@@ -126,7 +146,9 @@ export async function downloadApiFile(path: string, filename: string) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+  const baseUrl = getApiBaseUrl();
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = path.startsWith("http") ? path : `${baseUrl}${cleanPath}`;
   const response = await fetch(url, { headers });
 
   if (!response.ok) {

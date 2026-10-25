@@ -1,4 +1,6 @@
 import pytest
+import io
+import openpyxl
 from httpx import AsyncClient
 from app.core.security import create_access_token, hash_password
 from app.db.mongodb import get_database
@@ -112,4 +114,32 @@ async def test_batch_year_calculation_and_crlr_mapping(client: AsyncClient):
     stu_list = crlr_students_res.json()["data"]
     assert len(stu_list) >= 1
     assert any(s["rollNumber"] == "24471A0575" for s in stu_list)
+
+
+@pytest.mark.asyncio
+async def test_student_import_preserves_roster_year_and_all_contact_fields(client: AsyncClient):
+    db = get_database()
+    admin = await db.users.insert_one({
+        "name": "Import Admin", "email": "student-import-admin@test.com",
+        "role": UserRole.ADMIN.value, "is_active": True,
+    })
+    await db.timetables.insert_one({"year": "3rd Year", "section": "III-CSE-A"})
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': str(admin.inserted_id), 'role': 'ADMIN'})}"}
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(["Roll Number", "Student Name", "Batch", "Academic Year", "Branch", "Section", "Student Phone", "Parent Phone", "Email", "Serial Number"])
+    sheet.append(["24471A0555", "Roster Year Student", 2028, "3rd Year", "CSE", "CSE-A", "9876543210", "9123456780", "student@example.edu", "0007"])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    response = await client.post("/api/admin/students/import", files={"file": ("roster.xlsx", buffer.getvalue())}, headers=headers)
+    assert response.status_code == 200, response.text
+    imported = await db.students.find_one({"roll_number": "24471A0555"})
+    assert imported["year"] == "3rd Year"
+    assert imported["batch"] == 2028
+    assert imported["section"] == "III-CSE-A"
+    assert imported["student_phone"] == "9876543210"
+    assert imported["parent_phone"] == "9123456780"
+    assert imported["student_email"] == "student@example.edu"
+    assert imported["serial_number"] == "0007"
 

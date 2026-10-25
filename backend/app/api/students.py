@@ -1,4 +1,5 @@
-from typing import List, Optional
+import asyncio
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, status
 from app.core.dependencies import require_roles
 from app.schemas.common import ApiResponse
@@ -13,18 +14,21 @@ from app.services.student_service import (
     delete_all_students,
     delete_student,
     get_students,
+    get_students_page,
     update_student,
 )
 
 router = APIRouter(prefix="/admin/students", tags=["Admin Student Management"])
 
 
-@router.get("", response_model=ApiResponse[List[StudentResponse]])
+@router.get("", response_model=ApiResponse[Any])
 async def list_students_api(
     year: Optional[str] = Query(None),
     section: Optional[str] = Query(None),
     branch: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1, le=200),
     current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
 ):
     user_role = current_user.get("role")
@@ -33,8 +37,35 @@ async def list_students_api(
         if user_dept:
             branch = user_dept
 
-    students = await get_students(year=year, section=section, search=search, branch=branch, limit=500)
+    if page is not None or page_size is not None:
+        data = await get_students_page(
+            year=year, section=section, search=search, branch=branch,
+            page=page or 1, page_size=page_size or 25,
+        )
+        return ApiResponse(success=True, data=data)
+    students = await get_students(year=year, section=section, search=search, branch=branch)
     return ApiResponse(success=True, data=students)
+
+
+@router.get("/filters", response_model=ApiResponse[Dict[str, List[str]]])
+async def get_student_filter_options_api(
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
+):
+    from app.db.mongodb import get_database
+
+    db = get_database()
+    years, branches, student_sections, timetable_sections = await asyncio.gather(
+        db.students.distinct("year"),
+        db.students.distinct("branch"),
+        db.students.distinct("section"),
+        db.timetables.distinct("section"),
+    )
+    sections = timetable_sections or student_sections
+    return ApiResponse(success=True, data={
+        "years": sorted(str(value) for value in years if value),
+        "branches": sorted(str(value).upper() for value in branches if value),
+        "sections": sorted(str(value) for value in sections if value),
+    })
 
 
 @router.post("", response_model=ApiResponse[StudentResponse], status_code=status.HTTP_201_CREATED)

@@ -43,6 +43,16 @@ async def lifespan(app: FastAPI):
     await create_db_indexes()
     logger.info("Database indexes created successfully.")
     
+    # Synchronize student batch and academic year mapping
+    try:
+        from app.services.student_service import sync_all_students_batch_and_year
+        from app.db.mongodb import get_database
+        db = get_database()
+        updated_count = await sync_all_students_batch_and_year(db)
+        logger.info(f"Student batch/year synchronization completed ({updated_count} records updated).")
+    except Exception as e:
+        logger.warning("Student batch/year synchronization on startup warning: %s", str(e))
+
     # Generate / sync real-time sessions for current date
     try:
         from app.services.session_service import generate_and_sync_sessions_for_date
@@ -79,11 +89,15 @@ origins = [
     "http://localhost:5175",
     "http://localhost:3000",
     "http://localhost:4173",
+    "http://localhost:8080",
+    "http://localhost:8081",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:4173",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
 ]
 
 app.add_middleware(

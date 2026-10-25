@@ -142,7 +142,7 @@ function MentorAttendanceHistoryPage() {
           {loadingYears ? (
             <LoadingState label="Loading academic years..." />
           ) : errorYears ? (
-            <ErrorState title="Failed to load years" description={errorYears.message} retry={reloadYears} />
+            <ErrorState title="Failed to load years" description={errorYears} retry={reloadYears} />
           ) : !yearCards || yearCards.length === 0 ? (
             <EmptyState
               title="No academic years found"
@@ -191,7 +191,7 @@ function MentorAttendanceHistoryPage() {
           {loadingSections ? (
             <LoadingState label={`Loading sections for ${selectedYear}...`} />
           ) : errorSections ? (
-            <ErrorState title="Failed to load sections" description={errorSections.message} retry={reloadSections} />
+            <ErrorState title="Failed to load sections" description={errorSections} retry={reloadSections} />
           ) : !sectionCards || sectionCards.length === 0 ? (
             <EmptyState
               title="No sections found"
@@ -248,7 +248,7 @@ function MentorAttendanceHistoryPage() {
           {loadingSummary ? (
             <LoadingState label="Loading student analytics..." />
           ) : errorSummary ? (
-            <ErrorState title="Failed to load summary" description={errorSummary.message} retry={reloadSummary} />
+            <ErrorState title="Failed to load summary" description={errorSummary} retry={reloadSummary} />
           ) : !summaryList || summaryList.length === 0 ? (
             <EmptyState
               title="No student records found"
@@ -393,7 +393,7 @@ function MentorAttendanceHistoryPage() {
                 {loadingHistory ? (
                   <LoadingState label="Loading complete history..." />
                 ) : errorHistory ? (
-                  <ErrorState title="Failed to load history" description={errorHistory.message} />
+                  <ErrorState title="Failed to load history" description={errorHistory} />
                 ) : !historyList || historyList.length === 0 ? (
                   <div className="rounded-md bg-emerald-500/10 p-4 text-center text-xs text-emerald-700 dark:text-emerald-400">
                     No recorded absences found. Student has 100% attendance!

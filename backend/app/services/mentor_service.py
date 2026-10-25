@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import asyncio
 import zoneinfo
 from typing import List, Optional, Dict, Any, Set, Tuple
 from bson import ObjectId
@@ -23,7 +24,6 @@ from app.services.student_service import (
     build_year_filter_clause,
     compute_year_from_batch,
     infer_batch_from_roll,
-    sync_all_students_batch_and_year,
 )
 
 import re
@@ -43,6 +43,19 @@ def _clean_section_code(sec: str) -> str:
     elif re.match(r'^[CG]\d+$', s):
         s = f"CSE-{s}"
     return s
+
+
+def _normalize_year_label(value: str) -> Optional[str]:
+    token = re.sub(r"[^a-z0-9]", "", (value or "").lower())
+    if token.startswith(("4", "iv", "fourth")):
+        return "4th Year"
+    if token.startswith(("3", "iii", "third")):
+        return "3rd Year"
+    if token.startswith(("2", "ii", "second")):
+        return "2nd Year"
+    if token.startswith(("1", "i", "first")):
+        return "1st Year"
+    return None
 
 
 def _get_section_query_clauses(sec: str) -> List[Dict[str, Any]]:
@@ -81,43 +94,42 @@ async def _get_active_planned_absence_keys(date_str: str) -> Set[str]:
 
 async def _get_canonical_sections_for_year(year_clean: str, base_stu_query: Optional[Dict[str, Any]] = None) -> List[str]:
     db = get_database()
-    # 1. Configured sections in db.sections
-    configured_sec_docs = await db.sections.find({"year": year_clean}).to_list(100)
-    configured_secs: List[str] = []
-    seen: Set[str] = set()
-    for doc in configured_sec_docs:
-        s_name = doc.get("section_name") or doc.get("section") or ""
-        code = _clean_section_code(s_name)
-        if code and code not in seen:
-            seen.add(code)
-            configured_secs.append(code)
+    target_year = _normalize_year_label(year_clean)
+    if not target_year:
+        return []
 
-    # 2. Check student sections enrolled in this year
-    y_clause = build_year_filter_clause(year_clean)
-    clauses = [c for c in [base_stu_query, y_clause if y_clause else {"year": year_clean}] if c]
-    sec_q = {"$and": clauses} if len(clauses) > 1 else (clauses[0] if clauses else {})
-    stu_secs_raw = await db.students.distinct("section", sec_q)
-    stu_clean_secs = {_clean_section_code(x) for x in stu_secs_raw if x}
+    sections: Set[str] = set()
 
-    if configured_secs:
-        all_secs = list(configured_secs)
-        for cs in sorted(list(stu_clean_secs)):
-            if cs not in seen:
-                cnt = await db.students.count_documents({"year": year_clean, "$or": _get_section_query_clauses(cs)})
-                if cnt >= 5:
-                    seen.add(cs)
-                    all_secs.append(cs)
-        return sorted(all_secs)
-    elif stu_clean_secs:
-        return sorted(list(stu_clean_secs))
-    else:
-        if "2" in year_clean:
-            return [f"CSE-{l}" for l in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]]
-        elif "3" in year_clean:
-            return [f"CSE-{l}" for l in ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "G1", "G2", "G3", "G4"]]
-        elif "4" in year_clean:
-            return [f"CSE-{l}" for l in ["C1", "C2", "C3", "C4", "C5", "G1", "G2"]]
-        return [f"CSE-{l}" for l in ["A", "B", "C", "D", "E"]]
+    # 1. Timetable inventory
+    timetable_docs = await db.timetables.find({}).to_list(length=10000)
+    for timetable in timetable_docs:
+        if _normalize_year_label(timetable.get("year") or "") != target_year:
+            continue
+        code = _clean_section_code(timetable.get("section") or "")
+        if code:
+            sections.add(code)
+
+    # 2. Persisted student roster (ensure all enrolled students map to their respective section card)
+    query_clauses = [build_year_filter_clause(target_year)]
+    if base_stu_query:
+        query_clauses.insert(0, base_stu_query)
+    roster_query = {"$and": query_clauses} if len(query_clauses) > 1 else query_clauses[0]
+    for raw_section in await db.students.distinct("section", roster_query):
+        code = _clean_section_code(raw_section or "")
+        if code:
+            sections.add(code)
+
+    # 3. Fallback to registered sections if none found yet
+    if not sections:
+        sec_docs = await db.sections.find({"is_active": {"$ne": False}}).to_list(length=1000)
+        for s_doc in sec_docs:
+            if _normalize_year_label(s_doc.get("year") or "") != target_year:
+                continue
+            code = _clean_section_code(s_doc.get("section_name") or s_doc.get("sectionName") or "")
+            if code:
+                sections.add(code)
+
+    return sorted(sections)
 
 
 async def _get_mentor_scoped_filter(current_user: Optional[dict]) -> Tuple[Optional[Dict[str, Any]], Optional[List[str]], Optional[List[str]]]:
@@ -169,40 +181,50 @@ async def get_mentor_sections_summary(year: str, current_user: Optional[dict] = 
     sec_q = {"$and": clauses} if len(clauses) > 1 else (clauses[0] if clauses else {})
 
     all_secs = await _get_canonical_sections_for_year(year_clean, base_stu_query)
+    if not all_secs:
+        return []
     active_pa_keys = await _get_active_planned_absence_keys(today_date)
+
+    student_counts = {section: 0 for section in all_secs}
+    student_cursor = db.students.find(sec_q, {"section": 1})
+    async for student in student_cursor:
+        code = _clean_section_code(student.get("section") or "")
+        if code in student_counts:
+            student_counts[code] += 1
+
+    section_variants = [clause for section in all_secs for clause in _get_section_query_clauses(section)]
+    attendance_clauses: List[Dict[str, Any]] = [
+        {"year": year_clean},
+        {"$or": section_variants},
+        {"date": today_date},
+        {"status": "Absent"},
+    ]
+    if assigned_ids is not None and assigned_rolls is not None:
+        attendance_clauses.append({"$or": [
+            {"student_id": {"$in": assigned_ids}},
+            {"roll_number": {"$in": assigned_rolls}},
+        ]})
+    if active_pa_keys:
+        attendance_clauses.append({"$nor": [
+            {"student_id": {"$in": list(active_pa_keys)}},
+            {"roll_number": {"$in": list(active_pa_keys)}},
+        ]})
+    attendance_counts = {section: 0 for section in all_secs}
+    attendance_cursor = db.student_attendance.find(
+        {"$and": attendance_clauses}, {"section": 1}
+    )
+    async for record in attendance_cursor:
+        code = _clean_section_code(record.get("section") or "")
+        if code in attendance_counts:
+            attendance_counts[code] += 1
 
     res: List[MentorSectionCard] = []
     for s in all_secs:
-        s_variants = _get_section_query_clauses(s)
-        stu_clauses = [c for c in [sec_q, {"$or": s_variants}] if c]
-        stu_cnt = await db.students.count_documents({"$and": stu_clauses} if len(stu_clauses) > 1 else stu_clauses[0])
-
-        abs_clauses: List[Dict[str, Any]] = [
-            {"year": year_clean},
-            {"$or": s_variants},
-            {"date": today_date},
-            {"status": "Absent"},
-        ]
-        if assigned_ids is not None and assigned_rolls is not None:
-            abs_clauses.append({
-                "$or": [
-                    {"student_id": {"$in": assigned_ids}},
-                    {"roll_number": {"$in": assigned_rolls}},
-                ]
-            })
-        if active_pa_keys:
-            abs_clauses.append({
-                "$nor": [
-                    {"student_id": {"$in": list(active_pa_keys)}},
-                    {"roll_number": {"$in": list(active_pa_keys)}},
-                ]
-            })
-        abs_cnt = await db.student_attendance.count_documents({"$and": abs_clauses})
         res.append(MentorSectionCard(
             year=year_clean,
             section=s,
-            studentCount=stu_cnt,
-            absenteeCount=abs_cnt,
+            studentCount=student_counts[s],
+            absenteeCount=attendance_counts[s],
         ))
     return res
 
@@ -210,9 +232,6 @@ async def get_mentor_sections_summary(year: str, current_user: Optional[dict] = 
 async def get_mentor_dashboard_data(current_user: dict) -> MentorDashboardResponse:
     db = get_database()
     today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
-
-    # Synchronize student batch and year if any were unsynced
-    await sync_all_students_batch_and_year(db)
 
     stu_filter, assigned_ids, assigned_rolls = await _get_mentor_scoped_filter(current_user)
 
@@ -265,9 +284,15 @@ async def get_mentor_dashboard_data(current_user: dict) -> MentorDashboardRespon
     year_cards: List[MentorYearCard] = []
     for y in all_years:
         y_clause = build_year_filter_clause(y)
-        clauses = [c for c in [base_stu_query, y_clause if y_clause else {"year": y}] if c]
-        stu_q = {"$and": clauses} if len(clauses) > 1 else (clauses[0] if clauses else {})
-        stu_cnt = await db.students.count_documents(stu_q)
+        canonical_sections = await _get_canonical_sections_for_year(y, base_stu_query)
+        if not canonical_sections:
+            continue
+        year_clauses = [c for c in [base_stu_query, y_clause if y_clause else {"year": y}] if c]
+        year_q = {"$and": year_clauses} if len(year_clauses) > 1 else (year_clauses[0] if year_clauses else {})
+        stu_cnt = await db.students.count_documents(year_q)
+        section_clauses = [clause for section in canonical_sections for clause in _get_section_query_clauses(section)]
+        mapped_q = {"$and": [year_q, {"$or": section_clauses}]}
+        mapped_count = await db.students.count_documents(mapped_q)
 
         abs_clauses = [
             {"year": y},
@@ -325,8 +350,6 @@ async def get_mentor_years_summary(current_user: Optional[dict] = None) -> List[
     """Retrieve list of years with student counts scoped by mentor assignment."""
     db = get_database()
     today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
-
-    await sync_all_students_batch_and_year(db)
 
     stu_filter, assigned_ids, assigned_rolls = await _get_mentor_scoped_filter(current_user)
     if stu_filter is not None and not assigned_ids:
@@ -469,8 +492,6 @@ async def get_mentor_absentee_years_summary(current_user: Optional[dict] = None)
     db = get_database()
     today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
 
-    await sync_all_students_batch_and_year(db)
-
     stu_filter, assigned_ids, assigned_rolls = await _get_mentor_scoped_filter(current_user)
     if stu_filter is not None and not assigned_ids:
         return []
@@ -483,11 +504,18 @@ async def get_mentor_absentee_years_summary(current_user: Optional[dict] = None)
             {"roll_number": {"$in": assigned_rolls}},
         ]
 
-    att_years = await db.student_attendance.distinct("year", att_today_query)
-    stu_years = await db.students.distinct("year", base_stu_query)
-    all_years = sorted(list(set(att_years + stu_years + (STANDARD_YEARS if stu_filter is None else []))))
-    if not all_years and stu_filter is None:
-        all_years = STANDARD_YEARS
+    # Derive cards from both the timetable inventory and persisted student roster.
+    # This keeps uploaded student years discoverable even when timetable data is
+    # incomplete, while the student count below still scopes cards to real records.
+    timetable_years, roster_years = await asyncio.gather(
+        db.timetables.distinct("year"),
+        db.students.distinct("year", base_stu_query),
+    )
+    all_years = sorted({
+        normalized
+        for raw_year in timetable_years + roster_years
+        if (normalized := _normalize_year_label(raw_year or ""))
+    }, key=lambda item: STANDARD_YEARS.index(item) if item in STANDARD_YEARS else len(STANDARD_YEARS))
 
     active_pa_keys = await _get_active_planned_absence_keys(today_date)
     res: List[MentorYearCard] = []
@@ -518,10 +546,22 @@ async def get_mentor_absentee_years_summary(current_user: Optional[dict] = None)
         stu_q = {"$and": clauses} if len(clauses) > 1 else (clauses[0] if clauses else {})
         stu_cnt = await db.students.count_documents(stu_q)
 
+        canonical_sections = await _get_canonical_sections_for_year(y, base_stu_query)
+        section_clauses = [
+            clause
+            for section_doc in canonical_sections
+            for clause in _get_section_query_clauses(section_doc)
+        ]
+        mapped_count = await db.students.count_documents({"$and": [stu_q, {"$or": section_clauses}]}) if section_clauses else 0
+
+        if stu_filter is not None and stu_cnt == 0:
+            continue
+
         res.append(MentorYearCard(
             year=y,
             studentCount=stu_cnt,
             absenteeCount=abs_cnt,
+            unassignedStudentCount=max(0, stu_cnt - mapped_count),
         ))
     return res
 
