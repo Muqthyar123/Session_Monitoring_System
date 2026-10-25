@@ -276,7 +276,7 @@ async def seed_from_uploaded_files_if_needed(db):
 async def seed_in_memory_db(db):
     """Seed initial Root Admin user into database, keeping all section, timetable, and CR/LR collections fresh."""
     now = datetime.now(timezone.utc)
-    demo_pwd_hash = hash_password("demo1234")
+    admin_pwd_hash = hash_password("demo1234")
 
     # Root System Administrator
     existing_admin = await db.users.find_one({"role": "ADMIN"})
@@ -285,7 +285,7 @@ async def seed_in_memory_db(db):
             {
                 "name": "System Administrator",
                 "email": "admin@example.com",
-                "password_hash": demo_pwd_hash,
+                "password_hash": admin_pwd_hash,
                 "role": "ADMIN",
                 "roll_number": None,
                 "phone": "9876543210",
@@ -297,7 +297,9 @@ async def seed_in_memory_db(db):
             }
         )
 
-    # Seed CR and LR accounts for sections (II-CSE-A to II-CSE-J) if not already present
+    # Seed CR and LR accounts for sections (II-CSE-A to II-CSE-J) if not already present.
+    # Default password for each CR/LR is their roll number (e.g. 22CSA01 for CR of II-CSE-A).
+    # Login can be done using email OR roll number.
     sections = [
         "II-CSE-A",
         "II-CSE-B",
@@ -312,22 +314,30 @@ async def seed_in_memory_db(db):
     ]
 
     for sec in sections:
-        clean_name = sec.replace("II-", "")
-        slug = clean_name.replace("-", "").lower()
-        cr_email = "cr@example.com" if sec == "II-CSE-A" else f"cr.{slug}@example.com"
-        lr_email = "lr@example.com" if sec == "II-CSE-A" else f"lr.{slug}@example.com"
         sec_letter = sec.split("-")[-1]
+        slug = sec_letter.lower()
 
-        # CR User
-        cr_existing = await db.users.find_one({"email": cr_email})
+        cr_roll = f"22CS{sec_letter}01"
+        lr_roll = f"22CS{sec_letter}02"
+        cr_email = f"cr.{slug}@college.edu"
+        lr_email = f"lr.{slug}@college.edu"
+
+        # Password = roll number (unique per CR/LR, not a shared dummy password)
+        cr_pwd_hash = hash_password(cr_roll)
+        lr_pwd_hash = hash_password(lr_roll)
+
+        # CR User — insert if absent, update password/email if stale dummy credentials exist
+        cr_existing = await db.users.find_one(
+            {"$or": [{"email": cr_email}, {"roll_number": cr_roll, "role": "CR"}]}
+        )
         if not cr_existing:
             cr_res = await db.users.insert_one(
                 {
                     "name": f"{sec} CR",
                     "email": cr_email,
-                    "password_hash": demo_pwd_hash,
+                    "password_hash": cr_pwd_hash,
                     "role": "CR",
-                    "roll_number": f"22CS{sec_letter}01",
+                    "roll_number": cr_roll,
                     "phone": "9876543211",
                     "year": "2nd Year",
                     "section": sec,
@@ -339,17 +349,24 @@ async def seed_in_memory_db(db):
             cr_id = str(cr_res.inserted_id)
         else:
             cr_id = str(cr_existing["_id"])
+            # Migrate: update email to new pattern and set roll-number password if it was the old demo password
+            update_fields: dict = {"email": cr_email, "section": sec, "updated_at": now}
+            if cr_existing.get("password_hash") == hash_password("demo1234"):
+                update_fields["password_hash"] = cr_pwd_hash
+            await db.users.update_one({"_id": cr_existing["_id"]}, {"$set": update_fields})
 
-        # LR User
-        lr_existing = await db.users.find_one({"email": lr_email})
+        # LR User — insert if absent, update password/email if stale dummy credentials exist
+        lr_existing = await db.users.find_one(
+            {"$or": [{"email": lr_email}, {"roll_number": lr_roll, "role": "LR"}]}
+        )
         if not lr_existing:
             lr_res = await db.users.insert_one(
                 {
                     "name": f"{sec} LR",
                     "email": lr_email,
-                    "password_hash": demo_pwd_hash,
+                    "password_hash": lr_pwd_hash,
                     "role": "LR",
-                    "roll_number": f"22CS{sec_letter}02",
+                    "roll_number": lr_roll,
                     "phone": "9876543212",
                     "year": "2nd Year",
                     "section": sec,
@@ -361,6 +378,11 @@ async def seed_in_memory_db(db):
             lr_id = str(lr_res.inserted_id)
         else:
             lr_id = str(lr_existing["_id"])
+            # Migrate: update email to new pattern and set roll-number password if it was the old demo password
+            update_fields = {"email": lr_email, "section": sec, "updated_at": now}
+            if lr_existing.get("password_hash") == hash_password("demo1234"):
+                update_fields["password_hash"] = lr_pwd_hash
+            await db.users.update_one({"_id": lr_existing["_id"]}, {"$set": update_fields})
 
         # Upsert Section document
         await db.sections.update_one(

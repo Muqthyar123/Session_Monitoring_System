@@ -70,6 +70,7 @@ frontend/.tanstack/
 frontend/.nitro/
 frontend/*.local
 frontend/.wrangler/
+frontend/.vercel/
 
 # Logs
 logs/

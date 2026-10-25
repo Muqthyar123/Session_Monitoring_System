@@ -92,12 +92,6 @@ export interface AppNotification {
 export const MOCK_SECTIONS: string[] = [];
 export const MOCK_YEARS: string[] = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 
-export const MOCK_DEMO_CREDENTIALS = {
-  admin: { email: "admin@example.com", password: "demo1234" },
-  cr: { email: "cr@example.com", password: "demo1234" },
-  lr: { email: "lr@example.com", password: "demo1234" },
-};
-
 export const MOCK_ADMIN_USER: AuthUser = {
   id: "u-admin-1",
   name: "System Administrator",

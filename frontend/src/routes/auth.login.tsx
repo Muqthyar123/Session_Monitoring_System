@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
-import { MOCK_DEMO_CREDENTIALS } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/auth/login")({
   head: () => ({

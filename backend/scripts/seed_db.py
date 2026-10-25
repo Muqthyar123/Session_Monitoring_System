@@ -49,25 +49,35 @@ async def seed():
         logger.info("Admin user already exists.")
 
     # 2. CR & LR Users for each section (II-CSE-A to II-CSE-J)
+    # Default password for each CR/LR is their roll number (e.g. 22CSA01).
+    # Login can be done with email OR roll number.
     sections_list = ["II-CSE-A", "II-CSE-B", "II-CSE-C", "II-CSE-D", "II-CSE-E", "II-CSE-F", "II-CSE-G", "II-CSE-H", "II-CSE-I", "II-CSE-J"]
 
     for sec in sections_list:
-        clean_name = sec.replace("II-", "")
-        slug = clean_name.replace("-", "").lower()
-        cr_email = "cr@example.com" if sec == "II-CSE-A" else f"cr.{slug}@example.com"
-        lr_email = "lr@example.com" if sec == "II-CSE-A" else f"lr.{slug}@example.com"
         sec_letter = sec.split("-")[-1]
+        slug = sec_letter.lower()
 
-        # CR User
-        cr_existing = await db.users.find_one({"email": cr_email})
+        cr_roll = f"22CS{sec_letter}01"
+        lr_roll = f"22CS{sec_letter}02"
+        cr_email = f"cr.{slug}@college.edu"
+        lr_email = f"lr.{slug}@college.edu"
+
+        # Password = roll number (unique per CR/LR)
+        cr_pwd_hash = hash_password(cr_roll)
+        lr_pwd_hash = hash_password(lr_roll)
+
+        # CR User — insert if absent, migrate if stale
+        cr_existing = await db.users.find_one(
+            {"$or": [{"email": cr_email}, {"roll_number": cr_roll, "role": UserRole.CR.value}]}
+        )
         if not cr_existing:
             cr_res = await db.users.insert_one(
                 {
                     "name": f"{sec} CR",
                     "email": cr_email,
-                    "password_hash": demo_pass_hash,
+                    "password_hash": cr_pwd_hash,
                     "role": UserRole.CR.value,
-                    "roll_number": f"22CS{sec_letter}01",
+                    "roll_number": cr_roll,
                     "phone": "9876543211",
                     "year": "2nd Year",
                     "section": sec,
@@ -77,19 +87,27 @@ async def seed():
                 }
             )
             cr_id = str(cr_res.inserted_id)
+            logger.info("Created CR user: %s / %s", cr_email, cr_roll)
         else:
             cr_id = str(cr_existing["_id"])
+            update_fields: dict = {"email": cr_email, "section": sec, "updated_at": now}
+            if cr_existing.get("password_hash") == hash_password("demo1234"):
+                update_fields["password_hash"] = cr_pwd_hash
+                logger.info("Migrated CR %s password to roll number", cr_roll)
+            await db.users.update_one({"_id": cr_existing["_id"]}, {"$set": update_fields})
 
-        # LR User
-        lr_existing = await db.users.find_one({"email": lr_email})
+        # LR User — insert if absent, migrate if stale
+        lr_existing = await db.users.find_one(
+            {"$or": [{"email": lr_email}, {"roll_number": lr_roll, "role": UserRole.LR.value}]}
+        )
         if not lr_existing:
             lr_res = await db.users.insert_one(
                 {
                     "name": f"{sec} LR",
                     "email": lr_email,
-                    "password_hash": demo_pass_hash,
+                    "password_hash": lr_pwd_hash,
                     "role": UserRole.LR.value,
-                    "roll_number": f"22CS{sec_letter}02",
+                    "roll_number": lr_roll,
                     "phone": "9876543212",
                     "year": "2nd Year",
                     "section": sec,
@@ -99,8 +117,14 @@ async def seed():
                 }
             )
             lr_id = str(lr_res.inserted_id)
+            logger.info("Created LR user: %s / %s", lr_email, lr_roll)
         else:
             lr_id = str(lr_existing["_id"])
+            update_fields = {"email": lr_email, "section": sec, "updated_at": now}
+            if lr_existing.get("password_hash") == hash_password("demo1234"):
+                update_fields["password_hash"] = lr_pwd_hash
+                logger.info("Migrated LR %s password to roll number", lr_roll)
+            await db.users.update_one({"_id": lr_existing["_id"]}, {"$set": update_fields})
 
         # Section record
         await db.sections.update_one(
@@ -119,6 +143,7 @@ async def seed():
             upsert=True,
         )
     logger.info("Seeded CR & LR accounts and section records for %d sections.", len(sections_list))
+
 
     # 5. Timetable Data (Monday to Saturday for II-A with continuous DBMS session)
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
