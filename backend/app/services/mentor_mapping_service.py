@@ -412,6 +412,8 @@ async def parse_and_validate_mapping_rows(raw_rows: List[List[str]]) -> Tuple[Li
 async def preview_mentor_mappings(file_bytes: bytes, filename: str) -> MentorMappingPreviewResponse:
     """Parses workbook and generates mapping preview report."""
     raw_rows = extract_raw_rows_from_file(file_bytes, filename)
+    if len(raw_rows) > settings.MAX_IMPORT_ROWS:
+        raise HTTPException(status_code=413, detail=f"Import exceeds the {settings.MAX_IMPORT_ROWS} row limit.")
     rows, summary = await parse_and_validate_mapping_rows(raw_rows)
     return MentorMappingPreviewResponse(
         totalRows=summary["total"],
@@ -459,6 +461,8 @@ async def commit_mentor_mappings(
     elif isinstance(data_or_bytes, (bytes, bytearray)):
         chosen_mode = (mode or "ADD_UPDATE").upper()
         raw_rows = extract_raw_rows_from_file(data_or_bytes, filename or "uploaded.xlsx")
+        if len(raw_rows) > settings.MAX_IMPORT_ROWS:
+            raise HTTPException(status_code=413, detail=f"Import exceeds the {settings.MAX_IMPORT_ROWS} row limit.")
         rows, summary = await parse_and_validate_mapping_rows(raw_rows)
         valid_rows = [r for r in rows if r.status == "VALID"]
     else:
@@ -538,6 +542,7 @@ async def commit_mentor_mappings(
         "actor_id": actor_id,
         "action": "IMPORT_MENTOR_STUDENT_MAPPING",
         "metadata": {
+            "filename": filename,
             "mode": chosen_mode,
             "valid_rows": len(valid_rows),
             "created": created_count,

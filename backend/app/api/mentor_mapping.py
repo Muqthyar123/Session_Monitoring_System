@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from app.core.dependencies import require_roles
+from app.api.upload_utils import read_upload_limited
 from app.schemas.common import ApiResponse
 from app.schemas.mentor_mapping import (
     MentorMappingConfirmRequest,
@@ -40,13 +41,13 @@ async def preview_mentor_mapping_api(
     current_user: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
     """Parse uploaded Excel file and return structured validation preview before DB commit."""
-    if not (file.filename.endswith(".xlsx") or file.filename.endswith(".xls")):
+    if not ((file.filename or "").lower().endswith(".xlsx") or (file.filename or "").lower().endswith(".xls")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid file format. Please upload an Excel file (.xlsx or .xls).",
         )
 
-    content = await file.read()
+    content = await read_upload_limited(file)
     preview = await preview_mentor_mapping_file(content, file.filename)
     return ApiResponse(
         success=True,

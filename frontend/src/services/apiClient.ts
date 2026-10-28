@@ -122,6 +122,47 @@ export async function request<T>(
   }
 }
 
+export function uploadRequest<T>(
+  path: string,
+  body: FormData,
+  onProgress?: (percent: number) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    const url = path.startsWith("http") ? path : `${getApiBaseUrl()}${cleanPath}`;
+    xhr.open("POST", url);
+    const token = getStoredToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) {
+        onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+      }
+    };
+    xhr.onerror = () => reject(new ApiError("Failed to connect to the backend server.", 500));
+    xhr.onabort = () => reject(new ApiError("Upload was cancelled.", 0));
+    xhr.onload = () => {
+      let json: any = null;
+      try {
+        json = JSON.parse(xhr.responseText);
+      } catch {
+        json = null;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message = json?.error?.message || json?.detail || `Request failed with status ${xhr.status}`;
+        reject(new ApiError(message, xhr.status, json?.error?.details));
+        return;
+      }
+      if (json && typeof json === "object" && "success" in json && "data" in json) {
+        resolve(json.data as T);
+      } else {
+        resolve(json as T);
+      }
+    };
+    xhr.send(body);
+  });
+}
+
 /** Triggers an authenticated client-side file download (for Excel templates) */
 export async function downloadApiFile(path: string, filename: string) {
   const token = getStoredToken();

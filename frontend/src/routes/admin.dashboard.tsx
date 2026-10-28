@@ -32,8 +32,10 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/common/States
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { getAdminDashboard, getAlerts } from "@/services/sessionService";
 import type { AdminAlert } from "@/data/mock/mockData";
-import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getUploadHistory } from "@/services/uploadService";
+import { useAuth } from "@/context/AuthContext";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({
@@ -64,8 +66,14 @@ const alertColumns: Column<AdminAlert>[] = [
 ];
 
 function AdminDashboardPage() {
+  const { user } = useAuth();
   const dashboard = useAsyncData(() => getAdminDashboard(), [], 15000);
   const alerts = useAsyncData(() => getAlerts(), [], 15000);
+  const uploads = useAsyncData(
+    () => user?.role === "ADMIN" ? getUploadHistory(0, 8) : Promise.resolve([]),
+    [user?.role],
+    15000,
+  );
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -158,6 +166,44 @@ function AdminDashboardPage() {
           <DataTable columns={alertColumns} rows={alerts.data ?? []} getRowId={(r) => r.id} />
         )}
       </section>
+
+      {user?.role === "ADMIN" ? <Card>
+        <CardHeader>
+          <CardTitle>Recent Imports</CardTitle>
+          <CardDescription>Saved upload summaries from MongoDB. Refreshes with the dashboard.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {uploads.loading ? (
+            <LoadingState rows={2} label="Loading import history..." />
+          ) : uploads.error ? (
+            <ErrorState message={uploads.error} onRetry={uploads.reload} />
+          ) : (uploads.data?.length ?? 0) === 0 ? (
+            <EmptyState title="No import history" description="Completed uploads will appear here." />
+          ) : (
+            <div className="space-y-3">
+              {uploads.data?.map((item) => {
+                const metadata = item.metadata || {};
+                const imported = Number(metadata.created ?? metadata.inserted ?? 0);
+                const updated = Number(metadata.updated ?? metadata.modified ?? 0);
+                const failed = Number(metadata.failed ?? 0);
+                const skipped = Number(metadata.unchanged ?? metadata.duplicate_rows ?? 0);
+                const title = String(metadata.filename || item.action.replaceAll("_", " ").toLowerCase());
+                return (
+                  <div key={item.id} className="flex flex-col gap-1 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{title}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
+                    </div>
+                    <p className="shrink-0 text-xs text-muted-foreground">
+                      {imported} created · {updated} updated · {skipped} skipped · {failed} failed
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card> : null}
     </AdminLayout>
   );
 }

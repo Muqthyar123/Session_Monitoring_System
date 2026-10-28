@@ -20,6 +20,7 @@ from app.api import (
     student_attendance,
     students,
     timetable,
+    uploads,
     users,
 )
 from app.core.config import settings
@@ -170,6 +171,7 @@ api_router_prefix = settings.API_V1_STR
 
 app.include_router(auth.router, prefix=api_router_prefix)
 app.include_router(users.router, prefix=api_router_prefix)
+app.include_router(uploads.router, prefix=api_router_prefix)
 app.include_router(mentors.router, prefix=api_router_prefix)
 app.include_router(mentor_mapping.router, prefix=api_router_prefix)
 app.include_router(planned_absence.router, prefix=api_router_prefix)

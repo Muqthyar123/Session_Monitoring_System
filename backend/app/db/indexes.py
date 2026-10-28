@@ -128,6 +128,7 @@ async def create_db_indexes():
         await _ensure_index(db.mentor_student_mappings, [("student_ids", ASCENDING)])
 
         # audit_logs collection
+        await _ensure_index(db.audit_logs, [("action", ASCENDING), ("created_at", DESCENDING)])
         await _ensure_index(db.audit_logs, [("created_at", DESCENDING)])
         await _ensure_index(db.audit_logs, [("actor_id", ASCENDING)])
 

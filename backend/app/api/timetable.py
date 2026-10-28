@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status, HTTPException
 from app.core.dependencies import get_current_user, require_roles
+from app.api.upload_utils import read_upload_limited
 from app.schemas.common import ApiResponse
 from app.schemas.timetable import TimetablePeriodResponse
 from app.schemas.user import UserRole
@@ -30,27 +31,29 @@ async def upload_timetable_api(
             detail="Invalid file format. Only .xlsx or .xls Excel workbooks are accepted for Timetable upload.",
         )
 
-    file_bytes = await file.read()
+    file_bytes = await read_upload_limited(file)
     try:
         summary = await parse_and_import_timetable_excel(
             file_bytes, filename=file.filename, actor_id=admin["id"]
         )
-        if summary.get("inserted", 0) > 0:
+        if summary.get("inserted", 0) + summary.get("updated", 0) > 0:
             from app.services.section_service import reconcile_sections_with_timetables
             summary["section_reconciliation"] = await reconcile_sections_with_timetables()
+    except HTTPException:
+        raise
     except ValueError as val_err:
         raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as err:
         raise HTTPException(status_code=500, detail="Failed to process Timetable file due to a server error.") from None
 
-    if summary.get("inserted", 0) == 0 and summary.get("failed", 0) > 0:
-        first_err = summary["errors"][0]["errors"][0] if summary.get("errors") else "Invalid timetable matrix or table format."
-        raise HTTPException(status_code=400, detail=f"Timetable upload failed: {first_err}")
-
     return ApiResponse(
         success=True,
         data=summary,
-        message=f"Timetable upload processed: {summary['inserted']} periods inserted/updated.",
+        message=(
+            f"Timetable import complete: {summary['inserted']} inserted, "
+            f"{summary.get('updated', 0)} updated, {summary.get('unchanged', 0)} unchanged, "
+            f"{summary['failed']} failed."
+        ),
     )
 
 
@@ -89,9 +92,15 @@ async def get_section_timetable_api(
 async def delete_all_timetables_api(
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
-    count = await delete_all_timetables()
+    counts = await delete_all_timetables(actor_id=admin["id"])
     return ApiResponse(
-        success=True, message=f"Cleared all {count} timetable records."
+        success=True,
+        data=counts,
+        message=(
+            f"Deleted {counts['timetables_deleted']} timetable periods, "
+            f"{counts['sessions_deleted']} generated sessions, and "
+            f"{counts['attendance_records_deleted']} attendance records."
+        ),
     )
 
 
@@ -99,9 +108,15 @@ async def delete_all_timetables_api(
 async def reset_all_timetables_api(
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
-    count = await delete_all_timetables()
+    counts = await delete_all_timetables(actor_id=admin["id"])
     return ApiResponse(
-        success=True, message=f"Reset successful: Deleted all {count} timetable records from database."
+        success=True,
+        data=counts,
+        message=(
+            f"Deleted {counts['timetables_deleted']} timetable periods, "
+            f"{counts['sessions_deleted']} generated sessions, and "
+            f"{counts['attendance_records_deleted']} attendance records."
+        ),
     )
 
 
@@ -110,7 +125,13 @@ async def delete_section_timetable_api(
     section: str,
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
-    count = await delete_timetable_by_section(section)
+    counts = await delete_timetable_by_section(section)
     return ApiResponse(
-        success=True, message=f"Deleted {count} timetable records for section '{section}'."
+        success=True,
+        data=counts,
+        message=(
+            f"For section '{section}', deleted {counts['timetables_deleted']} timetable periods, "
+            f"{counts['sessions_deleted']} generated sessions, and "
+            f"{counts['attendance_records_deleted']} attendance records."
+        ),
     )

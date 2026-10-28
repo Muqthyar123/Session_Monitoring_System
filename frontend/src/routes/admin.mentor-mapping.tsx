@@ -18,6 +18,7 @@ import {
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -64,6 +65,7 @@ function AdminMentorMappingPage() {
   const [mappings, setMappings] = useState<MentorMappingRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [transferProgress, setTransferProgress] = useState(0);
   const [confirming, setConfirming] = useState(false);
 
   // Filters for current mappings list
@@ -130,8 +132,9 @@ function AdminMentorMappingPage() {
 
     try {
       setUploading(true);
+      setTransferProgress(0);
       setSelectedFile(file);
-      const preview = await previewMentorMappings(file);
+      const preview = await previewMentorMappings(file, setTransferProgress);
       setPreviewData(preview);
       toast.success(`Parsed ${preview.totalRows} row(s): ${preview.validRows} valid, ${preview.invalidRows} invalid.`);
     } catch (err: any) {
@@ -228,7 +231,7 @@ function AdminMentorMappingPage() {
               className="gap-2 shadow-sm"
             >
               <Upload className="size-4" />
-              {uploading ? "Analyzing File..." : "Upload Mapping File"}
+              {uploading ? (transferProgress >= 100 ? "Validating Mapping…" : `Uploading ${transferProgress}%…`) : "Upload Mapping File"}
             </Button>
             <input
               type="file"
@@ -238,6 +241,14 @@ function AdminMentorMappingPage() {
               className="hidden"
             />
           </div>
+          {uploading ? (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                {transferProgress >= 100 ? "File received; backend is validating the rows." : "Transferring file to the backend."}
+              </p>
+              <Progress value={transferProgress} aria-label="Mapping file transfer progress" />
+            </div>
+          ) : null}
         </div>
 
         {/* Excel Import & Validation Preview Panel */}

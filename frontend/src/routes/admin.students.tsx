@@ -346,14 +346,19 @@ function AdminStudentsPage() {
     }
   };
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (file: File, onProgress: (percent: number) => void) => {
     setUploading(true);
     try {
-      const result = await uploadStudentExcel(file);
-      toast.success(result.message || "Students imported successfully!");
-      reload();
+      const result = await uploadStudentExcel(file, onProgress);
+      if ((result.created ?? 0) + (result.updated ?? 0) > 0) reload();
+      if (result.status === "error") toast.error(result.message);
+      else if (result.status === "warning") toast.warning(result.message);
+      else toast.success(result.message || "Students imported successfully!");
+      return result;
     } catch (err: any) {
-      toast.error(err.message || "Failed to upload Excel file.");
+      const message = err.message || "Failed to upload Excel file.";
+      toast.error(message);
+      return { status: "error" as const, message };
     } finally {
       setUploading(false);
     }

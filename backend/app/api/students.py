@@ -2,6 +2,7 @@ import asyncio
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, status
 from app.core.dependencies import require_roles
+from app.api.upload_utils import read_upload_limited
 from app.schemas.common import ApiResponse
 from app.schemas.student import StudentCreate, StudentResponse, StudentUpdate
 from app.schemas.user import UserRole
@@ -101,7 +102,7 @@ async def import_student_excel_api(
             detail="Invalid file format. Only .xlsx, .xls, or .csv files are accepted for Students upload.",
         )
 
-    file_bytes = await file.read()
+    file_bytes = await read_upload_limited(file)
     try:
         summary = await parse_and_import_student_excel(
             file_bytes, filename=file.filename, actor_id=admin["id"]
@@ -110,10 +111,6 @@ async def import_student_excel_api(
         raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as err:
         raise HTTPException(status_code=500, detail="Failed to process Student file due to a server error.") from None
-
-    if summary.get("failed", 0) > 0 and summary.get("created", 0) == 0 and summary.get("updated", 0) == 0:
-        first_err = summary["errors"][0]["errors"][0] if summary.get("errors") else "Invalid student file contents."
-        raise HTTPException(status_code=400, detail=f"Student import failed: {first_err}")
 
     return ApiResponse(
         success=True,

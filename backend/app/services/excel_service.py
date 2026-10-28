@@ -9,6 +9,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import EmailStr, TypeAdapter
 from app.core.security import DEFAULT_MENTOR_PASSWORD, hash_password
+from app.core.config import settings
 from app.db.mongodb import get_database
 from app.schemas.user import UserRole
 from app.services.student_service import compute_year_from_batch, infer_batch_from_roll, normalize_student_section
@@ -75,6 +76,13 @@ def _make_import_summary(
     }
 
 
+def _enforce_import_row_limit(row_count: int) -> None:
+    if row_count > settings.MAX_IMPORT_ROWS:
+        raise ValueError(
+            f"Import contains {row_count} rows; the limit is {settings.MAX_IMPORT_ROWS}."
+        )
+
+
 # ----------------------------------------------------
 # CR/LR EXCEL PROCESSING
 # ----------------------------------------------------
@@ -121,6 +129,7 @@ async def parse_and_import_crlr_excel(
     raw_rows = extract_raw_rows_from_file(file_bytes, filename)
     if not raw_rows:
         raise ValueError("File is empty or could not be read.")
+    _enforce_import_row_limit(len(raw_rows))
 
     # Find header row flexibly
     NAME_ALIASES = {"name", "fullname", "enterfullname", "studentname", "crlrname"}
@@ -422,9 +431,14 @@ async def parse_and_import_crlr_excel(
             "actor_id": actor_id,
             "action": "IMPORT_CRLR_EXCEL",
             "metadata": {
+                "filename": filename,
+                "rows_read": rows_read,
                 "total_rows": total_rows,
                 "created": created_count,
                 "updated": updated_count,
+                "unchanged": unchanged_count,
+                "duplicate_rows": duplicate_count,
+                "blank_rows_skipped": blank_count,
                 "failed": failed_count,
             },
             "created_at": datetime.now(timezone.utc),
@@ -804,13 +818,35 @@ async def parse_and_import_timetable_excel(
     file_bytes: bytes, filename: str, actor_id: str
 ) -> Dict[str, Any]:
     """Parse timetable workbook (supporting Matrix Grid or Tabular format) and store in MongoDB."""
-    if not filename.lower().endswith(".xlsx"):
-        raise ValueError("Invalid file format. Only .xlsx files are supported.")
+    if not filename.lower().endswith((".xlsx", ".xls")):
+        raise ValueError("Invalid file format. Only .xlsx and .xls files are supported.")
 
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+        if filename.lower().endswith(".xls"):
+            import xlrd
+
+            source = xlrd.open_workbook(file_contents=file_bytes)
+            wb = openpyxl.Workbook()
+            wb.remove(wb.active)
+            for source_sheet in source.sheets():
+                target_sheet = wb.create_sheet(source_sheet.name)
+                for row_index in range(source_sheet.nrows):
+                    converted = []
+                    for cell in source_sheet.row(row_index):
+                        if cell.ctype == xlrd.XL_CELL_DATE:
+                            converted.append(xlrd.xldate.xldate_as_datetime(cell.value, source.datemode))
+                        elif cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+                            converted.append(None)
+                        else:
+                            converted.append(cell.value)
+                    target_sheet.append(converted)
+        else:
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     except Exception:
         raise ValueError("Unable to read the workbook. Check that it is a valid supported Excel file.") from None
+
+    if sum(sheet.max_row for sheet in wb.worksheets) > settings.MAX_IMPORT_ROWS:
+        raise ValueError(f"Import exceeds the {settings.MAX_IMPORT_ROWS} row limit.")
 
     records_to_insert = []
     total_rows = 0
@@ -982,29 +1018,56 @@ async def parse_and_import_timetable_excel(
                 }
             )
 
+    db = get_database()
     if not records_to_insert and errors:
+        await db.audit_logs.insert_one({
+            "actor_id": actor_id,
+            "action": "IMPORT_TIMETABLE_EXCEL",
+            "metadata": {
+                "filename": filename,
+                "rows_read": total_rows,
+                "total_rows": total_rows,
+                "inserted": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "failed": failed_rows,
+            },
+            "created_at": datetime.now(timezone.utc),
+        })
         return {
             "total_rows": total_rows,
             "inserted": 0,
+            "updated": 0,
+            "unchanged": 0,
             "failed": failed_rows,
             "errors": errors,
         }
 
-    db = get_database()
-
     inserted_count = 0
+    updated_count = 0
+    unchanged_count = 0
     section_map = {}
     for rec in records_to_insert:
-        await db.timetables.update_one(
-            {
-                "section": rec["section"],
-                "day": rec["day"],
-                "period": rec["period"],
-            },
-            {"$set": rec},
-            upsert=True,
-        )
-        inserted_count += 1
+        record_query = {
+            "section": rec["section"],
+            "day": rec["day"],
+            "period": rec["period"],
+        }
+        existing = await db.timetables.find_one(record_query)
+        if existing is None:
+            await db.timetables.insert_one(rec)
+            inserted_count += 1
+        else:
+            changes = {
+                key: value for key, value in rec.items()
+                if key != "updated_at" and existing.get(key) != value
+            }
+            if changes:
+                changes["updated_at"] = rec["updated_at"]
+                await db.timetables.update_one({"_id": existing["_id"]}, {"$set": changes})
+                updated_count += 1
+            else:
+                unchanged_count += 1
         sec = rec["section"]
         yr = rec.get("year", "2nd Year")
         if sec not in section_map:
@@ -1070,8 +1133,12 @@ async def parse_and_import_timetable_excel(
             "actor_id": actor_id,
             "action": "IMPORT_TIMETABLE_EXCEL",
             "metadata": {
+                "filename": filename,
+                "rows_read": total_rows,
                 "total_rows": total_rows,
                 "inserted": inserted_count,
+                "updated": updated_count,
+                "unchanged": unchanged_count,
                 "failed": failed_rows,
             },
             "created_at": datetime.now(timezone.utc),
@@ -1081,6 +1148,8 @@ async def parse_and_import_timetable_excel(
     return {
         "total_rows": total_rows,
         "inserted": inserted_count,
+        "updated": updated_count,
+        "unchanged": unchanged_count,
         "failed": failed_rows,
         "errors": errors,
     }
@@ -1270,6 +1339,7 @@ async def parse_and_import_mentor_excel(
     raw_rows = extract_raw_rows_from_file(file_bytes, filename)
     if not raw_rows:
         raise ValueError("File is empty or could not be read.")
+    _enforce_import_row_limit(len(raw_rows))
 
     header_idx = -1
     col_map: Dict[str, int] = {}
@@ -1575,7 +1645,10 @@ async def parse_and_import_mentor_excel(
     await db.audit_logs.insert_one({
         "actor_id": actor_id,
         "action": "IMPORT_MENTORS_EXCEL",
-        "metadata": {key: value for key, value in summary.items() if key not in {"errors", "warnings"}},
+        "metadata": {
+            "filename": filename,
+            **{key: value for key, value in summary.items() if key not in {"errors", "warnings"}},
+        },
         "created_at": datetime.now(timezone.utc),
     })
 
@@ -1634,6 +1707,7 @@ async def parse_and_import_student_excel(
     raw_rows = extract_raw_rows_from_file(file_bytes, filename)
     if not raw_rows:
         raise ValueError("File is empty or could not be read.")
+    _enforce_import_row_limit(len(raw_rows))
 
     header_idx = -1
     col_map = {}
@@ -1914,7 +1988,10 @@ async def parse_and_import_student_excel(
     await db.audit_logs.insert_one({
         "actor_id": actor_id,
         "action": "IMPORT_STUDENTS_EXCEL",
-        "metadata": {key: value for key, value in summary.items() if key not in {"errors", "warnings"}},
+        "metadata": {
+            "filename": filename,
+            **{key: value for key, value in summary.items() if key not in {"errors", "warnings"}},
+        },
         "created_at": datetime.now(timezone.utc),
     })
 

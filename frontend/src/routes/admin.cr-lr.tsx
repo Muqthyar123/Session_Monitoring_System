@@ -105,10 +105,12 @@ function CRLRManagementPage() {
     sessionStorage.setItem("admin_crlr_section", v);
   };
 
-  const handleUploadCRLR = async (file: File) => {
-    const res = await uploadCRLRExcel(file);
-    reload();
-    timetableUploads.reload();
+  const handleUploadCRLR = async (file: File, onProgress: (percent: number) => void) => {
+    const res = await uploadCRLRExcel(file, onProgress);
+    if (res.created || res.updated) {
+      reload();
+      timetableUploads.reload();
+    }
     return res;
   };
 

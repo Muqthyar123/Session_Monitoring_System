@@ -212,10 +212,10 @@ function AdminMentorsPage() {
     }
   };
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (file: File, onProgress: (percent: number) => void) => {
     setUploading(true);
     try {
-      const result = await uploadMentorExcel(file);
+      const result = await uploadMentorExcel(file, onProgress);
       if (result.created || result.updated) reload();
       if (result.status === "error") toast.error(result.message);
       else if (result.status === "warning") toast.warning(result.message);

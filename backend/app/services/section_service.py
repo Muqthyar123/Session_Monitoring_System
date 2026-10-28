@@ -46,10 +46,18 @@ async def reconcile_sections_with_timetables() -> dict:
         else:
             stale_ids.append(doc["_id"])
 
-    removed = 0
+    stale_deactivated = 0
+    duplicates_merged = 0
     if stale_ids:
-        result = await db.sections.delete_many({"_id": {"$in": stale_ids}})
-        removed += result.deleted_count
+        result = await db.sections.update_many(
+            {"_id": {"$in": stale_ids}},
+            {"$set": {
+                "is_active": False,
+                "deactivated_reason": "Section is absent from the current timetable inventory.",
+                "updated_at": datetime.now(timezone.utc),
+            }},
+        )
+        stale_deactivated += result.modified_count
     updated = 0
     now = datetime.now(timezone.utc)
     for key, section in inventory.items():
@@ -96,7 +104,9 @@ async def reconcile_sections_with_timetables() -> dict:
         duplicate_ids = [m["_id"] for m in matches[1:]]
         if duplicate_ids:
             result = await db.sections.delete_many({"_id": {"$in": duplicate_ids}})
-            removed += result.deleted_count
+            # Duplicate section documents are only removed after their assignments
+            # have been merged into the canonical document above.
+            duplicates_merged += result.deleted_count
 
         # Keep representative account assignments aligned to the canonical section.
         aliases = list({canonical_name, f"{section['branch']}-{key[2]}", key[2]})
@@ -119,4 +129,9 @@ async def reconcile_sections_with_timetables() -> dict:
         await db.sections.create_index([("section_name", 1)], unique=True)
     except Exception:
         pass
-    return {"timetable_sections": len(inventory), "sections_updated": updated, "sections_removed": removed}
+    return {
+        "timetable_sections": len(inventory),
+        "sections_updated": updated,
+        "stale_sections_deactivated": stale_deactivated,
+        "duplicate_sections_merged": duplicates_merged,
+    }

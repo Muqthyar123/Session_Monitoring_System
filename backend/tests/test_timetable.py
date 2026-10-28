@@ -66,7 +66,15 @@ async def test_matrix_grid_timetable_import():
     res = await parse_and_import_timetable_excel(file_bytes, "college_timetable.xlsx", "actor-123")
 
     assert res["inserted"] > 0
+    assert res["updated"] == 0
     assert res["failed"] == 0
+
+    repeated = await parse_and_import_timetable_excel(
+        file_bytes, "college_timetable.xlsx", "actor-123"
+    )
+    assert repeated["inserted"] == 0
+    assert repeated["updated"] == 0
+    assert repeated["unchanged"] == res["inserted"]
 
     db = get_database()
     # Check auto-upsert in db.sections

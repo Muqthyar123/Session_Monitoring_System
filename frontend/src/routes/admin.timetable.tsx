@@ -137,10 +137,12 @@ function TimetablePage() {
     }
   };
 
-  const handleUploadSuccess = async (file: File) => {
-    const result = await uploadTimetable(file);
-    uploads.reload();
-    timetable.reload();
+  const handleUploadSuccess = async (file: File, onProgress: (percent: number) => void) => {
+    const result = await uploadTimetable(file, onProgress);
+    if (result.inserted + result.updated > 0) {
+      uploads.reload();
+      timetable.reload();
+    }
     return result;
   };
 
@@ -217,10 +219,10 @@ function TimetablePage() {
               variant="destructive"
               size="sm"
               onClick={async () => {
-                if (confirm("Reset Timetables: Are you sure you want to delete all timetables from MongoDB database?")) {
+                if (confirm("Permanently delete all timetable periods, generated session records, and attendance records? This affects every section. This cannot be undone.")) {
                   try {
-                    await resetAllTimetables();
-                    toast.success("Timetables reset successfully: Deleted from database.");
+                    const result = await resetAllTimetables();
+                    toast.success(`Deleted ${result.timetables_deleted ?? 0} timetable periods, ${result.sessions_deleted ?? 0} sessions, and ${result.attendance_records_deleted ?? 0} attendance records.`);
                     uploads.reload();
                     timetable.reload();
                   } catch (err: any) {
@@ -278,10 +280,15 @@ function TimetablePage() {
               size="sm"
               className="text-destructive border-destructive/30 hover:bg-destructive/10"
               onClick={async () => {
-                if (confirm("Are you sure you want to delete ALL uploaded timetables?")) {
-                  await deleteAllTimetables();
-                  uploads.reload();
-                  timetable.reload();
+                if (confirm("Permanently delete all timetable periods, generated session records, and attendance records? This affects every section. This cannot be undone.")) {
+                  try {
+                    const result = await deleteAllTimetables();
+                    toast.success(`Deleted ${result.timetables_deleted ?? 0} timetable periods, ${result.sessions_deleted ?? 0} sessions, and ${result.attendance_records_deleted ?? 0} attendance records.`);
+                    uploads.reload();
+                    timetable.reload();
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to delete timetables.");
+                  }
                 }
               }}
             >

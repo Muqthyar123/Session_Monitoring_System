@@ -1,4 +1,4 @@
-import { request, downloadApiFile } from "./apiClient";
+import { request, uploadRequest, downloadApiFile } from "./apiClient";
 import type { CRLRUser } from "@/data/mock/mockData";
 
 export interface SectionItem {
@@ -46,14 +46,11 @@ export async function resetCRLRUsers(): Promise<{ message: string; deleted_count
   });
 }
 
-export async function uploadCRLRExcel(file: File): Promise<{ message: string; status: "success" | "warning" | "error"; details: string[] }> {
+export async function uploadCRLRExcel(file: File, onProgress?: (percent: number) => void): Promise<{ message: string; status: "success" | "warning" | "error"; details: string[]; created: number; updated: number }> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await request<any>("/admin/users/import", {
-    method: "POST",
-    body: formData,
-  });
+  const res = await uploadRequest<any>("/admin/users/import", formData, onProgress);
 
   const created = Number(res.created ?? 0);
   const updated = Number(res.updated ?? 0);
@@ -72,6 +69,8 @@ export async function uploadCRLRExcel(file: File): Promise<{ message: string; st
     status,
     details,
     message: `${verb}: ${created} created, ${updated} updated, ${failed} failed.`,
+    created,
+    updated,
   };
 }
 

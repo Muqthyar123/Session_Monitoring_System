@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status, HTTPException
 from app.core.dependencies import require_roles
+from app.api.upload_utils import read_upload_limited
 from app.core.security import hash_password
 from app.schemas.common import ApiResponse
 from app.schemas.user import UserCreate, UserResponse, UserRole, UserUpdate
@@ -80,7 +81,7 @@ async def import_mentor_excel_api(
             detail="Invalid file format. Only .xlsx, .xls, or .csv files are accepted for Mentors upload.",
         )
 
-    file_bytes = await file.read()
+    file_bytes = await read_upload_limited(file)
     try:
         summary = await parse_and_import_mentor_excel(
             file_bytes, filename=file.filename, actor_id=admin["id"]
@@ -89,10 +90,6 @@ async def import_mentor_excel_api(
         raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as err:
         raise HTTPException(status_code=500, detail="Failed to process Mentor file due to a server error.") from None
-
-    if summary.get("failed", 0) > 0 and summary.get("created", 0) == 0 and summary.get("updated", 0) == 0:
-        first_err = summary["errors"][0]["errors"][0] if summary.get("errors") else "Invalid mentor file contents."
-        raise HTTPException(status_code=400, detail=f"Mentor import failed: {first_err}")
 
     return ApiResponse(
         success=True,

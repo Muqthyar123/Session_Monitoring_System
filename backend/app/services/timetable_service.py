@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 from app.db.mongodb import get_database
 from app.schemas.timetable import TimetablePeriodResponse
@@ -92,18 +93,34 @@ async def get_all_timetables() -> List[TimetablePeriodResponse]:
     return results
 
 
-async def delete_timetable_by_section(section: str) -> int:
+async def delete_timetable_by_section(section: str) -> dict:
     db = get_database()
     sec_clean = section.strip().upper()
-    result = await db.timetables.delete_many({"section": sec_clean})
-    await db.sessions.delete_many({"section": sec_clean})
-    await db.attendance_records.delete_many({"section": sec_clean})
-    return result.deleted_count
+    timetables = await db.timetables.delete_many({"section": sec_clean})
+    sessions = await db.sessions.delete_many({"section": sec_clean})
+    attendance = await db.attendance_records.delete_many({"section": sec_clean})
+    return {
+        "timetables_deleted": timetables.deleted_count,
+        "sessions_deleted": sessions.deleted_count,
+        "attendance_records_deleted": attendance.deleted_count,
+    }
 
 
-async def delete_all_timetables() -> int:
+async def delete_all_timetables(actor_id: Optional[str] = None) -> dict:
     db = get_database()
-    result = await db.timetables.delete_many({})
-    await db.sessions.delete_many({})
-    await db.attendance_records.delete_many({})
-    return result.deleted_count
+    timetables = await db.timetables.delete_many({})
+    sessions = await db.sessions.delete_many({})
+    attendance = await db.attendance_records.delete_many({})
+    counts = {
+        "timetables_deleted": timetables.deleted_count,
+        "sessions_deleted": sessions.deleted_count,
+        "attendance_records_deleted": attendance.deleted_count,
+    }
+    if actor_id:
+        await db.audit_logs.insert_one({
+            "actor_id": actor_id,
+            "action": "RESET_TIMETABLES",
+            "metadata": counts,
+            "created_at": datetime.now(timezone.utc),
+        })
+    return counts

@@ -1,4 +1,4 @@
-import { request, downloadApiFile } from "./apiClient";
+import { request, uploadRequest, downloadApiFile } from "./apiClient";
 
 export interface StudentItem {
   id: string;
@@ -119,20 +119,22 @@ export async function resetStudents(): Promise<{ message: string; deleted_count?
   });
 }
 
-export async function uploadStudentExcel(file: File): Promise<{ message: string; created?: number; failed?: number }> {
+export async function uploadStudentExcel(file: File, onProgress?: (percent: number) => void): Promise<{ message: string; created: number; updated: number; failed: number; status: "success" | "warning" | "error"; details: string[] }> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await request<any>("/admin/students/import", {
-    method: "POST",
-    body: formData,
-  });
+  const res = await uploadRequest<any>("/admin/students/import", formData, onProgress);
 
-  return {
-    message: res.message || `Import complete: ${res.created} created, ${res.updated} updated.`,
-    created: res.created,
-    failed: res.failed,
-  };
+  const created = Number(res.created ?? 0);
+  const updated = Number(res.updated ?? 0);
+  const failed = Number(res.failed ?? 0);
+  const changed = created + updated;
+  const status = failed === 0 ? "success" : changed > 0 ? "warning" : "error";
+  const verb = status === "error" ? "Import failed" : status === "warning" ? "Import partially completed" : "Import complete";
+  const details = Array.isArray(res.errors)
+    ? res.errors.slice(0, 5).map((item: any) => `Row ${item.row ?? "?"}: ${Array.isArray(item.errors) ? item.errors.join(" ") : "Check this row."}`)
+    : [];
+  return { message: `${verb}: ${created} created, ${updated} updated, ${failed} failed.`, created, updated, failed, status, details };
 }
 
 export function downloadStudentTemplate() {

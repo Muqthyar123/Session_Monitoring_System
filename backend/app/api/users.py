@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status, HTTPException
 from app.core.dependencies import require_roles
+from app.api.upload_utils import read_upload_limited
 from app.schemas.common import ApiResponse
 from app.schemas.user import UserCreate, UserResponse, UserRole, UserUpdate
 from app.services.excel_service import (
@@ -61,7 +62,7 @@ async def import_crlr_excel_api(
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
     try:
-        file_bytes = await file.read()
+        file_bytes = await read_upload_limited(file)
         summary = await parse_and_import_crlr_excel(
             file_bytes, filename=file.filename, actor_id=admin["id"]
         )
@@ -70,6 +71,8 @@ async def import_crlr_excel_api(
             data=summary,
             message=f"Import complete: {summary['created']} created, {summary['updated']} updated, {summary['failed']} failed.",
         )
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

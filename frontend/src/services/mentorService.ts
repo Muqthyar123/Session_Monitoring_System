@@ -1,4 +1,4 @@
-import { request, downloadApiFile } from "./apiClient";
+import { request, uploadRequest, downloadApiFile } from "./apiClient";
 import type { StudentItem } from "./studentService";
 import type { AbsenteeStudentItem } from "./studentAttendanceService";
 
@@ -109,14 +109,11 @@ export async function resetMentors(): Promise<{ message: string; deleted_count?:
   });
 }
 
-export async function uploadMentorExcel(file: File): Promise<{ message: string; created?: number; updated?: number; failed?: number; status: "success" | "warning" | "error"; details: string[] }> {
+export async function uploadMentorExcel(file: File, onProgress?: (percent: number) => void): Promise<{ message: string; created?: number; updated?: number; failed?: number; status: "success" | "warning" | "error"; details: string[] }> {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await request<any>("/admin/mentors/import", {
-    method: "POST",
-    body: formData,
-  });
+  const res = await uploadRequest<any>("/admin/mentors/import", formData, onProgress);
 
   const created = Number(res.created ?? 0);
   const updated = Number(res.updated ?? 0);

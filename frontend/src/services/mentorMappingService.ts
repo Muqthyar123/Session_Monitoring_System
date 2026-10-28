@@ -1,4 +1,4 @@
-import { request, downloadApiFile } from "./apiClient";
+import { request, uploadRequest, downloadApiFile } from "./apiClient";
 
 export interface MentorMappingRowItem {
   rowIdx: number;
@@ -57,13 +57,10 @@ export async function downloadMappingTemplate(): Promise<void> {
   );
 }
 
-export async function previewMentorMappings(file: File): Promise<MentorMappingPreviewData> {
+export async function previewMentorMappings(file: File, onProgress?: (percent: number) => void): Promise<MentorMappingPreviewData> {
   const formData = new FormData();
   formData.append("file", file);
-  return request<MentorMappingPreviewData>("/admin/mentor-student-mapping/preview", {
-    method: "POST",
-    body: formData,
-  });
+  return uploadRequest<MentorMappingPreviewData>("/admin/mentor-student-mapping/preview", formData, onProgress);
 }
 
 export async function confirmMentorMappings(

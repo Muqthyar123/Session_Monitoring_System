@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { FileSpreadsheet, UploadCloud, CheckCircle2, XCircle, Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 type UploadStatus = "idle" | "uploading" | "success" | "warning" | "error";
@@ -8,8 +9,8 @@ type UploadResult = { message?: string; status?: "success" | "warning" | "error"
 
 interface FileUploadProps {
   /** Upload handler function passed by parent page (supports onUpload or onFileSelect) */
-  onUpload?: (file: File) => Promise<UploadResult | any>;
-  onFileSelect?: (file: File) => Promise<UploadResult | any> | void;
+  onUpload?: (file: File, onProgress: (percent: number) => void) => Promise<UploadResult | any>;
+  onFileSelect?: (file: File, onProgress: (percent: number) => void) => Promise<UploadResult | any> | void;
   accept?: string;
   hint?: string;
   label?: string;
@@ -30,6 +31,7 @@ export function FileUpload({
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [details, setDetails] = useState<string[]>([]);
+  const [transferProgress, setTransferProgress] = useState(0);
 
   const displayHint = hint || `Supported formats: ${accept}`;
 
@@ -39,6 +41,7 @@ export function FileUpload({
     setStatus("idle");
     setMessage(null);
     setDetails([]);
+    setTransferProgress(0);
 
     const validExts = accept
       .split(",")
@@ -61,8 +64,9 @@ export function FileUpload({
 
     setStatus("uploading");
     setMessage(null);
+    setTransferProgress(0);
     try {
-      const result = await uploadFn(file);
+      const result = await uploadFn(file, setTransferProgress);
       setStatus(result?.status || "success");
       setMessage(
         (result && typeof result === "object" && result.message) ||
@@ -133,7 +137,7 @@ export function FileUpload({
               <p className="truncate text-sm font-medium">{file.name}</p>
             </div>
           </div>
-          <Button onClick={handleUpload} disabled={isUploading} size="sm">
+          <Button onClick={handleUpload} disabled={isUploading || (status === "error" && message?.startsWith("Unsupported file type"))} size="sm">
             {isUploading ? (
               <>
                 <Loader2 className="size-4 animate-spin mr-1" /> Uploading...
@@ -142,6 +146,16 @@ export function FileUpload({
               "Upload"
             )}
           </Button>
+        </div>
+      ) : null}
+
+      {status === "uploading" ? (
+        <div className="space-y-1.5" role="status" aria-live="polite">
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>{transferProgress >= 100 ? "File received; validating and saving records in the database…" : "Transferring file to the backend…"}</span>
+            <span className="shrink-0">{transferProgress}% transferred</span>
+          </div>
+          <Progress value={transferProgress} aria-label="File transfer progress" />
         </div>
       ) : null}
 

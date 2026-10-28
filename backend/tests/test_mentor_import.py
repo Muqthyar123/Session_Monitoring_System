@@ -3,6 +3,8 @@ from app.core.security import verify_password
 from app.core.security import DEFAULT_MENTOR_PASSWORD
 from app.services.excel_service import parse_and_import_mentor_excel
 from app.db.mongodb import get_database
+from app.core.security import create_access_token
+from app.schemas.user import UserRole
 from httpx import AsyncClient
 
 SAMPLE_1_CSV = """NON-TEACHING,,,,,,
@@ -138,6 +140,29 @@ async def test_mentor_without_password_gets_employee_id_login_and_hashed_default
     )
     assert login.status_code == 200
     assert login.json()["data"]["user"]["employeeId"] == "992001"
+
+
+@pytest.mark.asyncio
+async def test_all_invalid_mentor_import_returns_rejected_row_summary(client: AsyncClient):
+    db = get_database()
+    admin = await db.users.insert_one({
+        "name": "Import Test Admin",
+        "email": "mentor-import-rejections@example.invalid",
+        "role": UserRole.ADMIN.value,
+        "is_active": True,
+    })
+    token = create_access_token({"sub": str(admin.inserted_id), "role": UserRole.ADMIN.value})
+    response = await client.post(
+        "/api/admin/mentors/import",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("invalid-mentors.csv", b"NAME,ID/EMPLOYEE ID,MAIL ID/ EMAIL\n,991003,,\n", "text/csv")},
+    )
+    assert response.status_code == 200, response.text
+    summary = response.json()["data"]
+    assert summary["created"] == 0
+    assert summary["failed"] == 1
+    assert "Mentor Name is required." in summary["errors"][0]["errors"]
+    assert await db.users.find_one({"mentor_id": "991003"}) is None
 
 
 
