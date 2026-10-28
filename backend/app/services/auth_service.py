@@ -56,38 +56,7 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
             detail="User account is disabled. Please contact administrator.",
         )
 
-    clean_pwd = login_data.password.strip()
-    pwd_valid = verify_password(clean_pwd, user.get("password_hash", ""))
-    if not pwd_valid and clean_pwd != login_data.password:
-        pwd_valid = verify_password(login_data.password, user.get("password_hash", ""))
-    
-    # Fallback check: CR/LR default password is their roll number
-    if not pwd_valid and user.get("roll_number"):
-        clean_user_roll = user.get("roll_number", "").strip().upper()
-        if clean_user_roll and (clean_pwd.upper() == clean_user_roll or login_data.password.strip().upper() == clean_user_roll):
-            pwd_valid = True
-            # Upgrade stored password hash to match their roll number
-            await db.users.update_one(
-                {"_id": user["_id"]},
-                {"$set": {"password_hash": hash_password(clean_user_roll)}}
-            )
-
-    # Fallback check for mentors: default password is "mentor@1234" (or mentor_id / employee_id)
-    if not pwd_valid and user.get("role") == UserRole.MENTOR.value:
-        if clean_pwd == "mentor@1234" or login_data.password == "mentor@1234":
-            pwd_valid = True
-            await db.users.update_one(
-                {"_id": user["_id"]},
-                {"$set": {"password_hash": hash_password("mentor@1234")}}
-            )
-        else:
-            clean_m_id = str(user.get("employee_id") or user.get("mentor_id") or "").strip().upper()
-            if clean_m_id and (clean_pwd.upper() == clean_m_id or login_data.password.strip().upper() == clean_m_id):
-                pwd_valid = True
-                await db.users.update_one(
-                    {"_id": user["_id"]},
-                    {"$set": {"password_hash": hash_password("mentor@1234")}}
-                )
+    pwd_valid = verify_password(login_data.password, user.get("password_hash", ""))
 
     if not pwd_valid:
         raise HTTPException(

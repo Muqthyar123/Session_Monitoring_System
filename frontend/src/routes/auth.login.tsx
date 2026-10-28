@@ -115,8 +115,8 @@ function CRLRLoginPage() {
           </form>
 
           <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground space-y-1">
-            <p className="font-semibold text-foreground">Section Representatives Credentials</p>
-            <p>Log in using your <strong>Roll Number</strong> (or assigned email) and your default password is your <strong>Roll Number</strong> (e.g. <code>23471A0501</code>).</p>
+            <p className="font-semibold text-foreground">Section Representatives Sign-in</p>
+            <p>Use your assigned roll number or email address and the password provided for your account.</p>
           </div>
 
           <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">

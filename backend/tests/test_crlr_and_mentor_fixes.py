@@ -15,25 +15,25 @@ tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
 
 @pytest.mark.asyncio
-async def test_mentor_login_with_employee_id_and_default_password(client: AsyncClient):
+async def test_mentor_login_with_employee_id_and_explicit_password(client: AsyncClient):
     db = get_database()
     emp_id = "605101"
 
-    # Insert test mentor with employee_id and default password mentor@1234
+    password = "SecureMentorPass123!"
     await db.users.insert_one({
         "name": "Dr. Mentor Test",
         "email": "605101@nrtec.in",
         "employee_id": emp_id,
         "mentor_id": emp_id,
-        "password_hash": hash_password("mentor@1234"),
+        "password_hash": hash_password(password),
         "role": UserRole.MENTOR.value,
         "is_active": True,
     })
 
-    # Test login with employee_id as email field and password "mentor@1234"
+    # Test login with employee_id as identifier and the explicit password.
     res = await client.post(
         "/api/auth/login",
-        json={"email": emp_id, "password": "mentor@1234", "portal": "MENTOR"},
+        json={"email": emp_id, "password": password, "portal": "MENTOR"},
     )
     assert res.status_code == 200
     data = res.json()
@@ -83,13 +83,14 @@ async def test_crlr_import_with_google_form_headers(client: AsyncClient):
         "Select the Department",
         "Select the Section",
         "CR/LR",
+        "Password",
     ]
     ws.append(headers_row)
 
     sample_rows = [
-        ["palibandla.karu999@gmail.com", "Palibandla Karunya", "23471A0549", "7275502755", "4th", "CSE", "C2", "LR"],
-        ["vallalapremkumarprem@gmail.com", "VALLALA PREM KUMAR", "23471A05F2", "8712151559", "4th", "CSE", "C3", "CR"],
-        ["shaikyasmintaj0312@gmail.com", "Shaik Yasmin Taj", "23471A05D1", "8019188630", "4th", "CSE", "C1", "LR"],
+        ["palibandla.karu999@gmail.com", "Palibandla Karunya", "23471A0549", "7275502755", "4th", "CSE", "C2", "LR", "StudentPassOne123!"],
+        ["vallalapremkumarprem@gmail.com", "VALLALA PREM KUMAR", "23471A05F2", "8712151559", "4th", "CSE", "C3", "CR", "StudentPassTwo123!"],
+        ["shaikyasmintaj0312@gmail.com", "Shaik Yasmin Taj", "23471A05D1", "8019188630", "4th", "CSE", "C1", "LR", "StudentPassThree123!"],
     ]
     for r in sample_rows:
         ws.append(r)
@@ -113,10 +114,16 @@ async def test_crlr_import_with_google_form_headers(client: AsyncClient):
     assert res_data["success"] is True
     assert res_data["data"]["created"] == 3
 
-    # Verify CR/LR can log in with their Roll Number as default password
-    cr_login_res = await client.post(
+    default_password_attempt = await client.post(
         "/api/auth/login",
         json={"email": "23471A0549", "password": "23471A0549", "portal": "CRLR"},
+    )
+    assert default_password_attempt.status_code == 401
+
+    # Verify CR/LR can log in with the imported password.
+    cr_login_res = await client.post(
+        "/api/auth/login",
+        json={"email": "23471A0549", "password": "StudentPassOne123!", "portal": "CRLR"},
     )
     assert cr_login_res.status_code == 200
     cr_data = cr_login_res.json()

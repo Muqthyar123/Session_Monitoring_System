@@ -117,7 +117,7 @@ function AdminLoginPage() {
 
           <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">System Administrator Account</p>
-            <p>admin@example.com / demo1234</p>
+            <p>Sign in with your provisioned administrator account.</p>
           </div>
 
           <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">

@@ -1,8 +1,4 @@
-/**
- * MOCK DATA — DEMO ONLY.
- * All names, sections and records below are fictional and exist only to
- * demonstrate the UI. Delete this file once real APIs are connected.
- */
+/** Shared frontend API types. */
 
 export type Role = "ADMIN" | "CR" | "LR" | "MENTOR" | "DEPARTMENT_COORDINATOR" | "COORDINATOR";
 export type SessionStatus = "Upcoming" | "Active" | "Completed";
@@ -89,51 +85,3 @@ export interface AppNotification {
   sessionId: string | null;
 }
 
-export const MOCK_SECTIONS: string[] = [];
-export const MOCK_YEARS: string[] = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
-
-export const MOCK_ADMIN_USER: AuthUser = {
-  id: "u-admin-1",
-  name: "System Administrator",
-  email: "admin@example.com",
-  role: "ADMIN",
-};
-
-export const MOCK_CR_USER: AuthUser | null = null;
-export const MOCK_LR_USER: AuthUser | null = null;
-
-export const MOCK_CRLR_USERS: CRLRUser[] = [];
-export const MOCK_TIMETABLE_UPLOADS: TimetableUpload[] = [];
-
-export function buildMockTimetable(_year: string, _section: string): TimetablePeriod[] {
-  return [];
-}
-
-export const MOCK_SESSIONS: ClassSession[] = [];
-export const MOCK_ALERTS: AdminAlert[] = [];
-export const MOCK_NOTIFICATIONS: AppNotification[] = [];
-
-export const MOCK_ADMIN_DASHBOARD = {
-  date: new Date().toISOString().split("T")[0],
-  summary: {
-    totalSections: 0,
-    totalCRs: 0,
-    totalLRs: 0,
-    todaysSessions: 0,
-    facultyPresent: 0,
-    facultyAbsent: 0,
-    pendingResponses: 0,
-    substituteFaculty: 0,
-  },
-  facultyPresencePercent: 0,
-  sectionWise: [],
-  sessionStatus: [],
-};
-
-export const MOCK_CRLR_ANALYTICS = {
-  section: "",
-  summary: { facultyPresent: 0, facultyAbsent: 0, substitute: 0, responseRate: 0 },
-  daily: [],
-  weekly: [],
-  responseStatus: [],
-};

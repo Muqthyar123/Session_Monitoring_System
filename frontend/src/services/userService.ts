@@ -20,14 +20,14 @@ export async function getCRLRUsers(): Promise<CRLRUser[]> {
   return request<CRLRUser[]>("/admin/users?crlr_only=true");
 }
 
-export async function createCRLRUser(data: Omit<CRLRUser, "id">): Promise<CRLRUser> {
+export async function createCRLRUser(data: Omit<CRLRUser, "id"> & { password: string }): Promise<CRLRUser> {
   return request<CRLRUser>("/admin/users", {
     method: "POST",
     body: JSON.stringify(data),
   });
 }
 
-export async function updateCRLRUser(id: string, data: Omit<CRLRUser, "id">): Promise<CRLRUser> {
+export async function updateCRLRUser(id: string, data: Omit<CRLRUser, "id"> & { password?: string }): Promise<CRLRUser> {
   return request<CRLRUser>(`/admin/users/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),

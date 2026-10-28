@@ -31,7 +31,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: Optional[str] = Field(None, min_length=6)
+    password: str = Field(..., min_length=12)
 
 
 class UserUpdate(BaseModel):
@@ -47,7 +47,7 @@ class UserUpdate(BaseModel):
     department: Optional[str] = None
     profile: Optional[str] = None
     is_active: Optional[bool] = None
-    password: Optional[str] = Field(None, min_length=6)
+    password: Optional[str] = Field(None, min_length=12)
 
     model_config = ConfigDict(populate_by_name=True)
 

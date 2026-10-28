@@ -96,7 +96,7 @@ backend/
 
 ### Prerequisites
 - **Python 3.11+** installed
-- **MongoDB** running locally (`mongodb://localhost:27017`) or a MongoDB Atlas URI
+- **MongoDB Atlas** connection configured in the repository-root `.env`
 
 ### 1. Create Virtual Environment & Install Dependencies
 
@@ -119,58 +119,35 @@ pip install -r requirements.txt
 
 ### 2. Configure Environment Variables
 
-Copy `.env.example` to `.env` and set your configuration options:
+From the backend directory, copy the repository-root example to the repository-root `.env`. The backend reads that root file from any working directory; it does not use a separate `backend/.env`:
 
 ```bash
-cp .env.example .env
+cp ../.env.example ../.env
 ```
 
-`.env` configuration keys:
-```env
-MONGODB_URI=mongodb://localhost:27017
-DATABASE_NAME=college_session_monitoring
-JWT_SECRET_KEY=supersecretkey_change_in_production_1234567890
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-FRONTEND_URL=http://localhost:5173
-TIMEZONE=Asia/Kolkata
-FIREBASE_PROJECT_ID=
-FIREBASE_PRIVATE_KEY=
-FIREBASE_CLIENT_EMAIL=
-```
+See the repository-root `.env.example`. Set `MONGODB_URI`, `DATABASE_NAME`, `JWT_SECRET_KEY`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `FRONTEND_URL`, and `TIMEZONE` in the repository-root `.env` or deployment environment.
 
-### 3. Seed Development Data
+### 3. Initialize the First Administrator
 
-Run the database seed script to populate default Admin, CR, LR accounts, sections, and sample timetables:
+Run the interactive first-admin setup only when the configured database has no administrator. It prompts for credentials and does not remove or reset existing accounts:
 
 ```bash
 python scripts/seed_db.py
 ```
 
-Default Seed Credentials:
-- **Admin**: `admin@example.com` / `demo1234`
-- **CR (II-A)**: `cr@example.com` / `demo1234`
-- **LR (II-A)**: `lr@example.com` / `demo1234`
+---
+
+## Account setup
+
+The application does not create default users or passwords at startup. To create the first administrator on a newly provisioned database, run `python scripts/seed_db.py` from `backend`; it prompts for credentials and does not change existing records. CR/LR and mentor accounts are managed through the authenticated admin screens.
 
 ---
 
-## 🚀 Running the Server
 
-Start the FastAPI backend with Uvicorn live reload:
-
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-- API Base URL: `http://localhost:8000`
-- Interactive Swagger Documentation: `http://localhost:8000/docs`
-- ReDoc API Documentation: `http://localhost:8000/redoc`
-
----
 
 ## 🧪 Running Automated Tests
 
-Run the backend test suite using `pytest` (uses in-memory `mongomock_motor` for zero-side-effect, high-speed execution):
+Install test-only dependencies with `pip install -r requirements-dev.txt`, then run the backend suite. Tests use in-memory `mongomock_motor`; the application has no runtime mock fallback.
 
 ```bash
 pytest

@@ -200,7 +200,7 @@ async def test_complete_mentor_flow(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_mentor_default_password_is_id_number(client: AsyncClient):
+async def test_mentor_creation_requires_and_uses_explicit_password(client: AsyncClient):
     db = get_database()
     admin_u = await db.users.insert_one({
         "name": "Admin",
@@ -211,8 +211,7 @@ async def test_mentor_default_password_is_id_number(client: AsyncClient):
     admin_token = create_access_token({"sub": str(admin_u.inserted_id), "role": "ADMIN"})
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # 1. Admin creates mentor without specifying password
-    create_res = await client.post(
+    missing_password_res = await client.post(
         "/api/admin/mentors",
         json={
             "name": "Moturi Sireesha",
@@ -225,26 +224,44 @@ async def test_mentor_default_password_is_id_number(client: AsyncClient):
         },
         headers=admin_headers,
     )
+    assert missing_password_res.status_code == 422
+
+    password = "MentorAccountPass123!"
+    # 1. Admin creates mentor with an explicit password
+    create_res = await client.post(
+        "/api/admin/mentors",
+        json={
+            "name": "Moturi Sireesha",
+            "mentorId": "905101",
+            "email": "moturisireesha@gmail.com",
+            "department": "CSE",
+            "designation": "Associate Professor",
+            "phone": "9492468445",
+            "role": "MENTOR",
+            "password": password,
+        },
+        headers=admin_headers,
+    )
     assert create_res.status_code == 201
 
-    # 2. Mentor logs in using Mentor ID as username AND Mentor ID as password
+    # 2. Mentor logs in using the ID as username and explicit password
     login_id_res = await client.post(
         "/api/auth/login",
         json={
             "email": "905101",
-            "password": "905101",
+            "password": password,
             "portal": "MENTOR",
         },
     )
     assert login_id_res.status_code == 200
     assert login_id_res.json()["data"]["user"]["mentorId"] == "905101"
 
-    # 3. Mentor can also log in using Email as username AND Mentor ID as password
+    # 3. Mentor can also log in using email and the same explicit password
     login_email_res = await client.post(
         "/api/auth/login",
         json={
             "email": "moturisireesha@gmail.com",
-            "password": "905101",
+            "password": password,
             "portal": "MENTOR",
         },
     )

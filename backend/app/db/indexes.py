@@ -1,8 +1,48 @@
 import logging
-from pymongo import IndexModel, ASCENDING, DESCENDING
-from app.db.mongodb import get_database, db_manager
+from pymongo import ASCENDING, DESCENDING
+from app.db.mongodb import get_database
 
 logger = logging.getLogger("fams.indexes")
+
+
+async def _ensure_index(collection, keys, **options):
+    """Reuse compatible indexes; safely migrate legacy non-unique patterns."""
+    expected_keys = [(field, direction) for field, direction in keys]
+    expected_unique = bool(options.get("unique", False))
+    expected_partial = options.get("partialFilterExpression")
+    index_info = await collection.index_information()
+
+    for name, info in index_info.items():
+        actual_keys = [(field, direction) for field, direction in info.get("key", [])]
+        if actual_keys != expected_keys:
+            continue
+
+        if not expected_unique:
+            return name
+
+        if info.get("unique", False) and info.get("partialFilterExpression") == expected_partial:
+            return name
+
+        pipeline = []
+        if expected_partial:
+            pipeline.append({"$match": expected_partial})
+        pipeline.extend([
+            {"$group": {
+                "_id": {field: f"${field}" for field, _ in expected_keys},
+                "count": {"$sum": 1},
+            }},
+            {"$match": {"count": {"$gt": 1}}},
+            {"$limit": 1},
+        ])
+        duplicates = await collection.aggregate(pipeline).to_list(length=1)
+        if duplicates:
+            raise RuntimeError("Duplicate documents prevent required unique index creation.")
+
+        logger.info("Replacing legacy index %s after confirming uniqueness.", name)
+        await collection.drop_index(name)
+        break
+
+    return await collection.create_index(keys, **options)
 
 
 async def create_db_indexes():
@@ -11,118 +51,89 @@ async def create_db_indexes():
 
     try:
         # users collection
-        await db.users.create_index([("email", ASCENDING)], unique=True)
+        await _ensure_index(db.users, [("email", ASCENDING)], unique=True)
 
-        # mongomock does not support partialFilterExpression and throws DuplicateKeyError when fields are missing/None
-        if not getattr(db_manager, "is_mock_mode", False):
-            await db.users.create_index(
-                [("roll_number", ASCENDING)],
-                unique=True,
-                partialFilterExpression={"roll_number": {"$type": "string"}},
-            )
-            await db.users.create_index(
-                [("mentor_id", ASCENDING)],
-                unique=True,
-                partialFilterExpression={"mentor_id": {"$type": "string"}},
-            )
-        else:
-            try:
-                await db.users.create_index([("roll_number", ASCENDING)], sparse=True)
-            except Exception:
-                pass
-            try:
-                await db.users.create_index([("mentor_id", ASCENDING)], sparse=True)
-            except Exception:
-                pass
+        await _ensure_index(db.users,
+            [("roll_number", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"roll_number": {"$type": "string"}},
+        )
+        await _ensure_index(db.users,
+            [("mentor_id", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"mentor_id": {"$type": "string"}},
+        )
 
-        await db.users.create_index([("role", ASCENDING)])
-        await db.users.create_index([("role", ASCENDING), ("created_at", DESCENDING)])
-        await db.users.create_index([("section", ASCENDING)])
+        await _ensure_index(db.users, [("role", ASCENDING)])
+        await _ensure_index(db.users, [("role", ASCENDING), ("created_at", DESCENDING)])
+        await _ensure_index(db.users, [("section", ASCENDING)])
 
         # students collection
-        try:
-            await db.students.create_index(
-                [("roll_number", ASCENDING)],
-                unique=True,
-            )
-        except Exception:
-            pass
-        await db.students.create_index([("year", ASCENDING), ("section", ASCENDING), ("roll_number", ASCENDING)])
+        await _ensure_index(db.students, [("roll_number", ASCENDING)], unique=True)
+        await _ensure_index(db.students, [("year", ASCENDING), ("section", ASCENDING), ("roll_number", ASCENDING)])
 
 
         # student_attendance collection
-        try:
-            await db.student_attendance.create_index(
-                [("year", ASCENDING), ("section", ASCENDING), ("date", ASCENDING), ("roll_number", ASCENDING)],
-                unique=True,
-            )
-        except Exception:
-            pass
-        await db.student_attendance.create_index([("date", DESCENDING)])
-        await db.student_attendance.create_index([("roll_number", ASCENDING)])
+        await _ensure_index(db.student_attendance,
+            [("year", ASCENDING), ("section", ASCENDING), ("date", ASCENDING), ("roll_number", ASCENDING)],
+            unique=True,
+        )
+        await _ensure_index(db.student_attendance, [("date", DESCENDING)])
+        await _ensure_index(db.student_attendance, [("roll_number", ASCENDING)])
 
         # sections collection
-        try:
-            await db.sections.create_index([("section_name", ASCENDING)], unique=True)
-        except Exception:
-            pass
-        await db.sections.create_index([("year", ASCENDING)])
+        await _ensure_index(db.sections, [("section_name", ASCENDING)], unique=True)
+        await _ensure_index(db.sections, [("year", ASCENDING)])
 
         # timetables collection
-        try:
-            await db.timetables.create_index(
-                [("section", ASCENDING), ("day", ASCENDING), ("period", ASCENDING)],
-                unique=True,
-            )
-        except Exception:
-            pass
-        await db.timetables.create_index(
+        await _ensure_index(db.timetables,
+            [("section", ASCENDING), ("day", ASCENDING), ("period", ASCENDING)],
+            unique=True,
+        )
+        await _ensure_index(db.timetables,
             [("section", ASCENDING), ("day", ASCENDING), ("start_time", ASCENDING)]
         )
 
         # sessions collection
-        try:
-            await db.sessions.create_index(
-                [("section", ASCENDING), ("date", ASCENDING), ("start_time", ASCENDING)],
-                unique=True,
-            )
-        except Exception:
-            pass
-        await db.sessions.create_index([("status", ASCENDING)])
-        await db.sessions.create_index([("date", ASCENDING)])
+        await _ensure_index(db.sessions,
+            [("section", ASCENDING), ("date", ASCENDING), ("start_time", ASCENDING)],
+            unique=True,
+        )
+        await _ensure_index(db.sessions, [("status", ASCENDING)])
+        await _ensure_index(db.sessions, [("date", ASCENDING)])
 
         # attendance_records collection
-        await db.attendance_records.create_index([("session_id", ASCENDING)])
-        await db.attendance_records.create_index([("user_id", ASCENDING)])
-        await db.attendance_records.create_index([("created_at", DESCENDING)])
+        await _ensure_index(db.attendance_records, [("session_id", ASCENDING)])
+        await _ensure_index(db.attendance_records, [("user_id", ASCENDING)])
+        await _ensure_index(db.attendance_records, [("created_at", DESCENDING)])
 
         # notifications collection
-        await db.notifications.create_index([("recipient_user_id", ASCENDING)])
-        await db.notifications.create_index([("is_read", ASCENDING)])
-        await db.notifications.create_index([("created_at", DESCENDING)])
+        await _ensure_index(db.notifications, [("recipient_user_id", ASCENDING)])
+        await _ensure_index(db.notifications, [("is_read", ASCENDING)])
+        await _ensure_index(db.notifications, [("created_at", DESCENDING)])
 
         # push_subscriptions collection
-        await db.push_subscriptions.create_index([("user_id", ASCENDING)])
-        try:
-            await db.push_subscriptions.create_index([("token", ASCENDING)], unique=True)
-        except Exception:
-            pass
+        await _ensure_index(db.push_subscriptions, [("user_id", ASCENDING)])
+        await _ensure_index(db.push_subscriptions, [("token", ASCENDING)], unique=True)
 
         # planned_absences collection
-        await db.planned_absences.create_index([("student_id", ASCENDING), ("status", ASCENDING)])
-        await db.planned_absences.create_index([("mentor_id", ASCENDING), ("status", ASCENDING)])
-        await db.planned_absences.create_index([("roll_number", ASCENDING), ("status", ASCENDING)])
-        await db.planned_absences.create_index([("start_date", ASCENDING), ("end_date", ASCENDING)])
+        await _ensure_index(db.planned_absences, [("student_id", ASCENDING), ("status", ASCENDING)])
+        await _ensure_index(db.planned_absences, [("mentor_id", ASCENDING), ("status", ASCENDING)])
+        await _ensure_index(db.planned_absences, [("roll_number", ASCENDING), ("status", ASCENDING)])
+        await _ensure_index(db.planned_absences, [("start_date", ASCENDING), ("end_date", ASCENDING)])
 
         # mentor_student_mappings collection
-        await db.mentor_student_mappings.create_index([("mentor_id", ASCENDING)])
-        await db.mentor_student_mappings.create_index([("year", ASCENDING), ("section", ASCENDING)])
-        await db.mentor_student_mappings.create_index([("student_ids", ASCENDING)])
+        await _ensure_index(db.mentor_student_mappings, [("mentor_id", ASCENDING)])
+        await _ensure_index(db.mentor_student_mappings, [("year", ASCENDING), ("section", ASCENDING)])
+        await _ensure_index(db.mentor_student_mappings, [("student_ids", ASCENDING)])
 
         # audit_logs collection
-        await db.audit_logs.create_index([("created_at", DESCENDING)])
-        await db.audit_logs.create_index([("actor_id", ASCENDING)])
+        await _ensure_index(db.audit_logs, [("created_at", DESCENDING)])
+        await _ensure_index(db.audit_logs, [("actor_id", ASCENDING)])
 
         logger.info("MongoDB database indexes successfully created.")
     except Exception as exc:
-        logger.warning("Index creation notice: %s", exc)
+        logger.error("MongoDB index initialization failed (%s).", type(exc).__name__)
+        raise RuntimeError(
+            "MongoDB index initialization failed. Check for duplicate existing data or conflicting indexes."
+        ) from None

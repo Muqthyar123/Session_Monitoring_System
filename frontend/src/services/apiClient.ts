@@ -164,7 +164,3 @@ export async function downloadApiFile(path: string, filename: string) {
   URL.revokeObjectURL(blobUrl);
 }
 
-/** Fallback helper for simulated delay if needed */
-export function mockDelay<T>(data: T, ms = 300): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(data), ms));
-}

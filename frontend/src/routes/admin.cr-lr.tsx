@@ -49,7 +49,7 @@ import {
   uploadCRLRExcel,
 } from "@/services/userService";
 import { getTimetableUploads } from "@/services/timetableService";
-import { MOCK_SECTIONS, MOCK_YEARS, type CRLRUser } from "@/data/mock/mockData";
+import { type CRLRUser } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/admin/cr-lr")({
   head: () => ({
@@ -64,21 +64,18 @@ export const Route = createFileRoute("/admin/cr-lr")({
 });
 
 const ALL = "all";
+const ACADEMIC_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 
-type FormState = Omit<CRLRUser, "id">;
-
-const DEFAULT_SECTIONS = [
-  "CSE-A", "CSE-B", "CSE-C", "CSE-D", "CSE-E",
-  "CSE-F", "CSE-G", "CSE-H", "CSE-I", "CSE-J"
-];
+type FormState = Omit<CRLRUser, "id"> & { password: string };
 
 const emptyForm: FormState = {
   name: "",
   rollNumber: "",
   email: "",
   role: "CR",
-  year: MOCK_YEARS[0]!,
-  section: "CSE-A",
+  year: ACADEMIC_YEARS[0]!,
+  section: "",
+  password: "",
 };
 
 function CRLRManagementPage() {
@@ -141,7 +138,7 @@ function CRLRManagementPage() {
   const availableSections = useMemo(() => {
     const fromData = (data ?? []).map((u) => u.section).filter(Boolean);
     const fromTimetable = (timetableUploads.data ?? []).map((t) => t.section).filter(Boolean);
-    return Array.from(new Set([...DEFAULT_SECTIONS, ...fromTimetable, ...fromData])).sort();
+    return Array.from(new Set([...fromTimetable, ...fromData])).sort();
   }, [data, timetableUploads.data]);
 
   const formYearSections = useMemo(() => {
@@ -177,7 +174,7 @@ function CRLRManagementPage() {
       return Array.from(new Set(fromData)).sort();
     }
 
-    return DEFAULT_SECTIONS;
+    return [];
   }, [form.year, timetableUploads.data, data]);
 
   const rows = useMemo(() => {
@@ -202,8 +199,8 @@ function CRLRManagementPage() {
     setEditing(null);
     setForm({
       ...emptyForm,
-      year: yearFilter !== ALL ? yearFilter : MOCK_YEARS[0]!,
-      section: sectionFilter !== ALL ? sectionFilter : (availableSections[0] || "CSE-A"),
+      year: yearFilter !== ALL ? yearFilter : ACADEMIC_YEARS[0]!,
+      section: sectionFilter !== ALL ? sectionFilter : (availableSections[0] || ""),
       role: roleFilter !== ALL ? (roleFilter as "CR" | "LR") : "CR",
     });
     setFormErrors({});
@@ -213,7 +210,7 @@ function CRLRManagementPage() {
   const openEdit = (user: CRLRUser) => {
     setEditing(user);
     const { id, _id, ...rest } = user as any;
-    setForm(rest);
+    setForm({ ...rest, password: "" });
     setFormErrors({});
     setDialogOpen(true);
   };
@@ -226,6 +223,8 @@ function CRLRManagementPage() {
     if (!form.email.trim()) errors.email = "Email is required.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       errors.email = "Enter a valid email address.";
+    if (!editing && form.password.trim().length < 12)
+      errors.password = "Use a password with at least 12 characters.";
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
@@ -233,10 +232,10 @@ function CRLRManagementPage() {
     try {
       if (editing) {
         const userId = editing.id || (editing as any)._id;
-        await updateCRLRUser(userId, form);
+        await updateCRLRUser(userId, { ...form, password: form.password.trim() || undefined });
         toast.success("Record updated");
       } else {
-        await createCRLRUser(form);
+        await createCRLRUser({ ...form, password: form.password.trim() });
         toast.success("Record added");
       }
       setDialogOpen(false);
@@ -375,7 +374,7 @@ function CRLRManagementPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>All years</SelectItem>
-              {MOCK_YEARS.map((y) => (
+              {ACADEMIC_YEARS.map((y) => (
                 <SelectItem key={y} value={y}>
                   {y}
                 </SelectItem>
@@ -421,7 +420,7 @@ function CRLRManagementPage() {
           <DialogHeader>
             <DialogTitle>{editing ? "Edit CR/LR Record" : "Add CR/LR Record"}</DialogTitle>
             <DialogDescription>
-              Only identification and communication details are stored.
+              Account passwords are stored as secure hashes. Use a unique password of at least 12 characters.
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit} noValidate>
@@ -458,6 +457,18 @@ function CRLRManagementPage() {
                   <p className="text-xs text-destructive">{formErrors.email}</p>
                 ) : null}
               </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="crlr-password">{editing ? "New Password (optional)" : "Password"}</Label>
+                <Input
+                  id="crlr-password"
+                  type="password"
+                  minLength={12}
+                  autoComplete="new-password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                />
+                {formErrors.password ? <p className="text-xs text-destructive">{formErrors.password}</p> : null}
+              </div>
               <div className="space-y-1.5">
                 <Label>Role</Label>
                 <Select
@@ -480,7 +491,7 @@ function CRLRManagementPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MOCK_YEARS.map((y) => (
+                    {ACADEMIC_YEARS.map((y) => (
                       <SelectItem key={y} value={y}>
                         {y}
                       </SelectItem>
@@ -500,9 +511,6 @@ function CRLRManagementPage() {
                 {formErrors.section ? (
                   <p className="text-xs text-destructive">{formErrors.section}</p>
                 ) : null}
-                <p className="text-xs text-muted-foreground mt-1">
-                  Default login password for CR/LR is their <strong>Roll Number</strong>.
-                </p>
               </div>
             </div>
             <DialogFooter>

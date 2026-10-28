@@ -104,33 +104,20 @@ Session_Monitoring_System/
 
 ---
 
-## 🔑 Default Seed Credentials
+## Account setup
 
-Run `python scripts/seed_db.py` in the backend directory to seed default accounts:
-
-| Role | Portal Login URL | Username / Email | Password | Scope |
-|---|---|---|---|---|
-| **ADMIN** | `http://localhost:5173/admin/login` | `admin@example.com` | `demo1234` | Full System Administration |
-| **MENTOR** | `http://localhost:5173/mentor/login` | `605101` (or `mentor@example.com`) | `demo1234` | Assigned Students & Sections |
-| **CR** | `http://localhost:5173/auth/login` | `cr@example.com` | `demo1234` | Section `II-A` (`2nd Year`) |
-| **LR** | `http://localhost:5173/auth/login` | `lr@example.com` | `demo1234` | Section `II-A` (`2nd Year`) |
+The application does not create default users or passwords at startup. To create the first administrator on a newly provisioned database, run `python scripts/seed_db.py` from `backend`; it prompts for credentials and does not change existing records. CR/LR and mentor accounts are managed through the authenticated admin screens.
 
 ---
 
 ## ⚙️ Environment Setup
 
-### 1. Backend Environment (`backend/.env`)
+### 1. Backend Environment (repository-root `.env`)
 
-Create `backend/.env` with the following variables:
+Copy `.env.example` to the repository root as `.env`. The backend reads this one file from any working directory:
 
-```env
-MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.xxx.mongodb.net/?retryWrites=true&w=majority
-DATABASE_NAME=college_session_monitoring
-JWT_SECRET_KEY=supersecretkey_change_in_production_1234567890
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-FRONTEND_URL=http://localhost:5173
-TIMEZONE=Asia/Kolkata
+```bash
+cp .env.example .env
 ```
 
 ### 2. Frontend Environment (`frontend/.env`)
@@ -140,6 +127,10 @@ Create `frontend/.env`:
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
+
+### Render deployment
+
+Create or sync a Render Blueprint from the repository-root `render.yaml`. The Blueprint runs Uvicorn on Render's `$PORT` and generates a stable JWT secret for the service. Set `MONGODB_URI` to the Atlas database-user connection string and `FRONTEND_URL` to the deployed frontend origin in Render. The service uses `DATABASE_NAME` from the Blueprint. Ensure the Atlas network access list permits the Render service's outbound connections.
 
 ---
 
@@ -160,7 +151,7 @@ venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Seed MongoDB Atlas database
+# 4. Create the initial administrator if this database has none
 python scripts/seed_db.py
 
 # 5. Launch FastAPI server
@@ -190,10 +181,11 @@ npm run dev
 
 ## 🧪 Running Automated Tests
 
-Run the full pytest suite (35 automated tests covering authentication, session engine, attendance corrections, timetable parsing, mentor mapping, and planned absences):
+Install test-only dependencies and run the pytest suite. Tests use an isolated in-memory mock database; they do not connect to or modify Atlas:
 
 ```powershell
 cd backend
+pip install -r requirements-dev.txt
 $env:PYTHONPATH="backend"
 venv\Scripts\activate
 pytest backend/tests

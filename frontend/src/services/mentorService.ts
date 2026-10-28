@@ -19,7 +19,7 @@ export interface MentorCreatePayload {
   name: string;
   mentorId: string;
   email?: string;
-  password?: string;
+  password: string;
   phone?: string;
   designation?: string;
   department?: string;

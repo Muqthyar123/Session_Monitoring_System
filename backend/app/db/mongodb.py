@@ -1,473 +1,84 @@
-import asyncio
-import atexit
 import logging
-from datetime import datetime, timezone
-import os
-from pathlib import Path
-import threading
-from typing import Optional
 from urllib.parse import urlsplit
 
 import certifi
-from bson import json_util
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from pymongo.errors import OperationFailure
-try:
-    from mongomock_motor import AsyncMongoMockClient
-    import mongomock
-except ImportError:
-    AsyncMongoMockClient = None
-    mongomock = None
+from pymongo.errors import ConfigurationError, OperationFailure, ServerSelectionTimeoutError
 
 from app.core.config import settings
-from app.core.security import hash_password
 
 logger = logging.getLogger("fams.db")
-
-DATA_DIR = Path(settings.DATA_DIR)
-DB_STORE_PATH = Path(settings.DB_STORE_FILE)
-UPLOAD_DIR = Path(settings.UPLOAD_DIR)
-
-_save_timer: Optional[threading.Timer] = None
-_save_lock = threading.Lock()
-_is_persistence_installed = False
 
 
 class MongoManager:
     client = None
-    db: AsyncIOMotorDatabase = None
-    is_mock_mode: bool = False
+    db: AsyncIOMotorDatabase | None = None
 
 
 db_manager = MongoManager()
 
 
-def save_mock_db_to_disk_sync():
-    """Synchronously serializes all in-memory collections and writes them atomically to DB_STORE_PATH."""
-    if db_manager.db is None or not db_manager.is_mock_mode:
-        return
-
-    try:
-        sync_db = getattr(db_manager.db, "delegate", None)
-        if sync_db is None:
-            return
-
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-        data = {}
-        for cname in sync_db.list_collection_names():
-            data[cname] = list(sync_db[cname].find())
-
-        json_bytes = json_util.dumps(data, indent=2).encode("utf-8")
-        tmp_path = DB_STORE_PATH.with_suffix(".tmp")
-
-        with open(tmp_path, "wb") as f:
-            f.write(json_bytes)
-            f.flush()
-            os.fsync(f.fileno())
-
-        if tmp_path.exists():
-            tmp_path.replace(DB_STORE_PATH)
-
-        logger.debug(
-            "Persisted mock database to %s (%d collections, %d bytes)",
-            DB_STORE_PATH.name,
-            len(data),
-            len(json_bytes),
+def _safe_connection_error(exc: Exception) -> str:
+    if isinstance(exc, OperationFailure) and (
+        exc.code == 18 or "auth" in str(exc).lower()
+    ):
+        return (
+            "MongoDB authentication failed. Verify the Atlas Database Access "
+            "username and password in MONGODB_URI."
         )
-    except Exception as e:
-        logger.error("Failed to persist mock database to disk: %s", str(e), exc_info=True)
-
-
-async def save_mock_db_to_disk():
-    """Asynchronous wrapper around save_mock_db_to_disk_sync to prevent blocking the event loop."""
-    await asyncio.to_thread(save_mock_db_to_disk_sync)
-
-
-def schedule_db_save(delay: float = 0.5):
-    """Debounces disk persistence across rapid burst operations."""
-    global _save_timer
-    if db_manager.db is None or not db_manager.is_mock_mode:
-        return
-
-    with _save_lock:
-        if _save_timer is not None:
-            try:
-                _save_timer.cancel()
-            except Exception:
-                pass
-        _save_timer = threading.Timer(delay, save_mock_db_to_disk_sync)
-        _save_timer.daemon = True
-        _save_timer.start()
-
-
-def load_mock_db_from_disk_sync(db) -> bool:
-    """Restores database collections and documents from DB_STORE_PATH if the file exists."""
-    if not DB_STORE_PATH.exists():
-        return False
-
-    try:
-        sync_db = getattr(db, "delegate", None)
-        if sync_db is None:
-            return False
-
-        with open(DB_STORE_PATH, "rb") as f:
-            raw = f.read()
-
-        if not raw.strip():
-            return False
-
-        data = json_util.loads(raw.decode("utf-8"))
-        if not isinstance(data, dict):
-            return False
-
-        for cname, docs in data.items():
-            sync_db[cname].delete_many({})
-            if docs and isinstance(docs, list):
-                sync_db[cname].insert_many(docs)
-
-        logger.info(
-            "Restored mock database successfully from %s (%d collections)",
-            DB_STORE_PATH,
-            len(data),
+    if isinstance(exc, ServerSelectionTimeoutError):
+        return (
+            "MongoDB server selection timed out. Check Atlas cluster status, "
+            "network access allowlist, DNS, firewall, and server availability."
         )
-        return True
-    except Exception as e:
-        logger.error("Failed to load mock database from %s: %s", DB_STORE_PATH, str(e), exc_info=True)
-        return False
-
-
-def install_mock_db_persistence():
-    """Monkey-patches mongomock collection mutation methods so all writes trigger scheduled persistence."""
-    global _is_persistence_installed
-    if _is_persistence_installed:
-        return
-
-    try:
-        import mongomock.collection
-
-        write_methods = [
-            "insert_one",
-            "insert_many",
-            "update_one",
-            "update_many",
-            "replace_one",
-            "delete_one",
-            "delete_many",
-            "find_one_and_update",
-            "find_one_and_delete",
-            "find_one_and_replace",
-            "drop",
-            "drop_indexes",
-            "bulk_write",
-        ]
-
-        for method_name in write_methods:
-            orig = getattr(mongomock.collection.Collection, method_name, None)
-            if not orig or getattr(orig, "_is_persisted_wrapped", False):
-                continue
-
-            def make_wrapper(orig_fn):
-                def wrapper(self, *args, **kwargs):
-                    res = orig_fn(self, *args, **kwargs)
-                    schedule_db_save()
-                    return res
-
-                wrapper._is_persisted_wrapped = True
-                return wrapper
-
-            setattr(mongomock.collection.Collection, method_name, make_wrapper(orig))
-
-        _is_persistence_installed = True
-        logger.info("Installed mock database disk persistence hooks.")
-    except Exception as e:
-        logger.warning("Failed to install mock persistence hooks: %s", str(e))
-
-
-async def seed_from_uploaded_files_if_needed(db):
-    """If database is empty and files exist in UPLOAD_DIR or Downloads, import them immediately."""
-    from app.services.excel_service import (
-        parse_and_import_mentor_excel,
-        parse_and_import_student_excel,
-        parse_and_import_timetable_excel,
-    )
-    from app.services.mentor_mapping_service import (
-        preview_mentor_mappings,
-        commit_mentor_mappings,
-    )
-    from app.schemas.mentor_mapping import MentorMappingConfirmRequest
-
-    # Check if we already have timetables or students
-    tt_count = await db.timetables.count_documents({})
-    stu_count = await db.students.count_documents({})
-    if tt_count > 0 or stu_count > 0:
-        return
-
-    admin_user = await db.users.find_one({"role": "ADMIN"})
-    admin_id = str(admin_user["_id"]) if admin_user else "system-root"
-
-    upload_dir = Path(settings.UPLOAD_DIR)
-    downloads_dir = Path.home() / "Downloads"
-
-    def find_file(filename: str) -> Optional[Path]:
-        p1 = upload_dir / filename
-        if p1.exists():
-            return p1
-        p2 = downloads_dir / filename
-        if p2.exists():
-            return p2
-        return None
-
-    # 1. Faculty / Mentors
-    fac_path = find_file("CSE FACULTY LIST.xls")
-    if fac_path:
-        try:
-            with open(fac_path, "rb") as f:
-                content = f.read()
-            res = await parse_and_import_mentor_excel(content, fac_path.name, admin_id)
-            logger.info("Auto-seeded mentors from %s: %s", fac_path.name, res)
-        except Exception as e:
-            logger.warning("Auto-seed mentors warning: %s", str(e))
-
-    # 2. Students
-    stu_path = find_file("Students_Roster.csv")
-    if stu_path:
-        try:
-            with open(stu_path, "rb") as f:
-                content = f.read()
-            res = await parse_and_import_student_excel(content, stu_path.name, admin_id)
-            logger.info("Auto-seeded students from %s: %s", stu_path.name, res)
-        except Exception as e:
-            logger.warning("Auto-seed students warning: %s", str(e))
-
-    # 3. Timetables
-    tt_names = [
-        "14-08-2026 MASTER  TIME TABLE  - 2 YEAR -Updated.xlsx",
-        "3  YEAR - TIME TABLES - 51026-26-1 SEM.xlsx",
-        "Updated 4th Master Time Tables - 05-10-2026.xlsx",
-    ]
-    for ttf in tt_names:
-        tt_path = find_file(ttf)
-        if tt_path:
-            try:
-                with open(tt_path, "rb") as f:
-                    content = f.read()
-                res = await parse_and_import_timetable_excel(content, tt_path.name, admin_id)
-                logger.info("Auto-seeded timetable from %s: %s inserted", tt_path.name, res.get("inserted", 0))
-            except Exception as e:
-                logger.warning("Auto-seed timetable warning for %s: %s", ttf, str(e))
-
-    # 4. Mentor Mappings
-    map_path = find_file("Mentor_Student_Mapping_Template.xlsx")
-    if map_path:
-        try:
-            with open(map_path, "rb") as f:
-                content = f.read()
-            prev = await preview_mentor_mappings(content, map_path.name)
-            if prev.valid_rows > 0:
-                req = MentorMappingConfirmRequest(
-                    mode="ADD_UPDATE",
-                    rows=[r.model_dump() for r in prev.rows if r.status == "VALID"],
-                )
-                res_map = await commit_mentor_mappings(req, {"id": admin_id, "email": "admin@example.com"})
-                logger.info("Auto-seeded mentor mappings from %s: %s", map_path.name, res_map)
-        except Exception as e:
-            logger.warning("Auto-seed mentor mappings warning: %s", str(e))
-
-
-async def seed_in_memory_db(db):
-    """Seed initial Root Admin user only.
-
-    CR/LR accounts are NOT auto-seeded. The Admin must create real CR/LR
-    credentials manually via the CR/LR Management page or Excel upload.
-    Any previously seeded dummy CR/LR accounts are purged on startup so the
-    database starts clean.
-    """
-    now = datetime.now(timezone.utc)
-    admin_pwd_hash = hash_password("demo1234")
-
-    # ── 1. Root System Administrator (only account seeded automatically) ──
-    existing_admin = await db.users.find_one({"role": "ADMIN"})
-    if not existing_admin:
-        await db.users.insert_one(
-            {
-                "name": "System Administrator",
-                "email": "admin@example.com",
-                "password_hash": admin_pwd_hash,
-                "role": "ADMIN",
-                "roll_number": None,
-                "phone": "9876543210",
-                "year": None,
-                "section": None,
-                "is_active": True,
-                "created_at": now,
-                "updated_at": now,
-            }
-        )
-
-    # ── 2. Purge any auto-seeded dummy CR/LR accounts ─────────────────────
-    # These were previously seeded with generated emails like cr.a@college.edu
-    # or the old cr@example.com pattern. Remove them so the admin can add
-    # real credentials without seeing stale placeholder accounts.
-    dummy_crlr_result = await db.users.delete_many(
-        {
-            "role": {"$in": ["CR", "LR"]},
-            "$or": [
-                {"email": {"$regex": r"^(cr|lr)\.[a-j]@college\.edu$"}},
-                {"email": {"$regex": r"^(cr|lr)(@|\.cs[a-j]@)example\.com$"}},
-            ],
-        }
-    )
-    if dummy_crlr_result.deleted_count > 0:
-        logger.info(
-            "Purged %d dummy CR/LR seed accounts. Admin must add real credentials.",
-            dummy_crlr_result.deleted_count,
-        )
-
-
-async def ensure_indexes(db):
-    """Ensure database indexes exist for high-performance querying."""
-    try:
-        await db.sessions.create_index([("date", 1), ("section", 1)])
-        await db.sessions.create_index([("date", 1), ("start_time", 1)])
-        await db.sessions.create_index([("section", 1)])
-        await db.sessions.create_index([("status", 1)])
-        await db.timetables.create_index([("section", 1), ("day", 1), ("period", 1)])
-        await db.timetables.create_index([("section", 1)])
-        await db.timetables.create_index([("year", 1)])
-        await db.users.create_index([("email", 1)])
-        await db.users.create_index([("roll_number", 1)])
-        await db.users.create_index([("mentor_id", 1)])
-        await db.users.create_index([("role", 1)])
-        await db.students.create_index([("roll_number", 1)])
-        await db.students.create_index([("section", 1)])
-        await db.students.create_index([("year", 1)])
-        await db.student_attendance.create_index([("year", 1), ("section", 1), ("date", 1)])
-        await db.student_attendance.create_index([("roll_number", 1)])
-        await db.student_attendance.create_index([("status", 1)])
-        await db.student_attendance_submissions.create_index([("year", 1), ("section", 1), ("date", 1)])
-        await db.admin_alerts.create_index([("created_at", -1)])
-        logger.info("MongoDB indexes verified successfully.")
-    except Exception as e:
-        logger.warning("Index creation warning: %s", str(e))
+    if isinstance(exc, ConfigurationError):
+        return "MongoDB configuration is invalid. Check the URI scheme and percent-encoding."
+    return "MongoDB connection failed. Check MONGODB_URI and Atlas availability."
 
 
 async def connect_to_mongo():
-    db_name = settings.get_database_name()
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    """Connect once to the configured MongoDB database and verify it with ping."""
+    previous_client = db_manager.client
+    db_manager.client = None
+    db_manager.db = None
+    if previous_client is not None:
+        previous_client.close()
 
-    mongo_host = urlsplit(settings.MONGODB_URI).hostname or "configured MongoDB host"
-    logger.info("Connecting to MongoDB host %s...", mongo_host)
+    uri = settings.MONGODB_URI
+    db_name = settings.DATABASE_NAME
+    mongo_host = urlsplit(uri).hostname or "configured MongoDB host"
+    logger.info("Connecting to MongoDB host %s, database %s...", mongo_host, db_name)
 
     client_kwargs = {
         "serverSelectionTimeoutMS": settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
     }
-
-    if "mongodb+srv" in settings.MONGODB_URI or "tls=true" in settings.MONGODB_URI.lower():
+    # Atlas SRV connections require TLS. Keep certificate verification enabled.
+    if uri.lower().startswith("mongodb+srv://") or "tls=true" in uri.lower():
         client_kwargs["tlsCAFile"] = certifi.where()
 
-    atlas_failure_message = "MongoDB Atlas connection failed. Check the cluster status and Network Access allowlist."
-
-    # Attempt connecting once with certificate verification enabled. Retrying
-    # with invalid certificates cannot fix authentication failures and weakens TLS.
+    client = None
     try:
-        real_client = AsyncIOMotorClient(settings.MONGODB_URI, **client_kwargs)
-        await real_client.admin.command("ping")
-        db_manager.client = real_client
-        db_manager.db = real_client[db_name]
-        db_manager.is_mock_mode = False
-        await ensure_indexes(db_manager.db)
-        await seed_in_memory_db(db_manager.db)
-        logger.info("MongoDB connection successful. Connected to real database: %s", db_name)
-        return
-    except Exception as e:
-        if isinstance(e, OperationFailure) and "auth" in str(e).lower():
-            atlas_failure_message = (
-                "MongoDB Atlas authentication failed. Verify the Database Access username and password "
-                "in MONGODB_URI; an Atlas API key is not a database password."
-            )
-        logger.warning("MongoDB connection attempt failed (%s).", type(e).__name__)
+        client = AsyncIOMotorClient(uri, **client_kwargs)
+        await client.admin.command("ping")
+    except Exception as exc:
+        if client is not None:
+            client.close()
+        logger.error("MongoDB connection failed (%s).", type(exc).__name__)
+        raise RuntimeError(_safe_connection_error(exc)) from None
 
-    # Never accept writes to a local mock when an Atlas URI was explicitly
-    # configured. Doing so makes successful uploads look durable when they
-    # are not. Require Atlas connectivity instead.
-    if settings.MONGODB_URI.lower().startswith("mongodb+srv://"):
-        raise RuntimeError(atlas_failure_message)
-
-    # In-Memory Fallback Mock Database with Durable File-Backed Persistence
-    if AsyncMongoMockClient is None:
-        raise RuntimeError(
-            "Neither real MongoDB nor 'mongomock-motor' is available. "
-            "Please check your MONGODB_URI in environment variables or add 'mongomock-motor' to requirements.txt."
-        )
-
-    logger.error(
-        "⚠️  RUNNING IN MOCK DATABASE MODE — DATA WILL NOT PERSIST ON RENDER/VERCEL! "
-        "Set the MONGODB_URI environment variable on your deployment platform to use MongoDB Atlas. "
-        "Configured MongoDB host: %s",
-        mongo_host,
-    )
-
-    mock_client = AsyncMongoMockClient()
-    db_manager.client = mock_client
-    db_manager.db = mock_client[db_name]
-    db_manager.is_mock_mode = True
-
-    # 1. Install mutation persistence hooks
-    install_mock_db_persistence()
-
-    # 2. Load stored collections from disk if db_store.json exists
-    loaded = load_mock_db_from_disk_sync(db_manager.db)
-
-    # 3. If no stored snapshot on disk yet, auto-seed from uploaded source files
-    if not loaded:
-        await seed_from_uploaded_files_if_needed(db_manager.db)
-
-    # 4. Ensure admin and base accounts are intact
-    await seed_in_memory_db(db_manager.db)
-    await ensure_indexes(db_manager.db)
-
-    # 5. Ensure all existing sections have branch & department populated
-    try:
-        all_secs = await db_manager.db.sections.find({}).to_list(1000)
-        for s in all_secs:
-            s_name = s.get("section_name", "")
-            b = s.get("branch") or s.get("department")
-            if not b:
-                b = "CSE"
-                if "-" in s_name:
-                    parts = s_name.split("-")
-                    if len(parts) >= 2 and parts[1].isalpha():
-                        b = parts[1].upper()
-                await db_manager.db.sections.update_one(
-                    {"_id": s["_id"]},
-                    {"$set": {"branch": b, "department": b}}
-                )
-    except Exception as sec_sync_err:
-        logger.warning("Section branch sync warning: %s", str(sec_sync_err))
-
-    # 6. Flush current database state to disk
-    save_mock_db_to_disk_sync()
-
-    logger.info(
-        "Activated Persistent Mock Database Mode. Database '%s' backed by '%s'.",
-        db_name,
-        DB_STORE_PATH,
-    )
+    db_manager.client = client
+    db_manager.db = client[db_name]
+    logger.info("MongoDB ping succeeded. Connected to configured database %s.", db_name)
 
 
 async def close_mongo_connection():
-    if db_manager.is_mock_mode:
-        save_mock_db_to_disk_sync()
-    if db_manager.client:
+    client = db_manager.client
+    db_manager.client = None
+    db_manager.db = None
+    if client:
         logger.info("Closing MongoDB connection.")
-        db_manager.client.close()
+        client.close()
         logger.info("MongoDB connection closed.")
-
-
-# Ensure database state is saved on clean process exit
-atexit.register(save_mock_db_to_disk_sync)
 
 
 def get_database() -> AsyncIOMotorDatabase:

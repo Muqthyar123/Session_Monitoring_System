@@ -85,7 +85,7 @@ def generate_crlr_excel_template() -> bytes:
     ws = wb.active
     ws.title = "CR_LR_Import_Template"
 
-    headers = ["Name", "Roll Number", "Email", "Phone", "Role", "Year", "Section"]
+    headers = ["Name", "Roll Number", "Email", "Phone", "Role", "Year", "Section", "Password"]
     ws.append(headers)
 
     # Styling header
@@ -97,15 +97,6 @@ def generate_crlr_excel_template() -> bytes:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    # Sample rows
-    samples = [
-        ["Rahul Kumar", "22CS2A01", "rahul.kumar@example.com", "9876543210", "CR", "2nd Year", "II-A"],
-        ["Sneha Sharma", "22CS2A02", "sneha.sharma@example.com", "9876543211", "LR", "2nd Year", "II-A"],
-        ["Vikram Singh", "21CS3B01", "vikram.singh@example.com", "9876543212", "CR", "3rd Year", "III-B"],
-    ]
-    for row in samples:
-        ws.append(row)
 
     # Adjust column widths
     for col in ws.columns:
@@ -163,6 +154,8 @@ async def parse_and_import_crlr_excel(
                     col_map["roll"] = c_idx
                 elif (clean_h in PHONE_ALIASES or "phone" in clean_h or "mobile" in clean_h) and "phone" not in col_map:
                     col_map["phone"] = c_idx
+                elif "password" in clean_h and "password" not in col_map:
+                    col_map["password"] = c_idx
                 elif (clean_h in YEAR_ALIASES or "year" in clean_h) and "year" not in col_map:
                     col_map["year"] = c_idx
                 elif (clean_h in DEPT_ALIASES or "dept" in clean_h or "branch" in clean_h) and "dept" not in col_map:
@@ -186,6 +179,8 @@ async def parse_and_import_crlr_excel(
                 col_map["roll"] = idx
             elif ("phone" in h_clean or "mobile" in h_clean) and "phone" not in col_map:
                 col_map["phone"] = idx
+            elif "password" in h_clean and "password" not in col_map:
+                col_map["password"] = idx
             elif "year" in h_clean and "year" not in col_map:
                 col_map["year"] = idx
             elif ("dept" in h_clean or "branch" in h_clean) and "dept" not in col_map:
@@ -253,6 +248,7 @@ async def parse_and_import_crlr_excel(
         email_provided = bool(email)
         roll = get_val("roll").upper()
         phone = get_val("phone")
+        password = get_val("password")
         raw_year = get_val("year")
         raw_dept = get_val("dept").upper()
         raw_sec = get_val("section").upper()
@@ -336,8 +332,6 @@ async def parse_and_import_crlr_excel(
 
         now = datetime.now(timezone.utc)
         user_roll = roll if roll else None
-        # Default password is their roll number (uppercase) or crlr1234
-        default_pwd = user_roll if user_roll else "crlr1234"
 
         # Check existing user
         email_match = all_by_email.get(email) if email else None
@@ -351,6 +345,10 @@ async def parse_and_import_crlr_excel(
             row_errors.append("Roll number and email identify different existing accounts.")
         if target_user and target_user.get("role") != role:
             row_errors.append("Existing account has a different role; role and credentials were preserved.")
+        if not target_user and len(password) < 12:
+            row_errors.append("A password of at least 12 characters is required for new accounts.")
+        elif password and len(password) < 12:
+            row_errors.append("A new password must be at least 12 characters.")
         if row_errors:
             failed_count += 1
             errors.append({"row": row_idx, "errors": row_errors})
@@ -368,7 +366,9 @@ async def parse_and_import_crlr_excel(
                 update_fields["roll_number"] = roll
             if phone:
                 update_fields["phone"] = phone
-            changed = any(current.get(key) != value for key, value in update_fields.items())
+            changed = bool(password) or any(current.get(key) != value for key, value in update_fields.items())
+            if password:
+                update_fields["password_hash"] = hash_password(password)
             if changed:
                 update_fields["updated_at"] = now
             query = {"_id": ObjectId(target_uid)} if ObjectId.is_valid(target_uid) else {"_id": target_uid}
@@ -383,7 +383,7 @@ async def parse_and_import_crlr_excel(
             new_user_doc = {
                 "name": name,
                 "email": email,
-                "password_hash": hash_password(default_pwd),
+                "password_hash": hash_password(password),
                 "role": role,
                 "roll_number": user_roll,
                 "phone": phone if phone else None,
@@ -1057,7 +1057,6 @@ async def parse_and_import_timetable_excel(
                         "name": f_name,
                         "email": fac_email,
                         "role": "FACULTY",
-                        "password_hash": hash_password("faculty1234"),
                         "is_active": True,
                         "created_at": datetime.now(timezone.utc),
                         "updated_at": datetime.now(timezone.utc),
@@ -1097,7 +1096,7 @@ def generate_mentor_excel_template() -> bytes:
     ws = wb.active
     ws.title = "Mentor_Import_Template"
 
-    headers = ["S.NO", "NAME", "ID/EMPLOYEE ID", "MAIL ID/ EMAIL", "DESIGN/DESIGNATION", "BRANCH/DEPARTMENT", "MOBILE NO"]
+    headers = ["S.NO", "NAME", "ID/EMPLOYEE ID", "MAIL ID/ EMAIL", "DESIGN/DESIGNATION", "BRANCH/DEPARTMENT", "MOBILE NO", "PASSWORD"]
     ws.append(headers)
 
     header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
@@ -1108,16 +1107,6 @@ def generate_mentor_excel_template() -> bytes:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    samples = [
-        ["1", "SIVA NAGESWARA RAO SIVARATRI", "605101", "drssnr@nrtec.in", "PROFESSOR", "CSE", "8977987777"],
-        ["2", "MOTURI SIREESHA", "905101", "moturisireesha@gmail.com", "ASSOCIATE PROFESSOR", "CSE", "9492468445"],
-        ["3", "NAGA TIRUMALA RAO TIRUMALA RAO", "1105101", "csehod@nrtec.in", "PROFESSOR & HOD", "CSE", "8247394015"],
-        ["4", "PRASAD MANCHIKANTI", "1310116", "mprasad@nrtec.in", "ASSISTANT PROFESSOR", "CSE", "9885466378"],
-        ["5", "KHAJA MOHIDDIN BASHA SHAIK", "1605104", "sk.basha579@gmail.com", "ASSISTANT PROFESSOR", "CSE", "8096622595"],
-    ]
-    for row in samples:
-        ws.append(row)
 
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
@@ -1342,8 +1331,10 @@ async def parse_and_import_mentor_excel(
                 if not c_norm or c_norm in ["sno", "slno", "serialno", "serialnumber"]:
                     continue
 
+                if "password" in c_norm:
+                    temp_map["password"] = c_idx
                 # 1. Profile
-                if c_norm in PROFILE_ALIASES or "profile" in c_norm:
+                elif c_norm in PROFILE_ALIASES or "profile" in c_norm:
                     if "profile" not in temp_map:
                         temp_map["profile"] = c_idx
 
@@ -1518,6 +1509,10 @@ async def parse_and_import_mentor_excel(
             row_errors.append("Existing Mentor ID does not match; login identity was preserved.")
         if target_user and target_user.get("email") and str(target_user["email"]).strip().lower() != email:
             row_errors.append("Existing email does not match; login identity was preserved.")
+        if not target_user and len(password) < 12:
+            row_errors.append("A password of at least 12 characters is required for new accounts.")
+        elif password and len(password) < 12:
+            row_errors.append("A new password must be at least 12 characters.")
 
         duplicate_in_file = mentor_id in seen_ids_in_file or email in seen_emails_in_file
         if duplicate_in_file and not row_errors:
@@ -1531,9 +1526,6 @@ async def parse_and_import_mentor_excel(
         seen_ids_in_file.add(mentor_id)
         seen_emails_in_file.add(email)
 
-        # Default password is "mentor@1234"
-        pwd_to_use = password.strip() if password and password.strip() else "mentor@1234"
-
         update_fields: Dict[str, Any] = {"name": name}
         if phone:
             update_fields["phone"] = phone
@@ -1543,6 +1535,8 @@ async def parse_and_import_mentor_excel(
             update_fields["department"] = department
         if profile:
             update_fields["profile"] = profile
+        if password:
+            update_fields["password_hash"] = hash_password(password)
         if target_user:
             changed_fields = {key: value for key, value in update_fields.items() if target_user.get(key) != value}
             if changed_fields:
@@ -1559,7 +1553,7 @@ async def parse_and_import_mentor_excel(
                 "mentor_id": mentor_id,
                 "employee_id": mentor_id,
                 "roll_number": mentor_id,
-                "password_hash": hash_password(pwd_to_use),
+                "password_hash": hash_password(password),
                 "role": UserRole.MENTOR.value,
                 "phone": phone if phone else None,
                 "designation": designation if designation else None,

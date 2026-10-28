@@ -137,6 +137,9 @@ function AdminMentorsPage() {
     } else if (!form.email.includes("@")) {
       errs.email = "Enter a valid email.";
     }
+    if (!editing && (form.password?.trim().length ?? 0) < 12) {
+      errs.password = "Use a password with at least 12 characters.";
+    }
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -168,7 +171,7 @@ function AdminMentorsPage() {
           designation: form.designation.trim() || undefined,
           department: form.department.trim() || undefined,
           profile: form.profile.trim() || undefined,
-          password: form.password?.trim() || "mentor1234",
+          password: form.password!.trim(),
         });
         toast.success(`Mentor "${form.name}" added successfully.`);
       }
@@ -488,15 +491,17 @@ function AdminMentorsPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="password">
-                {editing ? "New Password (leave blank to keep current)" : "Password (default: Mentor ID number)"}
+                {editing ? "New Password (optional)" : "Password"}
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Leave blank to use Mentor ID as default password"
+                minLength={12}
+                autoComplete="new-password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />
+              {formErrors.password ? <p className="text-xs text-destructive">{formErrors.password}</p> : null}
             </div>
 
             <DialogFooter className="pt-2">

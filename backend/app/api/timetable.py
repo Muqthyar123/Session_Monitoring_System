@@ -31,19 +31,6 @@ async def upload_timetable_api(
         )
 
     file_bytes = await file.read()
-    # Archive file to disk
-    try:
-        from pathlib import Path
-        from app.core.config import settings
-        from app.db.mongodb import save_mock_db_to_disk_sync
-        upload_dir = Path(settings.UPLOAD_DIR)
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        archive_path = upload_dir / (file.filename or "timetable.xlsx")
-        with open(archive_path, "wb") as f_out:
-            f_out.write(file_bytes)
-    except Exception:
-        pass
-
     try:
         summary = await parse_and_import_timetable_excel(
             file_bytes, filename=file.filename, actor_id=admin["id"]
@@ -51,7 +38,6 @@ async def upload_timetable_api(
         if summary.get("inserted", 0) > 0:
             from app.services.section_service import reconcile_sections_with_timetables
             summary["section_reconciliation"] = await reconcile_sections_with_timetables()
-        save_mock_db_to_disk_sync()
     except ValueError as val_err:
         raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as err:

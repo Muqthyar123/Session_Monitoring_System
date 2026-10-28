@@ -36,7 +36,9 @@ import {
   uploadTimetable,
 } from "@/services/timetableService";
 import { toast } from "sonner";
-import { MOCK_SECTIONS, MOCK_YEARS, type TimetableUpload } from "@/data/mock/mockData";
+import type { TimetableUpload } from "@/data/mock/mockData";
+
+const ACADEMIC_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
 
 export const Route = createFileRoute("/admin/timetable")({
   head: () => ({
@@ -53,7 +55,7 @@ export const Route = createFileRoute("/admin/timetable")({
 function TimetablePage() {
   const uploads = useAsyncData(() => getTimetableUploads(), []);
   const [year, setYear] = useState(() => {
-    return sessionStorage.getItem("admin_timetable_year") || MOCK_YEARS[1] || "2nd Year";
+    return sessionStorage.getItem("admin_timetable_year") || ACADEMIC_YEARS[1]!;
   });
 
   const romanMap: Record<string, string> = {
@@ -308,7 +310,7 @@ function TimetablePage() {
                 <SelectValue placeholder="Select Year" />
               </SelectTrigger>
               <SelectContent>
-                {MOCK_YEARS.map((y) => (
+                {ACADEMIC_YEARS.map((y) => (
                   <SelectItem key={y} value={y}>
                     {y}
                   </SelectItem>

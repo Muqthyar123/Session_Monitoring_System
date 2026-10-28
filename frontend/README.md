@@ -18,14 +18,9 @@ Production-ready **React 19 + TypeScript** frontend for the **College Faculty & 
 
 ---
 
-## 🔑 Role Login Credentials & Portals
+## Sign-in
 
-| Role | Portal Login URL | Default Identifier / Email | Default Password | Monitored Scope |
-|---|---|---|---|---|
-| **ADMIN** | `/admin/login` | `admin@example.com` | `demo1234` | System-wide Administrative Management |
-| **MENTOR** | `/mentor/login` | `605101` (or `mentor@example.com`) | `demo1234` | Assigned Students & Sections |
-| **CR** | `/auth/login` | `cr@example.com` | `demo1234` | Assigned Section (`II-A` / `2nd Year`) |
-| **LR** | `/auth/login` | `lr@example.com` | `demo1234` | Assigned Section (`II-A` / `2nd Year`) |
+The frontend uses the credentials provisioned for each account. The backend does not ship demo accounts or default administrator credentials.
 
 ---
 
