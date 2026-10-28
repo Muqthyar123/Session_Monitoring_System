@@ -200,7 +200,7 @@ async def test_complete_mentor_flow(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_mentor_creation_requires_and_uses_explicit_password(client: AsyncClient):
+async def test_mentor_creation_defaults_and_accepts_explicit_password(client: AsyncClient):
     db = get_database()
     admin_u = await db.users.insert_one({
         "name": "Admin",
@@ -224,16 +224,26 @@ async def test_mentor_creation_requires_and_uses_explicit_password(client: Async
         },
         headers=admin_headers,
     )
-    assert missing_password_res.status_code == 422
+    assert missing_password_res.status_code == 201
 
-    password = "MentorAccountPass123!"
-    # 1. Admin creates mentor with an explicit password
+    from app.core.security import DEFAULT_MENTOR_PASSWORD, verify_password
+    default_user = await db.users.find_one({"employee_id": "905101"})
+    assert default_user is not None
+    assert verify_password(DEFAULT_MENTOR_PASSWORD, default_user["password_hash"])
+    default_login = await client.post(
+        "/api/auth/login",
+        json={"email": "905101", "password": DEFAULT_MENTOR_PASSWORD, "portal": "MENTOR"},
+    )
+    assert default_login.status_code == 200
+
+    password = "MentorPass1!"
+    # An explicitly supplied password overrides the default for new accounts.
     create_res = await client.post(
         "/api/admin/mentors",
         json={
-            "name": "Moturi Sireesha",
-            "mentorId": "905101",
-            "email": "moturisireesha@gmail.com",
+            "name": "Another Mentor",
+            "mentorId": "905102",
+            "email": "another-mentor@example.invalid",
             "department": "CSE",
             "designation": "Associate Professor",
             "phone": "9492468445",
@@ -244,23 +254,23 @@ async def test_mentor_creation_requires_and_uses_explicit_password(client: Async
     )
     assert create_res.status_code == 201
 
-    # 2. Mentor logs in using the ID as username and explicit password
+    # Mentor logs in using the employee ID as username and explicit password.
     login_id_res = await client.post(
         "/api/auth/login",
         json={
-            "email": "905101",
+            "email": "905102",
             "password": password,
             "portal": "MENTOR",
         },
     )
     assert login_id_res.status_code == 200
-    assert login_id_res.json()["data"]["user"]["mentorId"] == "905101"
+    assert login_id_res.json()["data"]["user"]["mentorId"] == "905102"
 
-    # 3. Mentor can also log in using email and the same explicit password
+    # Mentor can also log in using email and the same explicit password.
     login_email_res = await client.post(
         "/api/auth/login",
         json={
-            "email": "moturisireesha@gmail.com",
+            "email": "another-mentor@example.invalid",
             "password": password,
             "portal": "MENTOR",
         },

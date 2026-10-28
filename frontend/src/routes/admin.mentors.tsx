@@ -137,8 +137,9 @@ function AdminMentorsPage() {
     } else if (!form.email.includes("@")) {
       errs.email = "Enter a valid email.";
     }
-    if (!editing && (form.password?.trim().length ?? 0) < 12) {
-      errs.password = "Use a password with at least 12 characters.";
+    const passwordLength = form.password?.trim().length ?? 0;
+    if (passwordLength > 0 && (passwordLength < 8 || passwordLength > 12)) {
+      errs.password = "Use a password from 8 to 12 characters.";
     }
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
@@ -171,7 +172,7 @@ function AdminMentorsPage() {
           designation: form.designation.trim() || undefined,
           department: form.department.trim() || undefined,
           profile: form.profile.trim() || undefined,
-          password: form.password!.trim(),
+          ...(form.password?.trim() ? { password: form.password.trim() } : {}),
         });
         toast.success(`Mentor "${form.name}" added successfully.`);
       }
@@ -215,10 +216,15 @@ function AdminMentorsPage() {
     setUploading(true);
     try {
       const result = await uploadMentorExcel(file);
-      toast.success(result.message || "Mentors imported successfully!");
-      reload();
+      if (result.created || result.updated) reload();
+      if (result.status === "error") toast.error(result.message);
+      else if (result.status === "warning") toast.warning(result.message);
+      else toast.success(result.message || "Mentors imported successfully!");
+      return result;
     } catch (err: any) {
-      toast.error(err.message || "Failed to upload Excel/CSV file.");
+      const message = err.message || "Failed to upload Excel/CSV file.";
+      toast.error(message);
+      return { status: "error" as const, message };
     } finally {
       setUploading(false);
     }
@@ -333,7 +339,7 @@ function AdminMentorsPage() {
           <CardHeader>
             <CardTitle>Upload Mentors</CardTitle>
             <CardDescription>
-              Upload an Excel/CSV file (.xlsx, .xls, .csv) with mentor details to populate the directory.
+              Leave Password blank for new mentors to use the default password. Employee ID is the username; enter 8 to 12 characters to set a different password. Existing accounts keep their current password when blank.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -496,7 +502,8 @@ function AdminMentorsPage() {
               <Input
                 id="password"
                 type="password"
-                minLength={12}
+                minLength={8}
+                maxLength={12}
                 autoComplete="new-password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}

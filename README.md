@@ -83,7 +83,7 @@ Session_Monitoring_System/
 │   │   ├── services/     # Business logic, Excel parsers, session engine, mentor mapping & planned absences
 │   │   └── scheduler/    # APScheduler background tasks
 │   ├── scripts/          # Database seeding scripts (seed_db.py)
-│   ├── tests/            # Automated pytest suite (35 comprehensive unit/integration tests)
+│   ├── tests/            # Automated pytest suite (mocked database tests)
 │   ├── .env.example      # Backend environment configuration template
 │   ├── pytest.ini        # Pytest configuration
 │   └── requirements.txt  # Python package dependencies
@@ -106,7 +106,7 @@ Session_Monitoring_System/
 
 ## Account setup
 
-The application does not create default users or passwords at startup. To create the first administrator on a newly provisioned database, run `python scripts/seed_db.py` from `backend`; it prompts for credentials and does not change existing records. CR/LR and mentor accounts are managed through the authenticated admin screens.
+The application does not create default users or passwords at startup. From `backend`, run `python scripts/seed_db.py create --email moturisireesha@gmail.com --name Sireesha` to create the first administrator; it prompts securely for the password and refuses duplicates or unexpected existing admins. Use `verify` to check existing credentials or `reset-password` to set a new password for an existing admin. CR/LR and mentor accounts are managed through authenticated admin screens.
 
 ---
 
@@ -128,9 +128,11 @@ Create `frontend/.env`:
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
+For production, configure `VITE_API_BASE_URL` in the frontend hosting provider to the deployed FastAPI URL ending in `/api`, then rebuild. See [the database integration audit](docs/DATABASE_INTEGRATION_AUDIT.md) for the feature-to-collection map, API inventory, and verification limits.
+
 ### Render deployment
 
-Create or sync a Render Blueprint from the repository-root `render.yaml`. The Blueprint runs Uvicorn on Render's `$PORT` and generates a stable JWT secret for the service. Set `MONGODB_URI` to the Atlas database-user connection string and `FRONTEND_URL` to the deployed frontend origin in Render. The service uses `DATABASE_NAME` from the Blueprint. Ensure the Atlas network access list permits the Render service's outbound connections.
+Create or sync a Render Blueprint from the repository-root `render.yaml`. The Blueprint runs Uvicorn on Render's `$PORT` and generates a stable JWT secret for the service. Set `MONGODB_URI` to the Atlas database-user connection string and `FRONTEND_URL` to the deployed frontend origin in Render. The service uses `DATABASE_NAME` from the Blueprint. Ensure the Atlas network access list permits the Render service's outbound connections. In the frontend hosting provider, set `VITE_API_BASE_URL` to the deployed backend URL ending in `/api` (for example, `https://your-backend.onrender.com/api`) and rebuild the frontend. A deployed browser now reports a configuration error instead of silently sending API requests to localhost when this setting is missing or local.
 
 ---
 
@@ -151,8 +153,8 @@ venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Create the initial administrator if this database has none
-python scripts/seed_db.py
+# 4. Create the intended first administrator if this database has none
+python scripts/seed_db.py create --email moturisireesha@gmail.com --name Sireesha
 
 # 5. Launch FastAPI server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -181,14 +183,13 @@ npm run dev
 
 ## 🧪 Running Automated Tests
 
-Install test-only dependencies and run the pytest suite. Tests use an isolated in-memory mock database; they do not connect to or modify Atlas:
+Install test-only dependencies and run the pytest suite from the backend directory. These tests use an isolated in-memory mock database; they do not connect to or modify Atlas:
 
 ```powershell
 cd backend
 pip install -r requirements-dev.txt
-$env:PYTHONPATH="backend"
 venv\Scripts\activate
-pytest backend/tests
+pytest
 ```
 
 Build the production frontend:

@@ -33,7 +33,7 @@ def _init_firebase():
             logger.info("Firebase Admin SDK successfully initialized.")
             return True
         except Exception as e:
-            logger.error("Failed to initialize Firebase Admin SDK: %s", str(e))
+            logger.error("Failed to initialize Firebase Admin SDK (%s).", type(e).__name__)
             return False
     else:
         logger.info("Firebase credentials not set in environment. Push notifications running in dry-run mode.")
@@ -74,7 +74,7 @@ async def send_push_notification_to_users(
     tokens = [doc["token"] async for doc in cursor]
 
     if not tokens:
-        logger.info("No push notification tokens found for targeted users: %s", user_ids)
+        logger.info("No push notification tokens found for %d targeted users.", len(user_ids))
         return
 
     is_fb_active = _init_firebase()
@@ -91,7 +91,7 @@ async def send_push_notification_to_users(
             response = messaging.send_multicast(message)
             logger.info("FCM push notification sent. Success count: %d", response.success_count)
         except Exception as e:
-            logger.error("Failed to send FCM push notification: %s", str(e))
+            logger.error("Failed to send FCM push notification (%s).", type(e).__name__)
     else:
         logger.info(
             "[PUSH DRY-RUN] Title: '%s', Body: '%s', Targeted Tokens: %d",

@@ -32,6 +32,11 @@ def _safe_connection_error(exc: Exception) -> str:
             "network access allowlist, DNS, firewall, and server availability."
         )
     if isinstance(exc, ConfigurationError):
+        if "dns" in str(exc).lower() or "srv" in str(exc).lower():
+            return (
+                "MongoDB DNS/SRV lookup failed. Check network DNS, cluster hostname, "
+                "and Atlas cluster availability."
+            )
         return "MongoDB configuration is invalid. Check the URI scheme and percent-encoding."
     return "MongoDB connection failed. Check MONGODB_URI and Atlas availability."
 

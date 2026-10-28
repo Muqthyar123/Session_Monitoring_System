@@ -109,7 +109,7 @@ async def import_student_excel_api(
     except ValueError as val_err:
         raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as err:
-        raise HTTPException(status_code=400, detail=f"Failed to process Student file: {str(err)}")
+        raise HTTPException(status_code=500, detail="Failed to process Student file due to a server error.") from None
 
     if summary.get("failed", 0) > 0 and summary.get("created", 0) == 0 and summary.get("updated", 0) == 0:
         first_err = summary["errors"][0]["errors"][0] if summary.get("errors") else "Invalid student file contents."

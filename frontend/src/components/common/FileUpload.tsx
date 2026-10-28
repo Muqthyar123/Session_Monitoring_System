@@ -1,14 +1,15 @@
 import { useRef, useState } from "react";
-import { FileSpreadsheet, UploadCloud, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { FileSpreadsheet, UploadCloud, CheckCircle2, XCircle, Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-type UploadStatus = "idle" | "uploading" | "success" | "error";
+type UploadStatus = "idle" | "uploading" | "success" | "warning" | "error";
+type UploadResult = { message?: string; status?: "success" | "warning" | "error"; details?: string[] };
 
 interface FileUploadProps {
   /** Upload handler function passed by parent page (supports onUpload or onFileSelect) */
-  onUpload?: (file: File) => Promise<{ message?: string } | any>;
-  onFileSelect?: (file: File) => Promise<{ message?: string } | any> | void;
+  onUpload?: (file: File) => Promise<UploadResult | any>;
+  onFileSelect?: (file: File) => Promise<UploadResult | any> | void;
   accept?: string;
   hint?: string;
   label?: string;
@@ -28,6 +29,7 @@ export function FileUpload({
   const [dragging, setDragging] = useState(false);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [details, setDetails] = useState<string[]>([]);
 
   const displayHint = hint || `Supported formats: ${accept}`;
 
@@ -36,6 +38,7 @@ export function FileUpload({
     setFile(selected);
     setStatus("idle");
     setMessage(null);
+    setDetails([]);
 
     const validExts = accept
       .split(",")
@@ -60,13 +63,15 @@ export function FileUpload({
     setMessage(null);
     try {
       const result = await uploadFn(file);
-      setStatus("success");
+      setStatus(result?.status || "success");
       setMessage(
         (result && typeof result === "object" && result.message) ||
           "File uploaded and processed successfully!"
       );
+      setDetails(Array.isArray(result?.details) ? result.details : []);
     } catch (error: any) {
       setStatus("error");
+      setDetails([]);
       setMessage(
         error instanceof Error
           ? `Upload failed. ${error.message}`
@@ -99,17 +104,17 @@ export function FileUpload({
           selectFile(e.dataTransfer.files?.[0] ?? null);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors",
+          "flex w-full min-w-0 cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors",
           dragging && "border-primary bg-accent"
         )}
       >
         <UploadCloud className="size-8 text-muted-foreground" />
-        <p className="text-sm font-medium">{label}</p>
+        <p className="max-w-full break-words text-sm font-medium">{label}</p>
         <p className="text-xs text-muted-foreground">or</p>
         <span className="text-sm font-medium text-primary underline underline-offset-4">
           Browse files
         </span>
-        <p className="text-xs text-muted-foreground">{displayHint}</p>
+        <p className="max-w-full break-words text-xs text-muted-foreground">{displayHint}</p>
         <input
           ref={inputRef}
           type="file"
@@ -128,7 +133,7 @@ export function FileUpload({
               <p className="truncate text-sm font-medium">{file.name}</p>
             </div>
           </div>
-          <Button onClick={handleUpload} disabled={isUploading || status === "error"} size="sm">
+          <Button onClick={handleUpload} disabled={isUploading} size="sm">
             {isUploading ? (
               <>
                 <Loader2 className="size-4 animate-spin mr-1" /> Uploading...
@@ -145,10 +150,20 @@ export function FileUpload({
           <CheckCircle2 className="size-4 shrink-0" /> {message}
         </p>
       ) : null}
+      {status === "warning" && message ? (
+        <p className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400 font-medium">
+          <TriangleAlert className="size-4 shrink-0" /> {message}
+        </p>
+      ) : null}
       {status === "error" && message ? (
         <p className="flex items-center gap-2 text-sm text-destructive font-medium">
           <XCircle className="size-4 shrink-0" /> {message}
         </p>
+      ) : null}
+      {details.length > 0 ? (
+        <ul className="list-disc space-y-1 pl-6 text-xs text-muted-foreground">
+          {details.map((detail, index) => <li key={`${index}-${detail}`}>{detail}</li>)}
+        </ul>
       ) : null}
     </div>
   );

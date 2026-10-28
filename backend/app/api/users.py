@@ -73,7 +73,7 @@ async def import_crlr_excel_api(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process CR/LR file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process CR/LR file due to a server error.") from None
 
 
 @router.get("/{user_id}", response_model=ApiResponse[UserResponse])

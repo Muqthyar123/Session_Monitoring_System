@@ -223,8 +223,9 @@ function CRLRManagementPage() {
     if (!form.email.trim()) errors.email = "Email is required.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       errors.email = "Enter a valid email address.";
-    if (!editing && form.password.trim().length < 12)
-      errors.password = "Use a password with at least 12 characters.";
+    const passwordLength = form.password.trim().length;
+    if (passwordLength > 0 && (passwordLength < 8 || passwordLength > 12))
+      errors.password = "Use a password from 8 to 12 characters.";
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
@@ -235,7 +236,10 @@ function CRLRManagementPage() {
         await updateCRLRUser(userId, { ...form, password: form.password.trim() || undefined });
         toast.success("Record updated");
       } else {
-        await createCRLRUser({ ...form, password: form.password.trim() });
+        await createCRLRUser({
+          ...form,
+          ...(form.password.trim() ? { password: form.password.trim() } : {}),
+        });
         toast.success("Record added");
       }
       setDialogOpen(false);
@@ -338,7 +342,7 @@ function CRLRManagementPage() {
         <CardHeader>
           <CardTitle className="text-base">Upload CR/LR Excel</CardTitle>
           <CardDescription>
-            Columns: Name, Roll Number, Email, Role, Year, Section. Validation happens in the backend.
+            Columns: Name, Roll Number, Email, Role, Year, Section, Password. A blank password defaults to the roll number; existing accounts keep their current password.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -420,7 +424,7 @@ function CRLRManagementPage() {
           <DialogHeader>
             <DialogTitle>{editing ? "Edit CR/LR Record" : "Add CR/LR Record"}</DialogTitle>
             <DialogDescription>
-              Account passwords are stored as secure hashes. Use a unique password of at least 12 characters.
+              Account passwords are stored as secure hashes. Leave blank to use the roll number as the initial password, or enter 8–12 characters.
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit} noValidate>
@@ -462,7 +466,8 @@ function CRLRManagementPage() {
                 <Input
                   id="crlr-password"
                   type="password"
-                  minLength={12}
+                  minLength={8}
+                  maxLength={12}
                   autoComplete="new-password"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}

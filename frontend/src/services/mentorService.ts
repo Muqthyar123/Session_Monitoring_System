@@ -19,7 +19,7 @@ export interface MentorCreatePayload {
   name: string;
   mentorId: string;
   email?: string;
-  password: string;
+  password?: string;
   phone?: string;
   designation?: string;
   department?: string;
@@ -109,7 +109,7 @@ export async function resetMentors(): Promise<{ message: string; deleted_count?:
   });
 }
 
-export async function uploadMentorExcel(file: File): Promise<{ message: string; created?: number; failed?: number }> {
+export async function uploadMentorExcel(file: File): Promise<{ message: string; created?: number; updated?: number; failed?: number; status: "success" | "warning" | "error"; details: string[] }> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -118,10 +118,26 @@ export async function uploadMentorExcel(file: File): Promise<{ message: string; 
     body: formData,
   });
 
+  const created = Number(res.created ?? 0);
+  const updated = Number(res.updated ?? 0);
+  const failed = Number(res.failed ?? 0);
+  const changed = created + updated;
+  const status = failed === 0 ? "success" : changed > 0 ? "warning" : "error";
+  const verb = status === "error" ? "Import failed" : status === "warning" ? "Import partially completed" : "Import complete";
+  const details = Array.isArray(res.errors)
+    ? res.errors.slice(0, 5).map((item: any) => {
+        const rowLabel = item.row ? `Row ${item.row}: ` : "";
+        const rowErrors = Array.isArray(item.errors) ? item.errors.join(" ") : "Check this row in the source file.";
+        return `${rowLabel}${rowErrors}`;
+      })
+    : [];
   return {
-    message: res.message || `Import complete: ${res.created} created, ${res.updated} updated, ${res.failed} failed.`,
-    created: res.created,
-    failed: res.failed,
+    status,
+    details,
+    message: `${verb}: ${created} created, ${updated} updated, ${failed} failed.`,
+    created,
+    updated,
+    failed,
   };
 }
 

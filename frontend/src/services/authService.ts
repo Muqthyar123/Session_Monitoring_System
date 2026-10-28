@@ -1,10 +1,7 @@
 import {
   request,
   getStoredToken,
-  getStoredUser,
   setStoredToken,
-  setStoredUser,
-  ApiError,
 } from "./apiClient";
 import type { AuthUser, Role } from "@/data/mock/mockData";
 
@@ -22,6 +19,17 @@ export interface LoginResponsePayload {
   };
 }
 
+function toAuthUser(user: LoginResponsePayload["user"]): AuthUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    section: user.section,
+    year: user.year,
+  };
+}
+
 export async function login(
   email: string,
   password: string,
@@ -36,44 +44,21 @@ export async function login(
     }),
   });
 
-  const authUser: AuthUser = {
-    id: data.user.id,
-    name: data.user.name,
-    email: data.user.email,
-    role: data.user.role,
-    section: data.user.section,
-    year: data.user.year,
-  };
-
   setStoredToken(data.access_token);
-  setStoredUser(authUser);
-
-  return authUser;
+  return toAuthUser(data.user);
 }
 
-export async function validateSession(): Promise<void> {
-  await request<LoginResponsePayload["user"]>("/auth/me");
+export async function validateSession(): Promise<AuthUser> {
+  const user = await request<LoginResponsePayload["user"]>("/auth/me");
+  return toAuthUser(user);
 }
 
-export function persistUser(user: AuthUser | null) {
-  setStoredUser(user);
-  if (!user) {
-    setStoredToken(null);
-  }
-}
-
-export function readPersistedUser(): AuthUser | null {
-  const token = getStoredToken();
-  if (!token) {
-    setStoredUser(null);
-    return null;
-  }
-  return getStoredUser<AuthUser>();
+export function hasSession(): boolean {
+  return Boolean(getStoredToken());
 }
 
 export async function logout(): Promise<void> {
   setStoredToken(null);
-  setStoredUser(null);
 }
 
 export function homeRouteForRole(role: Role): string {

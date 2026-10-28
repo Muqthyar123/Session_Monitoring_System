@@ -17,6 +17,8 @@ def safe_failure_category(exc: Exception) -> str:
     if isinstance(exc, ServerSelectionTimeoutError):
         return "Server selection timed out: check DNS, network access/IP allowlist, firewall, and cluster status."
     if isinstance(exc, ConfigurationError):
+        if "dns" in str(exc).lower() or "srv" in str(exc).lower():
+            return "DNS/SRV lookup failed: check network DNS, cluster hostname, and Atlas availability."
         return "Invalid MongoDB URI configuration: check scheme and percent-encoding."
     return "MongoDB connection failed: check the configured URI and Atlas availability."
 

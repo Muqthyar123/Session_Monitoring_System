@@ -4,6 +4,8 @@ import bcrypt
 import jwt
 from app.core.config import settings
 
+DEFAULT_MENTOR_PASSWORD = "mentor@1234"
+
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password securely using bcrypt (truncated to 72 bytes)."""

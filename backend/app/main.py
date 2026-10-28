@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
         updated_count = await sync_all_students_batch_and_year(db)
         logger.info(f"Student batch/year synchronization completed ({updated_count} records updated).")
     except Exception as e:
-        logger.warning("Student batch/year synchronization on startup warning: %s", str(e))
+        logger.warning("Student batch/year synchronization warning (%s).", type(e).__name__)
 
     # Generate / sync real-time sessions for current date
     try:
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
         await generate_and_sync_sessions_for_date()
         logger.info("Real-time sessions synchronized for current date.")
     except Exception as e:
-        logger.warning("Session sync on startup warning: %s", str(e))
+        logger.warning("Session sync warning (%s).", type(e).__name__)
 
     start_scheduler()
     logger.info("Scheduler initialized.")
@@ -143,7 +143,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled server exception: %s", str(exc), exc_info=True)
+    logger.error("Unhandled server exception (%s).", type(exc).__name__)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

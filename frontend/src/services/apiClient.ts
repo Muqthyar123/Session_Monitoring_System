@@ -4,24 +4,28 @@
 
 export function getApiBaseUrl(): string {
   const envUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  const isLocalUrl = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url);
+  const isDevelopmentBuild = import.meta.env.DEV;
+  const browserLocalhost = typeof window !== "undefined" && ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+  if (envUrl && isLocalUrl(envUrl) && (!isDevelopmentBuild || (typeof window !== "undefined" && !browserLocalhost))) {
+    throw new Error("VITE_API_BASE_URL points to localhost in a deployed frontend. Set it to the deployed backend API URL.");
+  }
+  if (!envUrl && !isDevelopmentBuild) {
+    throw new Error("VITE_API_BASE_URL must be set to the deployed backend API URL (including /api).");
+  }
   if (typeof window !== "undefined") {
     const hostname = window.location.hostname;
     const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
     if (isLocalhost) {
-      // If we are browsing on localhost, always talk to local backend on port 8000
-      // unless an explicit local url is set
       if (!envUrl || envUrl.includes("onrender.com") || envUrl.includes("vercel.app")) {
         return "http://localhost:8000/api";
       }
     }
   }
-  return (envUrl || "http://localhost:8000/api").replace(/\/+$/, "");
+  return (envUrl || (isDevelopmentBuild ? "http://localhost:8000/api" : "")).replace(/\/+$/, "");
 }
 
-export const API_BASE_URL = getApiBaseUrl();
-
 const TOKEN_KEY = "fams.auth.token";
-const USER_KEY = "fams.auth.user";
 
 export class ApiError extends Error {
   status: number;
@@ -46,25 +50,6 @@ export function setStoredToken(token: string | null) {
     localStorage.setItem(TOKEN_KEY, token);
   } else {
     localStorage.removeItem(TOKEN_KEY);
-  }
-}
-
-export function getStoredUser<T>(): T | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function setStoredUser<T>(user: T | null) {
-  if (typeof window === "undefined") return;
-  if (user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(USER_KEY);
   }
 }
 
@@ -105,7 +90,6 @@ export async function request<T>(
       // 401s stay attached to their operation so a failed upload cannot send
       // the administrator away from the page before its error is shown.
       setStoredToken(null);
-      setStoredUser(null);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("fams:unauthorized"));
       }

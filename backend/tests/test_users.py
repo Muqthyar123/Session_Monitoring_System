@@ -25,7 +25,7 @@ async def test_create_and_update_user_admin(client: AsyncClient):
         json={
             "name": "New CR",
             "email": "newcr@test.com",
-            "password": "StrongPass123!",
+            "password": "Strong12!",
             "role": "CR",
             "roll_number": "22A99",
             "year": "2nd Year",
@@ -72,7 +72,7 @@ async def test_duplicate_email_or_roll_number_error(client: AsyncClient):
         json={
             "name": "Another User",
             "email": "existing@test.com",
-            "password": "StrongPass123!",
+        "password": "Strong12!",
             "role": "CR",
         },
         headers=headers,
@@ -86,7 +86,7 @@ async def test_duplicate_email_or_roll_number_error(client: AsyncClient):
             "name": "Another User",
             "email": "different@test.com",
             "roll_number": "22CS01",
-            "password": "StrongPass123!",
+            "password": "Strong12!",
             "role": "CR",
         },
         headers=headers,

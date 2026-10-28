@@ -19,7 +19,7 @@ async def test_mentor_login_with_employee_id_and_explicit_password(client: Async
     db = get_database()
     emp_id = "605101"
 
-    password = "SecureMentorPass123!"
+    password = "Mentor123!"
     await db.users.insert_one({
         "name": "Dr. Mentor Test",
         "email": "605101@nrtec.in",
@@ -88,9 +88,9 @@ async def test_crlr_import_with_google_form_headers(client: AsyncClient):
     ws.append(headers_row)
 
     sample_rows = [
-        ["palibandla.karu999@gmail.com", "Palibandla Karunya", "23471A0549", "7275502755", "4th", "CSE", "C2", "LR", "StudentPassOne123!"],
-        ["vallalapremkumarprem@gmail.com", "VALLALA PREM KUMAR", "23471A05F2", "8712151559", "4th", "CSE", "C3", "CR", "StudentPassTwo123!"],
-        ["shaikyasmintaj0312@gmail.com", "Shaik Yasmin Taj", "23471A05D1", "8019188630", "4th", "CSE", "C1", "LR", "StudentPassThree123!"],
+        ["palibandla.karu999@gmail.com", "Palibandla Karunya", "23471A0549", "7275502755", "4th", "CSE", "C2", "LR", ""],
+        ["vallalapremkumarprem@gmail.com", "VALLALA PREM KUMAR", "23471A05F2", "8712151559", "4th", "CSE", "C3", "CR", "CRLRPass123!"],
+        ["shaikyasmintaj0312@gmail.com", "Shaik Yasmin Taj", "23471A05D1", "8019188630", "4th", "CSE", "C1", "LR", "CRLR789!"],
     ]
     for r in sample_rows:
         ws.append(r)
@@ -118,13 +118,8 @@ async def test_crlr_import_with_google_form_headers(client: AsyncClient):
         "/api/auth/login",
         json={"email": "23471A0549", "password": "23471A0549", "portal": "CRLR"},
     )
-    assert default_password_attempt.status_code == 401
-
-    # Verify CR/LR can log in with the imported password.
-    cr_login_res = await client.post(
-        "/api/auth/login",
-        json={"email": "23471A0549", "password": "StudentPassOne123!", "portal": "CRLR"},
-    )
+    # A new CR/LR account with a blank password uses its roll number.
+    cr_login_res = default_password_attempt
     assert cr_login_res.status_code == 200
     cr_data = cr_login_res.json()
     assert cr_data["success"] is True

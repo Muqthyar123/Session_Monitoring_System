@@ -1,60 +1,76 @@
+"""Securely create, verify, or reset the configured first administrator."""
+
+import argparse
 import asyncio
 import getpass
-import logging
-import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
+from pymongo.errors import PyMongoError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.security import hash_password
 from app.db.indexes import create_db_indexes
 from app.db.mongodb import close_mongo_connection, connect_to_mongo, get_database
-from app.schemas.user import UserRole
+from app.services.admin_provisioning import (
+    create_first_admin,
+    reset_admin_password,
+    verify_admin_credentials,
+    validate_admin_password,
+)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("seed_admin")
 
-
-def prompt_admin_credentials():
-    email = input("Initial administrator email: ").strip().lower()
-    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
-        raise ValueError("Enter a valid administrator email address.")
-    password = getpass.getpass("Initial administrator password (12+ characters): ")
-    confirm = getpass.getpass("Confirm password: ")
-    if len(password) < 12:
-        raise ValueError("Administrator password must be at least 12 characters.")
-    if password != confirm:
+def _prompt_new_password() -> str:
+    password = getpass.getpass("Administrator password (8-12 characters): ")
+    confirmation = getpass.getpass("Confirm password: ")
+    validate_admin_password(password)
+    if password != confirmation:
         raise ValueError("Passwords do not match.")
-    return email, password
+    return password
 
 
-async def seed():
+async def run(action: str, email: str, name: str = "") -> int:
     await connect_to_mongo()
     try:
         await create_db_indexes()
         db = get_database()
-        existing_admin = await db.users.find_one({"role": UserRole.ADMIN.value})
-        if existing_admin:
-            logger.info("An administrator already exists; no records were changed.")
-            return
+        if action == "create":
+            password = _prompt_new_password()
+            result = await create_first_admin(db, email, name, password)
+            print(f"Initial administrator created in database '{db.name}'.")
+            return 0 if result == "created" else 1
 
-        email, password = prompt_admin_credentials()
-        now = datetime.now(timezone.utc)
-        await db.users.insert_one({
-            "name": input("Administrator name: ").strip() or "System Administrator",
-            "email": email,
-            "password_hash": hash_password(password),
-            "role": UserRole.ADMIN.value,
-            "is_active": True,
-            "created_at": now,
-            "updated_at": now,
-        })
-        logger.info("Initial administrator created. No password was logged or returned.")
+        if action == "verify":
+            password = getpass.getpass("Administrator password: ")
+            if await verify_admin_credentials(db, email, password):
+                print("Administrator account, role, and password verified.")
+                return 0
+            print("Administrator account verification failed.")
+            return 1
+
+        password = _prompt_new_password()
+        await reset_admin_password(db, email, password)
+        print("Administrator password reset successfully.")
+        return 0
     finally:
         await close_mongo_connection()
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("create", "verify", "reset-password"))
+    parser.add_argument("--email", required=True, help="Administrator email address")
+    parser.add_argument("--name", default="System Administrator", help="Name used only when creating the first admin")
+    args = parser.parse_args()
+
+    try:
+        return asyncio.run(run(args.action, args.email, args.name))
+    except (ValueError, RuntimeError) as exc:
+        print(f"Administrator setup failed: {exc}", file=sys.stderr)
+        return 1
+    except PyMongoError:
+        print("Administrator setup failed because of a MongoDB operation error; details were omitted.", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    asyncio.run(seed())
+    raise SystemExit(main())

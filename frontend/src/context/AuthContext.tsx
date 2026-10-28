@@ -17,8 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    const persistedUser = authService.readPersistedUser();
-    setUser(persistedUser);
+    setUser(null);
 
     const handleUnauthorized = () => {
       authService.logout();
@@ -26,10 +25,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener("fams:unauthorized", handleUnauthorized);
-    if (persistedUser) {
-      authService.validateSession().catch((error: unknown) => {
+    if (authService.hasSession()) {
+      authService.validateSession().then((verifiedUser) => {
+        if (active) setUser(verifiedUser);
+      }).catch((error: unknown) => {
         if (active && error instanceof Error && "status" in error && error.status === 401) {
-          setUser(null);
+          void authService.logout();
         }
       }).finally(() => {
         if (active) setInitializing(false);
@@ -49,7 +50,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       initializing,
       signIn: async (email, password, portal) => {
         const signedIn = await authService.login(email, password, portal);
-        authService.persistUser(signedIn);
         setUser(signedIn);
         return signedIn;
       },

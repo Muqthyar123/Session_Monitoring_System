@@ -126,6 +126,8 @@ Create a `.env` file in the `frontend/` directory:
 VITE_API_BASE_URL=http://localhost:8000/api
 ```
 
+For a deployed frontend, configure `VITE_API_BASE_URL` in the hosting provider to the deployed FastAPI origin ending in `/api` (for example, `https://your-backend.onrender.com/api`) and rebuild. Production clients do not fall back to localhost.
+
 ---
 
 ## 💻 Development & Build Commands
@@ -137,8 +139,11 @@ npm install
 # 2. Start Vite development server
 npm run dev
 
-# 3. Build for production (TypeScript check & bundling)
+# 3. Build for production
 npm run build
+
+# 4. Run the standalone TypeScript check
+npx tsc --noEmit
 
 # 4. Preview production build locally
 npm run preview

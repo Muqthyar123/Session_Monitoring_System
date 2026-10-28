@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from pymongo.errors import OperationFailure, ServerSelectionTimeoutError
+from pymongo.errors import ConfigurationError, OperationFailure, ServerSelectionTimeoutError
 
 from app.core.config import BASE_DIR, Settings, settings
 from app.db import mongodb
@@ -127,9 +127,11 @@ async def test_authentication_failure_is_safe_and_does_not_fallback(monkeypatch)
 def test_connection_errors_have_safe_categories():
     auth = mongodb._safe_connection_error(OperationFailure("bad auth", code=8000))
     timeout = mongodb._safe_connection_error(ServerSelectionTimeoutError("timed out"))
+    dns = mongodb._safe_connection_error(ConfigurationError("DNS query failed"))
     assert "authentication failed" in auth.lower()
     assert "secret" not in auth
     assert "timed out" in timeout.lower()
+    assert "dns/srv" in dns.lower()
 
 
 class FakeCursor:

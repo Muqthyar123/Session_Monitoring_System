@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from bson import ObjectId
 from fastapi import HTTPException, status
-from app.core.security import hash_password
+from app.core.security import DEFAULT_MENTOR_PASSWORD, hash_password
 from app.db.mongodb import get_database
 from app.schemas.user import UserCreate, UserResponse, UserRole, UserUpdate
 
@@ -29,8 +29,30 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
     else:
         roll_clean = None
 
+    if data.password:
+        initial_password = data.password
+    elif data.role in [UserRole.CR, UserRole.LR]:
+        if not roll_clean:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A roll number is required to assign the default CR/LR password.",
+            )
+        initial_password = roll_clean
+    elif data.role == UserRole.MENTOR:
+        if not data.mentor_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An employee ID is required to create a mentor login.",
+            )
+        initial_password = DEFAULT_MENTOR_PASSWORD
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A password is required for this account role.",
+        )
+
     now = datetime.now(timezone.utc)
-    hashed_pwd = hash_password(data.password)
+    hashed_pwd = hash_password(initial_password)
 
     user_doc = {
         "name": data.name.strip(),
@@ -39,6 +61,7 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
         "role": data.role.value,
         "roll_number": roll_clean,
         "mentor_id": data.mentor_id.strip().upper() if data.mentor_id else None,
+        "employee_id": data.mentor_id.strip().upper() if data.role == UserRole.MENTOR and data.mentor_id else None,
         "phone": data.phone.strip() if data.phone else None,
         "year": data.year.strip() if data.year else None,
         "section": data.section.strip() if data.section else None,

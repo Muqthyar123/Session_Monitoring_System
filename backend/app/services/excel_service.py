@@ -8,7 +8,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import EmailStr, TypeAdapter
-from app.core.security import hash_password
+from app.core.security import DEFAULT_MENTOR_PASSWORD, hash_password
 from app.db.mongodb import get_database
 from app.schemas.user import UserRole
 from app.services.student_service import compute_year_from_batch, infer_batch_from_roll, normalize_student_section
@@ -345,10 +345,10 @@ async def parse_and_import_crlr_excel(
             row_errors.append("Roll number and email identify different existing accounts.")
         if target_user and target_user.get("role") != role:
             row_errors.append("Existing account has a different role; role and credentials were preserved.")
-        if not target_user and len(password) < 12:
-            row_errors.append("A password of at least 12 characters is required for new accounts.")
-        elif password and len(password) < 12:
-            row_errors.append("A new password must be at least 12 characters.")
+        if not target_user and not password and not roll:
+            row_errors.append("A roll number is required when using the default CR/LR password.")
+        elif password and not 8 <= len(password) <= 12:
+            row_errors.append("A supplied password must be 8-12 characters.")
         if row_errors:
             failed_count += 1
             errors.append({"row": row_idx, "errors": row_errors})
@@ -383,7 +383,7 @@ async def parse_and_import_crlr_excel(
             new_user_doc = {
                 "name": name,
                 "email": email,
-                "password_hash": hash_password(password),
+                "password_hash": hash_password(password or roll),
                 "role": role,
                 "roll_number": user_roll,
                 "phone": phone if phone else None,
@@ -809,8 +809,8 @@ async def parse_and_import_timetable_excel(
 
     try:
         wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    except Exception as e:
-        raise ValueError(f"Failed to read Excel workbook: {str(e)}")
+    except Exception:
+        raise ValueError("Unable to read the workbook. Check that it is a valid supported Excel file.") from None
 
     records_to_insert = []
     total_rows = 0
@@ -1509,10 +1509,8 @@ async def parse_and_import_mentor_excel(
             row_errors.append("Existing Mentor ID does not match; login identity was preserved.")
         if target_user and target_user.get("email") and str(target_user["email"]).strip().lower() != email:
             row_errors.append("Existing email does not match; login identity was preserved.")
-        if not target_user and len(password) < 12:
-            row_errors.append("A password of at least 12 characters is required for new accounts.")
-        elif password and len(password) < 12:
-            row_errors.append("A new password must be at least 12 characters.")
+        if password and not 8 <= len(password) <= 12:
+            row_errors.append("A supplied password must be 8-12 characters.")
 
         duplicate_in_file = mentor_id in seen_ids_in_file or email in seen_emails_in_file
         if duplicate_in_file and not row_errors:
@@ -1553,7 +1551,7 @@ async def parse_and_import_mentor_excel(
                 "mentor_id": mentor_id,
                 "employee_id": mentor_id,
                 "roll_number": mentor_id,
-                "password_hash": hash_password(password),
+                "password_hash": hash_password(password or DEFAULT_MENTOR_PASSWORD),
                 "role": UserRole.MENTOR.value,
                 "phone": phone if phone else None,
                 "designation": designation if designation else None,

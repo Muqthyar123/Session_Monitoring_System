@@ -41,7 +41,7 @@ async def upload_timetable_api(
     except ValueError as val_err:
         raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as err:
-        raise HTTPException(status_code=400, detail=f"Failed to process Timetable file: {str(err)}")
+        raise HTTPException(status_code=500, detail="Failed to process Timetable file due to a server error.") from None
 
     if summary.get("inserted", 0) == 0 and summary.get("failed", 0) > 0:
         first_err = summary["errors"][0]["errors"][0] if summary.get("errors") else "Invalid timetable matrix or table format."

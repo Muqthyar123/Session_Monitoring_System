@@ -129,17 +129,19 @@ See the repository-root `.env.example`. Set `MONGODB_URI`, `DATABASE_NAME`, `JWT
 
 ### 3. Initialize the First Administrator
 
-Run the interactive first-admin setup only when the configured database has no administrator. It prompts for credentials and does not remove or reset existing accounts:
+Run from the backend directory. This command creates the intended first administrator only if there is no existing administrator, prompts securely for the password, hashes it, and refuses duplicates:
 
 ```bash
-python scripts/seed_db.py
+python scripts/seed_db.py create --email moturisireesha@gmail.com --name Sireesha
 ```
+
+Verify the account without changing it using `python scripts/seed_db.py verify --email moturisireesha@gmail.com`. To reset the password for an existing administrator, use `python scripts/seed_db.py reset-password --email moturisireesha@gmail.com`; both commands prompt with hidden input. The reset command never creates or elevates an account.
 
 ---
 
 ## Account setup
 
-The application does not create default users or passwords at startup. To create the first administrator on a newly provisioned database, run `python scripts/seed_db.py` from `backend`; it prompts for credentials and does not change existing records. CR/LR and mentor accounts are managed through the authenticated admin screens.
+The application does not create default users or passwords at startup. Use the setup commands above for the intended first administrator. CR/LR and mentor accounts are managed through the authenticated admin screens.
 
 ---
 
