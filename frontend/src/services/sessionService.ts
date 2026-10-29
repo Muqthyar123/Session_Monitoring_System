@@ -1,8 +1,75 @@
 import { request } from "./apiClient";
 import type { AdminAlert, ClassSession } from "@/data/mock/mockData";
 
-export async function getAdminDashboard() {
-  return request<any>("/admin/analytics");
+export interface AdminDashboardData {
+  date: string;
+  summary: {
+    totalSections: number;
+    totalCRs: number;
+    totalLRs: number;
+    todaysSessions: number;
+    facultyPresent: number;
+    facultyAbsent: number;
+    substituteFaculty: number;
+    pendingResponses: number;
+  };
+  facultyPresencePercent: number;
+  sectionWise: Array<{ section: string; present: number; absent: number; substitute: number }>;
+  yearCards: Array<{
+    year: string;
+    totalSections: number;
+    totalClasses: number;
+    facultyCount: number;
+    present: number;
+    absent: number;
+    substitute: number;
+    late: number;
+    presencePercent: number;
+    sections: Array<{
+      section: string;
+      year: string;
+      totalClasses: number;
+      facultyCount: number;
+      present: number;
+      absent: number;
+      substitute: number;
+      late: number;
+      presencePercent: number;
+    }>;
+  }>;
+  sectionsCards: Array<{
+    section: string;
+    year: string;
+    totalClasses: number;
+    facultyCount: number;
+    present: number;
+    absent: number;
+    substitute: number;
+    late: number;
+    presencePercent: number;
+  }>;
+  facultyAnalytics: Array<{
+    facultyName: string;
+    subject: string;
+    section: string;
+    year?: string;
+    totalClasses: number;
+    attendedClasses: number;
+    absentClasses: number;
+    lateClasses?: number;
+    substitutedClasses: number;
+    totalHours: number;
+    attendedHours: number;
+    absentHours: number;
+    lateHours?: number;
+    substitutedHours: number;
+    attendancePercentage: number;
+  }>;
+  sessionStatus: Array<{ name: string; value: number }>;
+}
+
+export async function getAdminDashboard(): Promise<AdminDashboardData> {
+  return request<AdminDashboardData>("/admin/analytics");
 }
 
 export interface SessionFilterParams {

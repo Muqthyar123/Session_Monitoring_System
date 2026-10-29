@@ -1,8 +1,8 @@
 /** Shared frontend API types. */
 
 export type Role = "ADMIN" | "CR" | "LR" | "MENTOR" | "DEPARTMENT_COORDINATOR" | "COORDINATOR";
-export type SessionStatus = "Upcoming" | "Active" | "Completed";
-export type FacultyResponse = "Pending" | "Present" | "Not Present" | "Substitute";
+export type SessionStatus = "Upcoming" | "Active" | "Completed" | "Expired";
+export type FacultyResponse = "Pending" | "Present" | "Not Present" | "Substitute" | "CR/LR Not Marked";
 
 export interface AuthUser {
   id: string;
@@ -36,28 +36,40 @@ export interface TimetableUpload {
 }
 
 export interface TimetablePeriod {
+  id?: string;
+  year?: string;
+  section?: string;
   day: string;
   period: number;
   startTime: string;
   endTime: string;
   subject: string;
-  room: string;
+  faculty?: string;
+  facultyNames?: string[];
+  room?: string;
 }
 
 export interface ClassSession {
   id: string;
+  _id?: string;
   section: string;
+  year?: string;
   subject: string;
   faculty?: string;
+  facultyNames?: string[];
   period: string;
+  periodsIncluded: number[];
   startTime: string;
   endTime: string;
+  date: string;
   crlrName: string;
   crlrRole: "CR" | "LR";
   sessionStatus: SessionStatus;
   facultyResponse: FacultyResponse;
   responseTime: string | null;
   substituteName: string | null;
+  submittedByName?: string | null;
+  submittedRole?: string | null;
   /** Provided by the backend. Frontend only displays it. */
   responseWindowSecondsRemaining: number | null;
   responseWindowExpired: boolean;

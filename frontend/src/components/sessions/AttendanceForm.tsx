@@ -115,7 +115,7 @@ export function AttendanceForm({
     }
   };
 
-  const sessionId = session.id || (session as any)._id || "";
+  const sessionId = session.id || session._id || "";
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden dark:border-slate-800 dark:bg-slate-900 transition-all">
@@ -226,7 +226,7 @@ export function AttendanceForm({
                     <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                       <CheckCircle2 className="size-4" /> Attended (Faculty Present)
                     </span>
-                  ) : session.facultyResponse === "Not Present" || session.facultyResponse === "Absent" ? (
+              ) : session.facultyResponse === "Not Present" ? (
                     <span className="inline-flex items-center gap-1.5 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
                       <UserX className="size-4" /> Not Attended (Faculty Absent)
                     </span>

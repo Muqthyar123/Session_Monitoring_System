@@ -102,7 +102,7 @@ function SessionsPage() {
     return sessionStorage.getItem("admin_sessions_status") || ALL;
   });
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return sessionStorage.getItem("admin_sessions_date") || new Date().toISOString().split("T")[0];
+    return sessionStorage.getItem("admin_sessions_date") || new Date().toISOString().slice(0, 10);
   });
 
   const handleYearFilterChange = (y: string) => {
@@ -128,9 +128,9 @@ function SessionsPage() {
       setError(null);
       const [sessionsData, sectionsData] = await Promise.all([
         getSessions({
-          year: yearFilter === ALL ? undefined : yearFilter,
-          section: sectionFilter === ALL ? undefined : sectionFilter,
-          status: statusFilter === ALL ? undefined : statusFilter,
+          ...(yearFilter !== ALL ? { year: yearFilter } : {}),
+          ...(sectionFilter !== ALL ? { section: sectionFilter } : {}),
+          ...(statusFilter !== ALL ? { status: statusFilter } : {}),
           date: selectedDate,
         }),
         getSections().catch(() => []),

@@ -417,7 +417,7 @@ function MentorAbsenteesPage() {
   }, [globalSearch]);
 
   // Today date string (YYYY-MM-DD)
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   // Absence comment and mode states
   const [absenceModes, setAbsenceModes] = useState<Record<string, "NORMAL" | "PLANNED">>({});
@@ -442,8 +442,8 @@ function MentorAbsenteesPage() {
     setDateRanges((prev) => ({
       ...prev,
       [id]: {
-        from: field === "from" ? val : prev[id]?.from || todayStr,
-        to: field === "to" ? val : prev[id]?.to || todayStr,
+        from: field === "from" ? val : (prev[id]?.from ?? todayStr),
+        to: field === "to" ? val : (prev[id]?.to ?? todayStr),
       },
     }));
   };
@@ -650,7 +650,7 @@ function MentorAbsenteesPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {searchResults.map((record) => {
-                  const recordId = record.id || (record as any)._id || record.rollNumber;
+                  const recordId = record.id || record._id || record.rollNumber;
                   const currentReason =
                     reasonInputs[recordId] !== undefined
                       ? reasonInputs[recordId]
@@ -673,14 +673,16 @@ function MentorAbsenteesPage() {
                       onDateChange={(field, val) => handleDateChange(recordId, field, val)}
                       onSaveNormal={() => handleSaveNormalReason(record)}
                       onSavePlanned={() => handleSavePlannedReason(record)}
-                      calledState={calledMap[recordId]}
+                      {...(calledMap[recordId] !== undefined && { calledState: calledMap[recordId] })}
                       onCallToggle={(type) =>
                         setCalledMap((prev) => ({
                           ...prev,
                           [recordId]: { ...prev[recordId], [type]: true },
                         }))
                       }
-                      lockedInfo={lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]}
+                      {...((lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]) !== undefined && {
+                        lockedInfo: lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber],
+                      })}
                     />
                   );
                 })}
@@ -886,7 +888,7 @@ function MentorAbsenteesPage() {
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {filteredSectionAbsentees.map((record) => {
-                  const recordId = record.id || (record as any)._id || record.rollNumber;
+                  const recordId = record.id || record._id || record.rollNumber;
                   const currentReason =
                     reasonInputs[recordId] !== undefined
                       ? reasonInputs[recordId]
@@ -909,14 +911,16 @@ function MentorAbsenteesPage() {
                       onDateChange={(field, val) => handleDateChange(recordId, field, val)}
                       onSaveNormal={() => handleSaveNormalReason(record)}
                       onSavePlanned={() => handleSavePlannedReason(record)}
-                      calledState={calledMap[recordId]}
+                      {...(calledMap[recordId] !== undefined && { calledState: calledMap[recordId] })}
                       onCallToggle={(type) =>
                         setCalledMap((prev) => ({
                           ...prev,
                           [recordId]: { ...prev[recordId], [type]: true },
                         }))
                       }
-                      lockedInfo={lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]}
+                      {...((lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]) !== undefined && {
+                        lockedInfo: lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber],
+                      })}
                     />
                   );
                 })}

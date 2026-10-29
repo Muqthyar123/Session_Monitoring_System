@@ -207,7 +207,7 @@ function MentorPlannedAbsencesPage() {
 
   const handleSelectStudentChange = (id: string) => {
     setSelectedStudentId(id);
-    const match = assignedStudents.find((s) => (s.id || (s as any)._id) === id);
+    const match = assignedStudents.find((s) => (s.id || s._id) === id);
     if (match) {
       setRollNumberQuery(match.rollNumber);
     }
@@ -218,8 +218,8 @@ function MentorPlannedAbsencesPage() {
     start.setDate(start.getDate() + daysFromToday);
     const end = new Date(start);
     end.setDate(end.getDate() + (durationDays - 1));
-    setStartDate(start.toISOString().split("T")[0]);
-    setEndDate(end.toISOString().split("T")[0]);
+    setStartDate(start.toISOString().slice(0, 10));
+    setEndDate(end.toISOString().slice(0, 10));
   };
 
   // Edit Modal State
@@ -235,14 +235,14 @@ function MentorPlannedAbsencesPage() {
   const [cancelling, setCancelling] = useState(false);
 
   // Today in local YYYY-MM-DD format
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   const fetchAbsences = async () => {
     try {
       setLoading(true);
       const data = await getPlannedAbsences({
-        status: statusFilter === "ALL" ? undefined : statusFilter,
-        activeOnly: activeOnly ? true : undefined,
+        ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+        ...(activeOnly ? { activeOnly: true } : {}),
       });
       setAbsences(data);
     } catch (err: any) {
@@ -281,10 +281,10 @@ function MentorPlannedAbsencesPage() {
   const handleOpenCreate = (preselectedStudent?: StudentItem) => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
 
     if (preselectedStudent) {
-      setSelectedStudentId(preselectedStudent.id || preselectedStudent._id);
+      setSelectedStudentId(preselectedStudent.id || preselectedStudent._id || "");
       setRollNumberQuery(preselectedStudent.rollNumber);
     } else {
       setSelectedStudentId("");
@@ -323,7 +323,7 @@ function MentorPlannedAbsencesPage() {
     try {
       setCreating(true);
       await createPlannedAbsence({
-        studentId: targetStudent.id || targetStudent._id,
+        studentId: targetStudent.id || targetStudent._id || selectedStudentId,
         rollNumber: targetStudent.rollNumber,
         studentName: targetStudent.name,
         year: targetStudent.year,

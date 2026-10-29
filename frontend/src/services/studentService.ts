@@ -2,6 +2,7 @@ import { request, uploadRequest, downloadApiFile } from "./apiClient";
 
 export interface StudentItem {
   id: string;
+  _id?: string;
   batch?: string | number;
   branch?: string;
   year: string;

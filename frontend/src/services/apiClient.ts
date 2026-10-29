@@ -3,7 +3,7 @@
  */
 
 export function getApiBaseUrl(): string {
-  const envUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  const envUrl = import.meta.env["VITE_API_BASE_URL"]?.trim();
   const isLocalUrl = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url);
   const isDevelopmentBuild = import.meta.env.DEV;
   const browserLocalhost = typeof window !== "undefined" && ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);

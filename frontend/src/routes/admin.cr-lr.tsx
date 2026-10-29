@@ -235,7 +235,10 @@ function CRLRManagementPage() {
     try {
       if (editing) {
         const userId = editing.id || (editing as any)._id;
-        await updateCRLRUser(userId, { ...form, password: form.password.trim() || undefined });
+        await updateCRLRUser(userId, {
+          ...form,
+          ...(form.password.trim() ? { password: form.password.trim() } : {}),
+        });
         toast.success("Record updated");
       } else {
         await createCRLRUser({

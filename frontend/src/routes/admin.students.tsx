@@ -76,7 +76,9 @@ export function inferBatchFromRoll(roll?: string): number | undefined {
   const clean = roll.trim().toUpperCase();
   const m = clean.match(/^(\d{2})/);
   if (m) {
-    const yy = parseInt(m[1], 10);
+    const yearPrefix = m[1];
+    if (!yearPrefix) return undefined;
+    const yy = parseInt(yearPrefix, 10);
     if (yy >= 18 && yy <= 40) {
       const adm = 2000 + yy;
       const isLE = /^\d{2}[A-Z0-9]{2}[5L]/.test(clean);
@@ -261,12 +263,12 @@ function AdminStudentsPage() {
   };
 
   const openEditDialog = (student: StudentItem) => {
-    const studentId = student.id || (student as any)._id || student.rollNumber;
+    const studentId = student.id || student._id || student.rollNumber;
     setEditing({ ...student, id: studentId });
     setForm({
       name: student.name,
       rollNumber: student.rollNumber,
-      batch: student.batch || 2029,
+      batch: Number(student.batch) || 2029,
       branch: student.branch || "CSE",
       section: student.section,
       studentPhone: student.studentPhone || "",
@@ -298,12 +300,12 @@ function AdminStudentsPage() {
         batch: Number(form.batch),
         branch: form.branch.trim() || "CSE",
         section: form.section,
-        studentPhone: form.studentPhone.trim() || undefined,
-        parentPhone: form.parentPhone.trim() || undefined,
+        ...(form.studentPhone.trim() ? { studentPhone: form.studentPhone.trim() } : {}),
+        ...(form.parentPhone.trim() ? { parentPhone: form.parentPhone.trim() } : {}),
       };
 
       if (editing) {
-        const studentId = editing.id || (editing as any)._id || editing.rollNumber;
+        const studentId = editing.id || editing._id || editing.rollNumber;
         await updateStudent(studentId, payload);
         toast.success(`Student "${form.name}" updated successfully.`);
       } else {
@@ -321,7 +323,7 @@ function AdminStudentsPage() {
 
   const handleDelete = async () => {
     if (!pendingDelete) return;
-    const studentId = pendingDelete.id || (pendingDelete as any)._id || pendingDelete.rollNumber;
+    const studentId = pendingDelete.id || pendingDelete._id || pendingDelete.rollNumber;
     try {
       await deleteStudent(studentId);
       toast.success(`Student "${pendingDelete.name}" deleted.`);
@@ -548,7 +550,7 @@ function AdminStudentsPage() {
 
               <div className="w-36">
                 <Select value={yearFilter} onValueChange={handleYearFilterChange}>
-                  <SelectTrigger size="sm">
+                  <SelectTrigger>
                     <SelectValue placeholder="All Years" />
                   </SelectTrigger>
                   <SelectContent>
@@ -564,7 +566,7 @@ function AdminStudentsPage() {
 
               <div className="w-36">
                 <Select value={sectionFilter} onValueChange={handleSectionFilterChange}>
-                  <SelectTrigger size="sm">
+                  <SelectTrigger>
                     <SelectValue placeholder="All Sections" />
                   </SelectTrigger>
                   <SelectContent>

@@ -101,13 +101,15 @@ function AdminStudentAbsenteesPage() {
     if (!dbYears || !Array.isArray(dbYears)) {
       return [];
     }
-    return dbYears.map((item: any) => {
+    return dbYears.map((item) => {
       if (typeof item === "string") return { year: item };
       return {
         year: item.year || "2nd Year",
-        studentCount: item.studentCount,
-        absenteeCount: item.absenteeCount,
-        unassignedStudentCount: item.unassignedStudentCount,
+        ...(item.studentCount !== undefined ? { studentCount: item.studentCount } : {}),
+        ...(item.absenteeCount !== undefined ? { absenteeCount: item.absenteeCount } : {}),
+        ...(item.unassignedStudentCount !== undefined
+          ? { unassignedStudentCount: item.unassignedStudentCount }
+          : {}),
       };
     });
   }, [dbYears]);
@@ -137,8 +139,12 @@ function AdminStudentAbsenteesPage() {
         seen.add(key);
         list.push({
           section: cleanSec,
-          studentCount: typeof item === "object" ? item.studentCount : undefined,
-          absenteeCount: typeof item === "object" ? item.absenteeCount : undefined,
+          ...(typeof item !== "string" && item.studentCount !== undefined
+            ? { studentCount: item.studentCount }
+            : {}),
+          ...(typeof item !== "string" && item.absenteeCount !== undefined
+            ? { absenteeCount: item.absenteeCount }
+            : {}),
         });
       }
     }
@@ -183,7 +189,7 @@ function AdminStudentAbsenteesPage() {
   );
 
   // Today date string (YYYY-MM-DD)
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   // Absence comment and planned mode states
   const [absenceModes, setAbsenceModes] = useState<Record<string, "NORMAL" | "PLANNED">>({});
@@ -218,8 +224,8 @@ function AdminStudentAbsenteesPage() {
     setDateRanges((prev) => ({
       ...prev,
       [id]: {
-        from: field === "from" ? val : prev[id]?.from || todayStr,
-        to: field === "to" ? val : prev[id]?.to || todayStr,
+        from: field === "from" ? val : (prev[id]?.from ?? todayStr),
+        to: field === "to" ? val : (prev[id]?.to ?? todayStr),
       },
     }));
   };
@@ -229,7 +235,7 @@ function AdminStudentAbsenteesPage() {
   };
 
   const handleSaveNormalReason = async (record: AbsenteeStudentItem) => {
-    const recordId = record.id || (record as any)._id || record.rollNumber;
+    const recordId = record.id || record._id || record.rollNumber;
     const reasonText = reasonInputs[recordId] ?? record.reason ?? "";
     if (!reasonText.trim()) {
       toast.error("Please enter a reason or note before saving.");
@@ -387,8 +393,8 @@ function AdminStudentAbsenteesPage() {
                       studentName: st.name,
                       year: st.year || selectedYear || "2nd Year",
                       section: st.section || "A",
-                      studentPhone: st.studentPhone,
-                      parentPhone: st.parentPhone,
+                      ...(st.studentPhone !== undefined && { studentPhone: st.studentPhone }),
+                      ...(st.parentPhone !== undefined && { parentPhone: st.parentPhone }),
                       date: todayStr,
                       status: "Absent",
                     });

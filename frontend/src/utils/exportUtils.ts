@@ -66,7 +66,8 @@ export function exportToCSV<T = any>(
     for (const row of data) {
       const rowValues = keys.map((key, idx) => {
         const rawVal = (row as any)[key];
-        const transformedVal = transformers[idx](rawVal, row);
+        const transform = transformers[idx];
+        const transformedVal = transform ? transform(rawVal, row) : rawVal;
         return formatCSVField(transformedVal);
       });
       csvRows.push(rowValues.join(","));

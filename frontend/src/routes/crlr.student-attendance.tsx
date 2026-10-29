@@ -178,8 +178,8 @@ function CRLRStudentAttendancePage() {
         rollNumber: s.rollNumber,
         studentId: s.id,
         studentName: s.name,
-        studentPhone: s.studentPhone,
-        parentPhone: s.parentPhone,
+        ...(s.studentPhone ? { studentPhone: s.studentPhone } : {}),
+        ...(s.parentPhone ? { parentPhone: s.parentPhone } : {}),
       }));
 
       const res = await submitStudentAttendance({

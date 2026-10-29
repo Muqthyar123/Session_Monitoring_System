@@ -48,7 +48,9 @@ export function inferBatchFromRoll(roll?: string): number | undefined {
   const clean = roll.trim().toUpperCase();
   const m = clean.match(/^(\d{2})/);
   if (m) {
-    const yy = parseInt(m[1], 10);
+    const yearPrefix = m[1];
+    if (!yearPrefix) return undefined;
+    const yy = parseInt(yearPrefix, 10);
     if (yy >= 18 && yy <= 40) {
       const adm = 2000 + yy;
       const isLE = /^\d{2}[A-Z0-9]{2}[5L]/.test(clean);

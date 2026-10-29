@@ -101,8 +101,11 @@ function TimetablePage() {
         return;
       }
       // Fallback only if no valid section is currently selected
-      setSection(availableSections[0]);
-      sessionStorage.setItem("admin_timetable_section", availableSections[0]);
+      const firstSection = availableSections[0];
+      if (firstSection) {
+        setSection(firstSection);
+        sessionStorage.setItem("admin_timetable_section", firstSection);
+      }
     } else if (!uploads.loading && availableSections.length === 0 && section !== "") {
       setSection("");
     }

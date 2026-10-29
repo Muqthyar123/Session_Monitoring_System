@@ -183,11 +183,11 @@ function AdminDashboardPage() {
             <div className="space-y-3">
               {uploads.data?.map((item) => {
                 const metadata = item.metadata || {};
-                const imported = Number(metadata.created ?? metadata.inserted ?? 0);
-                const updated = Number(metadata.updated ?? metadata.modified ?? 0);
-                const failed = Number(metadata.failed ?? 0);
-                const skipped = Number(metadata.unchanged ?? metadata.duplicate_rows ?? 0);
-                const title = String(metadata.filename || item.action.replaceAll("_", " ").toLowerCase());
+                const imported = Number(metadata["created"] ?? metadata["inserted"] ?? 0);
+                const updated = Number(metadata["updated"] ?? metadata["modified"] ?? 0);
+                const failed = Number(metadata["failed"] ?? 0);
+                const skipped = Number(metadata["unchanged"] ?? metadata["duplicate_rows"] ?? 0);
+                const title = String(metadata["filename"] || item.action.replaceAll("_", " ").toLowerCase());
                 return (
                   <div key={item.id} className="flex flex-col gap-1 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">

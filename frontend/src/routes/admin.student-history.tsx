@@ -94,13 +94,15 @@ function AdminStudentHistoryPage() {
     if (!dbYears || !Array.isArray(dbYears)) {
       return [];
     }
-    return dbYears.map((item: any) => {
+    return dbYears.map((item) => {
       if (typeof item === "string") return { year: item };
       return {
         year: item.year || "2nd Year",
-        studentCount: item.studentCount,
-        absenteeCount: item.absenteeCount,
-        unassignedStudentCount: item.unassignedStudentCount,
+        ...(item.studentCount !== undefined ? { studentCount: item.studentCount } : {}),
+        ...(item.absenteeCount !== undefined ? { absenteeCount: item.absenteeCount } : {}),
+        ...(item.unassignedStudentCount !== undefined
+          ? { unassignedStudentCount: item.unassignedStudentCount }
+          : {}),
       };
     });
   }, [dbYears]);
@@ -128,8 +130,12 @@ function AdminStudentHistoryPage() {
         seen.add(key);
         list.push({
           section: cleanSec,
-          studentCount: typeof item === "object" ? item.studentCount : undefined,
-          absenteeCount: typeof item === "object" ? item.absenteeCount : undefined,
+          ...(typeof item !== "string" && item.studentCount !== undefined
+            ? { studentCount: item.studentCount }
+            : {}),
+          ...(typeof item !== "string" && item.absenteeCount !== undefined
+            ? { absenteeCount: item.absenteeCount }
+            : {}),
         });
       }
     }
@@ -285,8 +291,8 @@ function AdminStudentHistoryPage() {
                           rollNumber: s.rollNumber,
                           year: s.year || "2nd Year",
                           section: s.section,
-                          studentPhone: s.studentPhone || undefined,
-                          parentPhone: s.parentPhone || undefined,
+                          ...(s.studentPhone ? { studentPhone: s.studentPhone } : {}),
+                          ...(s.parentPhone ? { parentPhone: s.parentPhone } : {}),
                         })
                       }
                     >
@@ -501,8 +507,8 @@ function AdminStudentHistoryPage() {
                             rollNumber: st.rollNumber,
                             year: st.year,
                             section: st.section,
-                            studentPhone: st.studentPhone || undefined,
-                            parentPhone: st.parentPhone || undefined,
+                            ...(st.studentPhone ? { studentPhone: st.studentPhone } : {}),
+                            ...(st.parentPhone ? { parentPhone: st.parentPhone } : {}),
                             totalAbsences: st.totalAbsences,
                             attendancePercentage: st.attendancePercentage,
                           })

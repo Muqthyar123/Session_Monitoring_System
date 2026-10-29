@@ -25,8 +25,8 @@ function toAuthUser(user: LoginResponsePayload["user"]): AuthUser {
     name: user.name,
     email: user.email,
     role: user.role,
-    section: user.section,
-    year: user.year,
+    ...(user.section !== undefined ? { section: user.section } : {}),
+    ...(user.year !== undefined ? { year: user.year } : {}),
   };
 }
 

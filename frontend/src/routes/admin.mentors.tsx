@@ -156,10 +156,10 @@ function AdminMentorsPage() {
           name: form.name.trim(),
           mentorId: form.mentorId.trim(),
           email: form.email.trim(),
-          phone: form.phone.trim() || undefined,
-          designation: form.designation.trim() || undefined,
-          department: form.department.trim() || undefined,
-          profile: form.profile.trim() || undefined,
+          ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
+          ...(form.designation.trim() ? { designation: form.designation.trim() } : {}),
+          ...(form.department.trim() ? { department: form.department.trim() } : {}),
+          ...(form.profile.trim() ? { profile: form.profile.trim() } : {}),
           ...(form.password?.trim() ? { password: form.password.trim() } : {}),
         });
         toast.success(`Mentor "${form.name}" updated successfully.`);
@@ -168,10 +168,10 @@ function AdminMentorsPage() {
           name: form.name.trim(),
           mentorId: form.mentorId.trim(),
           email: form.email.trim(),
-          phone: form.phone.trim() || undefined,
-          designation: form.designation.trim() || undefined,
-          department: form.department.trim() || undefined,
-          profile: form.profile.trim() || undefined,
+          ...(form.phone.trim() ? { phone: form.phone.trim() } : {}),
+          ...(form.designation.trim() ? { designation: form.designation.trim() } : {}),
+          ...(form.department.trim() ? { department: form.department.trim() } : {}),
+          ...(form.profile.trim() ? { profile: form.profile.trim() } : {}),
           ...(form.password?.trim() ? { password: form.password.trim() } : {}),
         });
         toast.success(`Mentor "${form.name}" added successfully.`);

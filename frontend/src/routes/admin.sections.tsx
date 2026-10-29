@@ -113,7 +113,7 @@ function ManageSectionsPage() {
   const handleOpenAdd = () => {
     setEditingSection(null);
     setFormYear(selectedYear !== "ALL" ? selectedYear : "2nd Year");
-    setFormBranch(selectedBranch !== "ALL" ? selectedBranch : (departments.length > 0 ? departments[0].code : "CSE"));
+    setFormBranch(selectedBranch !== "ALL" ? selectedBranch : (departments[0]?.code ?? "CSE"));
     setFormSectionName("");
     setFormActive(true);
     setDialogOpen(true);
