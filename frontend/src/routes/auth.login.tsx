@@ -114,12 +114,7 @@ function CRLRLoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground space-y-1">
-            <p className="font-semibold text-foreground">Section Representatives Sign-in</p>
-            <p>Use your assigned roll number or email address and the password provided for your account.</p>
-          </div>
-
-          <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">
+          <div className="mt-6 flex items-center justify-center gap-3 text-sm text-muted-foreground">
             <Link to="/admin/login" className="font-medium text-primary underline underline-offset-4">
               Admin Login
             </Link>

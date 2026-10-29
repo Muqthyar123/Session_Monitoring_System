@@ -115,16 +115,7 @@ function AdminLoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
-            <p className="font-medium text-foreground">System Administrator Account</p>
-            <p>
-              No default admin login is created. From the backend folder, create the first account with{" "}
-              <code className="rounded bg-muted px-1">python scripts/seed_db.py create --email moturisireesha@gmail.com</code>.{" "}
-              Enter your password at the hidden prompt, then sign in with it.
-            </p>
-          </div>
-
-          <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">
+          <div className="mt-6 flex items-center justify-center gap-3 text-sm text-muted-foreground">
             <Link to="/auth/login" className="font-medium text-primary underline underline-offset-4">
               CR / LR Login
             </Link>
