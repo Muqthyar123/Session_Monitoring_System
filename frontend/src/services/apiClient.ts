@@ -6,22 +6,37 @@ export function getApiBaseUrl(): string {
   const envUrl = import.meta.env["VITE_API_BASE_URL"]?.trim();
   const isLocalUrl = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url);
   const isDevelopmentBuild = import.meta.env.DEV;
-  const browserLocalhost = typeof window !== "undefined" && ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
-  if (envUrl && isLocalUrl(envUrl) && (!isDevelopmentBuild || (typeof window !== "undefined" && !browserLocalhost))) {
-    throw new Error("VITE_API_BASE_URL points to localhost in a deployed frontend. Set it to the deployed backend API URL.");
+
+  // During SSR (server-side rendering at build time), window is undefined.
+  // Never throw here — the build will crash. Only throw/warn at actual request time.
+  const isSSR = typeof window === "undefined";
+  if (isSSR) {
+    // Return the env URL if set, otherwise empty string (safe for SSR build).
+    return (envUrl || "").replace(/\/+$/, "");
   }
-  if (!envUrl && !isDevelopmentBuild) {
-    throw new Error("VITE_API_BASE_URL must be set to the deployed backend API URL (including /api).");
+
+  const hostname = window.location.hostname;
+  const browserLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+
+  if (envUrl && isLocalUrl(envUrl) && !browserLocalhost) {
+    // Localhost URL used in deployed environment — safe to warn at runtime
+    console.error("VITE_API_BASE_URL points to localhost in a deployed frontend. Set it to the deployed backend API URL.");
   }
-  if (typeof window !== "undefined") {
-    const hostname = window.location.hostname;
-    const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
-    if (isLocalhost) {
-      if (!envUrl || envUrl.includes("onrender.com") || envUrl.includes("vercel.app")) {
-        return "http://localhost:8000/api";
-      }
+
+  if (browserLocalhost) {
+    // Running locally in the browser
+    if (!envUrl || envUrl.includes("onrender.com") || envUrl.includes("vercel.app")) {
+      return "http://localhost:8000/api";
     }
+    return envUrl.replace(/\/+$/, "");
   }
+
+  if (!envUrl && !isDevelopmentBuild) {
+    // Deployed to a real domain but env var missing — warn at runtime only
+    console.error("VITE_API_BASE_URL must be set to the deployed backend API URL (including /api). API calls will fail.");
+    return "";
+  }
+
   return (envUrl || (isDevelopmentBuild ? "http://localhost:8000/api" : "")).replace(/\/+$/, "");
 }
 
