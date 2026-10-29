@@ -17,6 +17,6 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "1440"
       - key: FRONTEND_URL
-        sync: false
+        value: https://session-monitoring-system.vercel.app
       - key: TIMEZONE
         value: Asia/Kolkata

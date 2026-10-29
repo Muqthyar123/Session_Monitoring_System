@@ -82,9 +82,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS setup
+# CORS setup — include all known origins explicitly plus regex for previews
 origins = [
-    settings.FRONTEND_URL,
+    # ── Production deployments ────────────────────────────────────────────────
+    "https://session-monitoring-system.vercel.app",
+    "https://session-monitoring-system.onrender.com",
+    # ── Local development ─────────────────────────────────────────────────────
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
@@ -92,6 +95,7 @@ origins = [
     "http://localhost:4173",
     "http://localhost:8080",
     "http://localhost:8081",
+    "http://localhost:8082",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
@@ -99,15 +103,35 @@ origins = [
     "http://127.0.0.1:4173",
     "http://127.0.0.1:8080",
     "http://127.0.0.1:8081",
+    "http://127.0.0.1:8082",
 ]
+
+# Also allow dynamic Vercel preview URLs and any Render/Netlify deployment
+_CORS_ORIGIN_REGEX = (
+    r"^https?://("
+    r"localhost(:\d+)?"
+    r"|127\.0\.0\.1(:\d+)?"
+    r"|([a-zA-Z0-9-]+\.)*vercel\.app"
+    r"|([a-zA-Z0-9-]+\.)*onrender\.com"
+    r"|([a-zA-Z0-9-]+\.)*netlify\.app"
+    r")(:\d+)?$"
+)
+
+if settings.FRONTEND_URL:
+    for raw_url in settings.FRONTEND_URL.split(","):
+        cleaned_url = raw_url.strip().rstrip("/")
+        if cleaned_url and cleaned_url not in origins:
+            origins.append(cleaned_url)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|.*\.onrender\.com|.*\.vercel\.app|.*\.netlify\.app)(:\d+)?$",
+    allow_origin_regex=_CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 
@@ -157,11 +181,17 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Healthcheck endpoint
+# Healthcheck endpoints
 @app.get("/", tags=["Health"])
 @app.head("/", tags=["Health"])
 @app.get("/health", tags=["Health"])
 @app.head("/health", tags=["Health"])
+@app.get(f"{settings.API_V1_STR}", tags=["Health"])
+@app.head(f"{settings.API_V1_STR}", tags=["Health"])
+@app.get(f"{settings.API_V1_STR}/", tags=["Health"])
+@app.head(f"{settings.API_V1_STR}/", tags=["Health"])
+@app.get(f"{settings.API_V1_STR}/health", tags=["Health"])
+@app.head(f"{settings.API_V1_STR}/health", tags=["Health"])
 async def health_check():
     return {"status": "ok", "project": settings.PROJECT_NAME, "version": settings.VERSION}
 

@@ -2,42 +2,40 @@
  * Centralized Frontend API Client for FastAPI Backend Integration
  */
 
+export const PRODUCTION_API_URL = "https://session-monitoring-system.onrender.com/api";
+export const LOCAL_API_URL = "http://localhost:8000/api";
+
 export function getApiBaseUrl(): string {
   const envUrl = import.meta.env["VITE_API_BASE_URL"]?.trim();
-  const isLocalUrl = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url);
-  const isDevelopmentBuild = import.meta.env.DEV;
+  const isLocalUrl = (url: string) =>
+    /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i.test(url);
 
   // During SSR (server-side rendering at build time), window is undefined.
-  // Never throw here — the build will crash. Only throw/warn at actual request time.
-  const isSSR = typeof window === "undefined";
-  if (isSSR) {
-    // Return the env URL if set, otherwise empty string (safe for SSR build).
-    return (envUrl || "").replace(/\/+$/, "");
+  if (typeof window === "undefined") {
+    if (envUrl && !isLocalUrl(envUrl)) {
+      return envUrl.replace(/\/+$/, "");
+    }
+    return PRODUCTION_API_URL;
   }
 
   const hostname = window.location.hostname;
   const browserLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
 
-  if (envUrl && isLocalUrl(envUrl) && !browserLocalhost) {
-    // Localhost URL used in deployed environment — safe to warn at runtime
-    console.error("VITE_API_BASE_URL points to localhost in a deployed frontend. Set it to the deployed backend API URL.");
-  }
-
   if (browserLocalhost) {
     // Running locally in the browser
-    if (!envUrl || envUrl.includes("onrender.com") || envUrl.includes("vercel.app")) {
-      return "http://localhost:8000/api";
+    if (envUrl && isLocalUrl(envUrl)) {
+      return envUrl.replace(/\/+$/, "");
     }
+    return LOCAL_API_URL;
+  }
+
+  // Running on deployed frontend (Vercel, custom domain, etc.)
+  if (envUrl && !isLocalUrl(envUrl)) {
     return envUrl.replace(/\/+$/, "");
   }
 
-  if (!envUrl && !isDevelopmentBuild) {
-    // Deployed to a real domain but env var missing — warn at runtime only
-    console.error("VITE_API_BASE_URL must be set to the deployed backend API URL (including /api). API calls will fail.");
-    return "";
-  }
-
-  return (envUrl || (isDevelopmentBuild ? "http://localhost:8000/api" : "")).replace(/\/+$/, "");
+  // Fallback to production Render backend URL
+  return PRODUCTION_API_URL;
 }
 
 const TOKEN_KEY = "fams.auth.token";
@@ -86,6 +84,7 @@ export async function request<T>(
   }
 
   const mergedOptions: RequestInit = {
+    mode: "cors",
     ...options,
     headers: {
       ...headers,
@@ -93,7 +92,7 @@ export async function request<T>(
     },
   };
 
-  const baseUrl = getApiBaseUrl();
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   const url = path.startsWith("http") ? path : `${baseUrl}${cleanPath}`;
 
@@ -130,10 +129,13 @@ export async function request<T>(
     if (err instanceof ApiError) {
       throw err;
     }
-    throw new ApiError(
-      err.message || "Failed to connect to the backend server.",
-      500
-    );
+    const isNetworkError =
+      err?.name === "TypeError" ||
+      (typeof err?.message === "string" && err.message.toLowerCase().includes("failed to fetch"));
+    const friendlyMessage = isNetworkError
+      ? "Unable to connect to the backend server. If the server is spinning up after inactivity (Render cold start), please try again in a few seconds."
+      : (err?.message || "Failed to connect to the backend server.");
+    throw new ApiError(friendlyMessage, 500);
   }
 }
 
@@ -144,8 +146,9 @@ export function uploadRequest<T>(
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
     const cleanPath = path.startsWith("/") ? path : `/${path}`;
-    const url = path.startsWith("http") ? path : `${getApiBaseUrl()}${cleanPath}`;
+    const url = path.startsWith("http") ? path : `${baseUrl}${cleanPath}`;
     xhr.open("POST", url);
     const token = getStoredToken();
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -154,7 +157,13 @@ export function uploadRequest<T>(
         onProgress?.(Math.min(100, Math.round((event.loaded / event.total) * 100)));
       }
     };
-    xhr.onerror = () => reject(new ApiError("Failed to connect to the backend server.", 500));
+    xhr.onerror = () =>
+      reject(
+        new ApiError(
+          "Unable to connect to the backend server for upload. Please check your connection and try again.",
+          500,
+        ),
+      );
     xhr.onabort = () => reject(new ApiError("Upload was cancelled.", 0));
     xhr.onload = () => {
       let json: any = null;
@@ -186,10 +195,10 @@ export async function downloadApiFile(path: string, filename: string) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const baseUrl = getApiBaseUrl();
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, "");
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   const url = path.startsWith("http") ? path : `${baseUrl}${cleanPath}`;
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers, mode: "cors" });
 
   if (!response.ok) {
     throw new ApiError(`Failed to download template file`, response.status);
