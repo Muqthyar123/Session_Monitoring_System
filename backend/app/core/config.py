@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Require an explicit connection string so the application never silently
     # falls back to a local MongoDB instance.
     MONGODB_URI: str
-    DATABASE_NAME: str
+    DATABASE_NAME: str = "college_session_monitoring_system"
     MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = 3000  # 3 seconds — fail fast if Atlas unreachable
     MAX_UPLOAD_SIZE_MB: int = Field(default=20, ge=1, le=100)
     MAX_IMPORT_ROWS: int = Field(default=10000, ge=1, le=100000)

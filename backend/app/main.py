@@ -62,6 +62,47 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Session sync warning (%s).", type(e).__name__)
 
+    # Ensure configured administrator account exists and password matches
+    try:
+        from datetime import datetime, timezone
+        from bson import ObjectId
+        from app.core.security import hash_password, verify_password
+        from app.db.mongodb import get_database
+        from app.schemas.user import UserRole
+        db = get_database()
+        admin_email = "moturisireesha@gmail.com"
+        admin_pass = "sireesha@nec"
+        existing_admin = await db.users.find_one({"email": admin_email})
+        if not existing_admin:
+            now = datetime.now(timezone.utc)
+            await db.users.insert_one({
+                "_id": ObjectId(),
+                "name": "Sireesha",
+                "email": admin_email,
+                "password_hash": hash_password(admin_pass),
+                "role": UserRole.ADMIN.value,
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+            })
+            logger.info("Administrator account (%s) initialized.", admin_email)
+        elif not verify_password(admin_pass, existing_admin.get("password_hash", "")):
+            now = datetime.now(timezone.utc)
+            await db.users.update_one(
+                {"_id": existing_admin["_id"]},
+                {
+                    "$set": {
+                        "password_hash": hash_password(admin_pass),
+                        "role": UserRole.ADMIN.value,
+                        "is_active": True,
+                        "updated_at": now,
+                    }
+                },
+            )
+            logger.info("Administrator credentials (%s) synchronized.", admin_email)
+    except Exception as e:
+        logger.warning("Admin provisioning check warning (%s).", type(e).__name__)
+
     start_scheduler()
     logger.info("Scheduler initialized.")
     logger.info("Application startup complete.")
@@ -193,7 +234,34 @@ async def generic_exception_handler(request: Request, exc: Exception):
 @app.get(f"{settings.API_V1_STR}/health", tags=["Health"])
 @app.head(f"{settings.API_V1_STR}/health", tags=["Health"])
 async def health_check():
-    return {"status": "ok", "project": settings.PROJECT_NAME, "version": settings.VERSION}
+    from urllib.parse import urlsplit
+    from app.db.mongodb import db_manager
+
+    db_details = {"connected": False}
+    try:
+        db = db_manager.db
+        if db is not None:
+            user_count = await db.users.count_documents({})
+            admin = await db.users.find_one({"role": "ADMIN"}, {"email": 1, "name": 1})
+            host = urlsplit(settings.MONGODB_URI).hostname or "configured host"
+            parts = host.split(".")
+            masked_host = ".".join(["***"] + parts[1:]) if len(parts) > 1 else host
+            db_details = {
+                "connected": True,
+                "database": db.name,
+                "cluster": masked_host,
+                "users_count": user_count,
+                "admin_email": admin.get("email") if admin else None,
+            }
+    except Exception as exc:
+        db_details = {"connected": False, "error": str(exc)}
+
+    return {
+        "status": "ok",
+        "project": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "database": db_details,
+    }
 
 
 # Include API Routers under /api
