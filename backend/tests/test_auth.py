@@ -67,12 +67,9 @@ async def test_invalid_password_returns_401(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_forgot_password_route_is_registered_and_enumeration_safe(client: AsyncClient, monkeypatch):
-    from app.services import auth_service
-
-    async def brevo_ready():
-        return True
-
-    monkeypatch.setattr(auth_service, "diagnose_brevo_configuration", brevo_ready)
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "configured-test-key")
+    monkeypatch.setattr(settings, "BREVO_SENDER_MAIL", "sender@example.test")
     res = await client.post("/api/auth/forgot-password", json={"email": "unregistered@example.com"})
     assert res.status_code == 200
     assert "If an account exists" in res.json()["message"]
@@ -233,12 +230,10 @@ async def test_brevo_diagnostics_logs_status_without_secret_or_sender(monkeypatc
 
 @pytest.mark.asyncio
 async def test_forgot_password_fails_closed_when_brevo_is_unavailable(monkeypatch):
+    from app.core.config import settings
     from app.services import auth_service
-
-    async def brevo_unavailable():
-        return False
-
-    monkeypatch.setattr(auth_service, "diagnose_brevo_configuration", brevo_unavailable)
+    monkeypatch.setattr(settings, "BREVO_API_KEY", None)
+    monkeypatch.setattr(settings, "BREVO_SENDER_MAIL", None)
     with pytest.raises(HTTPException) as exc:
         await auth_service.request_password_reset("any-address@example.com")
     assert exc.value.status_code == 503
@@ -247,18 +242,16 @@ async def test_forgot_password_fails_closed_when_brevo_is_unavailable(monkeypatc
 
 @pytest.mark.asyncio
 async def test_brevo_rejection_returns_unavailable_and_invalidates_reset_token(monkeypatch):
+    from app.core.config import settings
     from app.services import auth_service
 
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "test-api-key")
+    monkeypatch.setattr(settings, "BREVO_SENDER_MAIL", "sender@example.test")
     db = get_database()
     email = "brevo-rejected@test.com"
     user = await db.users.insert_one({
         "name": "Brevo Rejected", "email": email, "role": UserRole.ADMIN.value, "is_active": True,
     })
-
-    async def brevo_ready():
-        return True
-
-    monkeypatch.setattr(auth_service, "diagnose_brevo_configuration", brevo_ready)
 
     class FakeResponse:
         status_code = 401

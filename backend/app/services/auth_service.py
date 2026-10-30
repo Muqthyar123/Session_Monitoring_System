@@ -6,7 +6,6 @@ import secrets
 import re
 import httpx
 import logging
-from urllib.parse import urlsplit
 import time
 from typing import Optional
 from bson import ObjectId
@@ -32,12 +31,10 @@ def _reset_token_hash(token: str) -> str:
 
 
 def _reset_frontend_url() -> str:
-    """Use the deployed application for production reset links, never localhost."""
+    """Always build Render reset links on the deployed frontend, never a local/old host."""
     configured_url = (settings.FRONTEND_URL or "").strip().rstrip("/")
     if os.getenv("RENDER", "").casefold() == "true":
-        hostname = (urlsplit(configured_url).hostname or "").casefold()
-        if hostname in {"localhost", "127.0.0.1", "::1"} or not hostname:
-            return PRODUCTION_FRONTEND_URL
+        return PRODUCTION_FRONTEND_URL
     return configured_url or PRODUCTION_FRONTEND_URL
 
 
@@ -111,7 +108,11 @@ async def verify_password_reset_token(token: str) -> Optional[str]:
 
 
 async def request_password_reset(email: str) -> None:
-    if not await diagnose_brevo_configuration():
+    api_key = (settings.BREVO_API_KEY or "").strip()
+    sender_email = (settings.BREVO_SENDER_MAIL or "").strip()
+    if not api_key or not sender_email:
+        missing = [name for name, value in (("BREVO_API_KEY", api_key), ("BREVO_SENDER_MAIL", sender_email)) if not value]
+        logger.error("Password reset email is not configured; missing %s.", ", ".join(missing))
         raise HTTPException(
             status_code=503,
             detail="Password reset email is temporarily unavailable. Please contact the administrator.",
@@ -120,17 +121,6 @@ async def request_password_reset(email: str) -> None:
     email_clean = email.strip().lower()
     user = await db.users.find_one({"email": email_clean, "is_active": {"$ne": False}})
     if not user:
-        return
-    # Don't create a discoverable token if email delivery is not configured.
-    api_key = (settings.BREVO_API_KEY or "").strip()
-    sender_email = (settings.BREVO_SENDER_MAIL or "").strip()
-    if not api_key or not sender_email:
-        missing = []
-        if not api_key:
-            missing.append("BREVO_API_KEY")
-        if not sender_email:
-            missing.append("BREVO_SENDER_MAIL")
-        logger.error("Password reset email is not configured; missing %s.", ", ".join(missing))
         return
     token = secrets.token_urlsafe(48)
     now = datetime.now(timezone.utc)
