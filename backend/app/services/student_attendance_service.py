@@ -15,6 +15,10 @@ from app.schemas.student_attendance import (
 from app.schemas.user import UserRole
 
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
+ATTENDANCE_SESSION_WINDOWS = (
+    ("SESSION_1", "Before Lunch", 9 * 60 + 10, 12 * 60 + 40),
+    ("SESSION_2", "After Lunch", 13 * 60 + 30, 16 * 60),
+)
 
 
 def _attendance_collection(db, session_id: str):
@@ -58,7 +62,7 @@ def _clock_label(minutes: int) -> str:
 
 
 async def get_attendance_windows(year: str, section: str, now_local: Optional[datetime] = None) -> Dict[str, Any]:
-    """Derive today's two windows from the largest free interval in the uploaded timetable."""
+    """Return the fixed CR/LR attendance windows for a configured timetable day."""
     db = get_database()
     now_local = now_local or datetime.now(tz_kolkata)
     day_name = now_local.strftime("%A")
@@ -74,17 +78,10 @@ async def get_attendance_windows(year: str, section: str, now_local: Optional[da
     parsed.sort(key=lambda row: (row[0], row[1]))
     if len(parsed) < 2:
         return {"configured": False, "reason": "The timetable needs at least two valid class periods to derive the lunch interval."}
-    gaps = [(parsed[i + 1][0] - parsed[i][1], parsed[i][1], parsed[i + 1][0]) for i in range(len(parsed) - 1) if parsed[i + 1][0] > parsed[i][1]]
-    if not gaps:
-        return {"configured": False, "reason": "The timetable has no lunch break interval. Please check its class times."}
-    _, lunch_start, lunch_end = max(gaps, key=lambda gap: gap[0])
-    day_start, day_end = parsed[0][0], max(row[1] for row in parsed)
-    if not (day_start < lunch_start < lunch_end < day_end):
-        return {"configured": False, "reason": "The timetable lunch interval is invalid. Please check class and lunch times."}
     current = now_local.hour * 60 + now_local.minute
     windows = [
-        {"sessionId": "SESSION_1", "label": "Before Lunch", "startMinutes": day_start, "endMinutes": lunch_start},
-        {"sessionId": "SESSION_2", "label": "After Lunch", "startMinutes": lunch_end, "endMinutes": day_end},
+        {"sessionId": session_id, "label": label, "startMinutes": start_minutes, "endMinutes": end_minutes}
+        for session_id, label, start_minutes, end_minutes in ATTENDANCE_SESSION_WINDOWS
     ]
     for item in windows:
         item["startTime"] = _clock_label(item.pop("startMinutes"))

@@ -22,7 +22,7 @@ async def test_student_history_and_reason_audit(monkeypatch):
     await db.student_attendance.delete_many({})
     await db.student_attendance_submissions.delete_many({})
     async def open_windows(year, section, now_local=None):
-        return {"configured": True, "windows": [{"sessionId": "SESSION_1", "isOpen": True, "startTime": "09:00 AM", "endTime": "12:40 PM"}, {"sessionId": "SESSION_2", "isOpen": True, "startTime": "01:20 PM", "endTime": "04:00 PM"}]}
+        return {"configured": True, "windows": [{"sessionId": "SESSION_1", "isOpen": True, "startTime": "09:10 AM", "endTime": "12:40 PM"}, {"sessionId": "SESSION_2", "isOpen": True, "startTime": "01:30 PM", "endTime": "04:00 PM"}]}
     monkeypatch.setattr(attendance_module, "get_attendance_windows", open_windows)
 
     stu_doc = {

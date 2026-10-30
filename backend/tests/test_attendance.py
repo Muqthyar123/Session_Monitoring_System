@@ -9,6 +9,34 @@ from app.schemas.session import FacultyResponseStatus, SessionStatus
 from app.schemas.user import UserRole
 from app.services.session_service import combine_continuous_periods, calculate_session_dynamic_state
 
+
+@pytest.mark.asyncio
+async def test_crlr_attendance_uses_fixed_before_and_after_lunch_windows():
+    from app.services.student_attendance_service import get_attendance_windows
+
+    db = get_database()
+    await db.timetables.insert_many([
+        {"year": "4th Year", "section": "IV-CSE-C5", "day": "Friday", "start_time": "09:10", "end_time": "12:40"},
+        {"year": "4th Year", "section": "IV-CSE-C5", "day": "Friday", "start_time": "13:30", "end_time": "16:00"},
+    ])
+
+    def friday_at(hour: int, minute: int):
+        return datetime(2026, 10, 30, hour, minute, tzinfo=tz_kolkata)
+
+    morning = await get_attendance_windows("4th Year", "IV-CSE-C5", friday_at(12, 0))
+    assert morning["configured"] is True
+    assert [(w["startTime"], w["endTime"]) for w in morning["windows"]] == [
+        ("09:10 AM", "12:40 PM"),
+        ("01:30 PM", "04:00 PM"),
+    ]
+    assert [w["isOpen"] for w in morning["windows"]] == [True, False]
+
+    afternoon = await get_attendance_windows("4th Year", "IV-CSE-C5", friday_at(13, 30))
+    assert [w["isOpen"] for w in afternoon["windows"]] == [False, True]
+
+    after_school = await get_attendance_windows("4th Year", "IV-CSE-C5", friday_at(16, 0))
+    assert [w["isOpen"] for w in after_school["windows"]] == [False, False]
+
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
 

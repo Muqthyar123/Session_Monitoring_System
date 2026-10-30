@@ -113,8 +113,8 @@ async def test_crlr_duplicate_prevention_and_two_sessions(monkeypatch):
     now = datetime.now(timezone.utc)
     async def open_windows(year, section, now_local=None):
         return {"configured": True, "timetableUpdatedAt": now, "windows": [
-            {"sessionId": "SESSION_1", "label": "Before Lunch", "startTime": "09:00 AM", "endTime": "12:40 PM", "isOpen": True},
-            {"sessionId": "SESSION_2", "label": "After Lunch", "startTime": "01:20 PM", "endTime": "04:00 PM", "isOpen": True},
+            {"sessionId": "SESSION_1", "label": "Before Lunch", "startTime": "09:10 AM", "endTime": "12:40 PM", "isOpen": True},
+            {"sessionId": "SESSION_2", "label": "After Lunch", "startTime": "01:30 PM", "endTime": "04:00 PM", "isOpen": True},
         ]}
     monkeypatch.setattr(attendance_module, "get_attendance_windows", open_windows)
     await db.students.insert_one({"name": "Student One", "roll_number": "22CS2A01", "year": "2nd Year", "section": "A"})

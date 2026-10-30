@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta, timezone
+from html import escape
 import hashlib
+import os
 import secrets
 import re
 import httpx
 import logging
+from urllib.parse import urlsplit
+import time
 from typing import Optional
 from bson import ObjectId
 from fastapi import HTTPException, status
@@ -14,21 +18,34 @@ from app.schemas.auth import AuthUserInfo, LoginRequest, LoginResponse
 from app.schemas.user import UserRole
 
 
-RESET_GENERIC_MESSAGE = "If an account exists with this email address, a password reset link will be sent. If it does not arrive, check your spam folder or contact the administrator."
+RESET_GENERIC_MESSAGE = "If an account exists, a reset email will be sent when mail delivery is available. Check your spam folder or contact the administrator if it does not arrive."
 logger = logging.getLogger("fams.auth")
 _brevo_diagnostics_checked = False
+_brevo_configuration_ready = False
+_brevo_diagnostics_checked_at = 0.0
+_BREVO_DIAGNOSTICS_TTL_SECONDS = 60
+PRODUCTION_FRONTEND_URL = "https://session-monitoring-system.vercel.app"
 
 
 def _reset_token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-async def diagnose_brevo_configuration() -> None:
-    """Check Brevo configuration once per worker without logging credentials or addresses."""
-    global _brevo_diagnostics_checked
-    if _brevo_diagnostics_checked:
-        return
-    _brevo_diagnostics_checked = True
+def _reset_frontend_url() -> str:
+    """Use the deployed application for production reset links, never localhost."""
+    configured_url = (settings.FRONTEND_URL or "").strip().rstrip("/")
+    if os.getenv("RENDER", "").casefold() == "true":
+        hostname = (urlsplit(configured_url).hostname or "").casefold()
+        if hostname in {"localhost", "127.0.0.1", "::1"} or not hostname:
+            return PRODUCTION_FRONTEND_URL
+    return configured_url or PRODUCTION_FRONTEND_URL
+
+
+async def diagnose_brevo_configuration() -> bool:
+    """Check Brevo credentials and sender, caching the result briefly per worker."""
+    global _brevo_diagnostics_checked, _brevo_configuration_ready, _brevo_diagnostics_checked_at
+    if _brevo_diagnostics_checked and time.monotonic() - _brevo_diagnostics_checked_at < _BREVO_DIAGNOSTICS_TTL_SECONDS:
+        return _brevo_configuration_ready
 
     api_key = (settings.BREVO_API_KEY or "").strip()
     sender_email = (settings.BREVO_SENDER_MAIL or "").strip()
@@ -37,37 +54,51 @@ async def diagnose_brevo_configuration() -> None:
         else "smtp_prefix" if api_key.startswith("xsmtpsib-")
         else "unknown_prefix"
     ) if api_key else "missing"
-    production_reset_url = settings.FRONTEND_URL.rstrip("/").casefold() == "https://session-monitoring-system.vercel.app"
+    production_reset_url = _reset_frontend_url().casefold() == PRODUCTION_FRONTEND_URL
     logger.info(
         "Brevo config loaded: api_key_present=%s key_kind=%s sender_configured=%s production_frontend_url=%s",
         bool(api_key), key_kind, bool(sender_email), production_reset_url,
     )
-    if not api_key:
-        return
+    if not api_key or not sender_email:
+        _brevo_diagnostics_checked = True
+        _brevo_diagnostics_checked_at = time.monotonic()
+        _brevo_configuration_ready = False
+        return False
 
     headers = {"api-key": api_key, "accept": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             account_response = await client.get("https://api.brevo.com/v3/account", headers=headers)
             logger.info("Brevo account authentication check: HTTP %s.", account_response.status_code)
-            if account_response.status_code != 200 or not sender_email:
-                return
+            if account_response.status_code != 200:
+                _brevo_diagnostics_checked = True
+                _brevo_diagnostics_checked_at = time.monotonic()
+                _brevo_configuration_ready = False
+                return False
 
             sender_response = await client.get("https://api.brevo.com/v3/senders", headers=headers)
+            _brevo_diagnostics_checked = True
+            _brevo_diagnostics_checked_at = time.monotonic()
             if sender_response.status_code != 200:
                 logger.warning("Brevo sender verification lookup returned HTTP %s.", sender_response.status_code)
-                return
+                _brevo_configuration_ready = False
+                return False
             senders = sender_response.json().get("senders", [])
             configured_sender_is_active = any(
                 str(item.get("email", "")).casefold() == sender_email.casefold()
                 and item.get("active") is True
                 for item in senders
             )
+            _brevo_configuration_ready = configured_sender_is_active
             logger.info("Configured Brevo sender is listed as active: %s.", configured_sender_is_active)
+            return _brevo_configuration_ready
     except httpx.RequestError as exc:
         logger.warning("Brevo configuration check could not reach the provider (%s).", type(exc).__name__)
     except Exception as exc:
         logger.warning("Brevo configuration check failed (%s).", type(exc).__name__)
+    _brevo_diagnostics_checked = False
+    _brevo_configuration_ready = False
+    return False
 
 
 async def verify_password_reset_token(token: str) -> Optional[str]:
@@ -80,7 +111,11 @@ async def verify_password_reset_token(token: str) -> Optional[str]:
 
 
 async def request_password_reset(email: str) -> None:
-    await diagnose_brevo_configuration()
+    if not await diagnose_brevo_configuration():
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is temporarily unavailable. Please contact the administrator.",
+        )
     db = get_database()
     email_clean = email.strip().lower()
     user = await db.users.find_one({"email": email_clean, "is_active": {"$ne": False}})
@@ -108,13 +143,41 @@ async def request_password_reset(email: str) -> None:
         "token_hash": _reset_token_hash(token), "created_at": now,
         "expires_at": now + timedelta(minutes=20), "used_at": None,
     })
-    reset_url = settings.FRONTEND_URL.rstrip("/") + "/reset-password?token=" + token
+    reset_url = _reset_frontend_url() + "/reset-password?token=" + token
+    recipient_name = escape(str(user.get("name") or "there"))
+    safe_reset_url = escape(reset_url, quote=True)
     payload = {
         "sender": {"email": sender_email, "name": settings.BREVO_SENDER_NAME},
         "to": [{"email": email_clean, "name": user.get("name", "")[:100]}],
-        "subject": "Reset your College Session Monitoring System password",
-        "textContent": f"Use this link to reset your password. It expires in 20 minutes: {reset_url}",
-        "htmlContent": f"<p>We received a request to reset your password.</p><p><a href=\"{reset_url}\">Reset password</a></p><p>This link expires in 20 minutes. If you did not request this, ignore this email.</p>",
+        "subject": "Password Reset Request — College Session Monitoring System",
+        "textContent": (
+            f"Hello {user.get('name') or 'there'},\n\n"
+            "We received a request to reset your password for your College Session Monitoring System account.\n\n"
+            f"Set a new password using this link (it expires in 20 minutes):\n{reset_url}\n\n"
+            "If you did not request a password reset, you can safely ignore this email."
+        ),
+        "htmlContent": f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#263445;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;padding:32px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #dce4ef;border-radius:12px;">
+        <tr><td style="padding:36px 32px 28px;">
+          <p style="margin:0 0 8px;color:#1d4f91;font-size:26px;line-height:1.3;font-weight:700;">Password Reset Request</p>
+          <p style="margin:20px 0 12px;font-size:16px;line-height:1.6;">Hello <strong>{recipient_name}</strong>,</p>
+          <p style="margin:0 0 18px;font-size:16px;line-height:1.6;">We received a request to reset the password for your College Session Monitoring System account.</p>
+          <p style="margin:0 0 22px;font-size:16px;line-height:1.6;">Choose a new password by using the button below. This secure link expires in <strong>20 minutes</strong>.</p>
+          <p style="margin:0 0 26px;"><a href="{safe_reset_url}" style="display:inline-block;padding:14px 24px;border-radius:7px;background:#1d4f91;color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;">Reset Password</a></p>
+          <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#526273;">If the button does not work, copy and paste this link into your browser:</p>
+          <p style="margin:0 0 24px;font-size:14px;line-height:1.6;word-break:break-all;"><a href="{safe_reset_url}" style="color:#1d4f91;">{escape(reset_url)}</a></p>
+          <hr style="border:0;border-top:1px solid #e4eaf2;margin:24px 0;">
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#667587;">If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
+          <p style="margin:18px 0 0;font-size:13px;color:#667587;">College Session Monitoring System</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>""",
     }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -125,12 +188,29 @@ async def request_password_reset(email: str) -> None:
     except httpx.HTTPStatusError as exc:
         await db.password_reset_tokens.update_one({"token_hash": _reset_token_hash(token)}, {"$set": {"used_at": now}})
         logger.error("Brevo rejected a password reset email request (HTTP %s).", exc.response.status_code)
+        if exc.response.status_code in {401, 403}:
+            global _brevo_diagnostics_checked, _brevo_configuration_ready, _brevo_diagnostics_checked_at
+            _brevo_diagnostics_checked = False
+            _brevo_configuration_ready = False
+            _brevo_diagnostics_checked_at = 0.0
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is temporarily unavailable. Please contact the administrator.",
+        ) from None
     except httpx.RequestError as exc:
         await db.password_reset_tokens.update_one({"token_hash": _reset_token_hash(token)}, {"$set": {"used_at": now}})
         logger.error("Brevo password reset email request could not reach the provider (%s).", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is temporarily unavailable. Please contact the administrator.",
+        ) from None
     except Exception as exc:
         await db.password_reset_tokens.update_one({"token_hash": _reset_token_hash(token)}, {"$set": {"used_at": now}})
         logger.error("Password reset email processing failed (%s).", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Password reset email is temporarily unavailable. Please contact the administrator.",
+        ) from None
 
 
 async def reset_password(token: str, new_password: str) -> None:
