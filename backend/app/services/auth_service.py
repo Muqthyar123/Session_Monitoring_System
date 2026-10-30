@@ -14,12 +14,60 @@ from app.schemas.auth import AuthUserInfo, LoginRequest, LoginResponse
 from app.schemas.user import UserRole
 
 
-RESET_GENERIC_MESSAGE = "If an account exists with this email address, a password reset link has been sent."
+RESET_GENERIC_MESSAGE = "If an account exists with this email address, a password reset link will be sent. If it does not arrive, check your spam folder or contact the administrator."
 logger = logging.getLogger("fams.auth")
+_brevo_diagnostics_checked = False
 
 
 def _reset_token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def diagnose_brevo_configuration() -> None:
+    """Check Brevo configuration once per worker without logging credentials or addresses."""
+    global _brevo_diagnostics_checked
+    if _brevo_diagnostics_checked:
+        return
+    _brevo_diagnostics_checked = True
+
+    api_key = (settings.BREVO_API_KEY or "").strip()
+    sender_email = (settings.BREVO_SENDER_MAIL or "").strip()
+    key_kind = (
+        "api_v3_prefix" if api_key.startswith("xkeysib-")
+        else "smtp_prefix" if api_key.startswith("xsmtpsib-")
+        else "unknown_prefix"
+    ) if api_key else "missing"
+    production_reset_url = settings.FRONTEND_URL.rstrip("/").casefold() == "https://session-monitoring-system.vercel.app"
+    logger.info(
+        "Brevo config loaded: api_key_present=%s key_kind=%s sender_configured=%s production_frontend_url=%s",
+        bool(api_key), key_kind, bool(sender_email), production_reset_url,
+    )
+    if not api_key:
+        return
+
+    headers = {"api-key": api_key, "accept": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            account_response = await client.get("https://api.brevo.com/v3/account", headers=headers)
+            logger.info("Brevo account authentication check: HTTP %s.", account_response.status_code)
+            if account_response.status_code != 200 or not sender_email:
+                return
+
+            sender_response = await client.get("https://api.brevo.com/v3/senders", headers=headers)
+            if sender_response.status_code != 200:
+                logger.warning("Brevo sender verification lookup returned HTTP %s.", sender_response.status_code)
+                return
+            senders = sender_response.json().get("senders", [])
+            configured_sender_is_active = any(
+                str(item.get("email", "")).casefold() == sender_email.casefold()
+                and item.get("active") is True
+                for item in senders
+            )
+            logger.info("Configured Brevo sender is listed as active: %s.", configured_sender_is_active)
+    except httpx.RequestError as exc:
+        logger.warning("Brevo configuration check could not reach the provider (%s).", type(exc).__name__)
+    except Exception as exc:
+        logger.warning("Brevo configuration check failed (%s).", type(exc).__name__)
 
 
 async def verify_password_reset_token(token: str) -> Optional[str]:
@@ -32,14 +80,22 @@ async def verify_password_reset_token(token: str) -> Optional[str]:
 
 
 async def request_password_reset(email: str) -> None:
+    await diagnose_brevo_configuration()
     db = get_database()
     email_clean = email.strip().lower()
     user = await db.users.find_one({"email": email_clean, "is_active": {"$ne": False}})
     if not user:
         return
     # Don't create a discoverable token if email delivery is not configured.
-    if not settings.BREVO_API_KEY or not settings.BREVO_SENDER_MAIL:
-        logger.warning("Password reset email is not configured.")
+    api_key = (settings.BREVO_API_KEY or "").strip()
+    sender_email = (settings.BREVO_SENDER_MAIL or "").strip()
+    if not api_key or not sender_email:
+        missing = []
+        if not api_key:
+            missing.append("BREVO_API_KEY")
+        if not sender_email:
+            missing.append("BREVO_SENDER_MAIL")
+        logger.error("Password reset email is not configured; missing %s.", ", ".join(missing))
         return
     token = secrets.token_urlsafe(48)
     now = datetime.now(timezone.utc)
@@ -54,7 +110,7 @@ async def request_password_reset(email: str) -> None:
     })
     reset_url = settings.FRONTEND_URL.rstrip("/") + "/reset-password?token=" + token
     payload = {
-        "sender": {"email": settings.BREVO_SENDER_MAIL, "name": settings.BREVO_SENDER_NAME},
+        "sender": {"email": sender_email, "name": settings.BREVO_SENDER_NAME},
         "to": [{"email": email_clean, "name": user.get("name", "")[:100]}],
         "subject": "Reset your College Session Monitoring System password",
         "textContent": f"Use this link to reset your password. It expires in 20 minutes: {reset_url}",
@@ -63,11 +119,18 @@ async def request_password_reset(email: str) -> None:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post("https://api.brevo.com/v3/smtp/email", json=payload,
-                headers={"api-key": settings.BREVO_API_KEY, "accept": "application/json", "content-type": "application/json"})
+                headers={"api-key": api_key, "accept": "application/json", "content-type": "application/json"})
             response.raise_for_status()
-    except Exception:
+        logger.info("Brevo accepted a password reset email request (HTTP %s).", response.status_code)
+    except httpx.HTTPStatusError as exc:
         await db.password_reset_tokens.update_one({"token_hash": _reset_token_hash(token)}, {"$set": {"used_at": now}})
-        logger.warning("Brevo password reset email request failed.")
+        logger.error("Brevo rejected a password reset email request (HTTP %s).", exc.response.status_code)
+    except httpx.RequestError as exc:
+        await db.password_reset_tokens.update_one({"token_hash": _reset_token_hash(token)}, {"$set": {"used_at": now}})
+        logger.error("Brevo password reset email request could not reach the provider (%s).", type(exc).__name__)
+    except Exception as exc:
+        await db.password_reset_tokens.update_one({"token_hash": _reset_token_hash(token)}, {"$set": {"used_at": now}})
+        logger.error("Password reset email processing failed (%s).", type(exc).__name__)
 
 
 async def reset_password(token: str, new_password: str) -> None:

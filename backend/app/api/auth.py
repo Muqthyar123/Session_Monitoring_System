@@ -18,7 +18,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/forgot-password", response_model=ApiResponse[dict])
 async def forgot_password_api(data: ForgotPasswordRequest):
     await request_password_reset(str(data.email))
-    return ApiResponse(success=True, data={}, message="If an account exists with this email address, a password reset link has been sent.")
+    return ApiResponse(success=True, data={}, message="If an account exists with this email address, a password reset link will be sent. If it does not arrive, check your spam folder or contact the administrator.")
 
 
 @router.post("/verify-reset-token", response_model=ApiResponse[dict])

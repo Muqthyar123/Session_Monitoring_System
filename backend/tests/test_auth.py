@@ -141,7 +141,13 @@ async def test_brevo_reset_request_stores_only_token_hash(role: str, monkeypatch
     monkeypatch.setattr(settings, "BREVO_SENDER_MAIL", "verified@example.com")
     captured = []
 
+    async def skip_diagnostics():
+        return None
+
+    monkeypatch.setattr(auth_service, "diagnose_brevo_configuration", skip_diagnostics)
+
     class FakeResponse:
+        status_code = 201
         def raise_for_status(self):
             return None
 
@@ -163,3 +169,42 @@ async def test_brevo_reset_request_stores_only_token_hash(role: str, monkeypatch
     assert record["role"] == role
     assert token not in str(record)
     assert await auth_service.verify_password_reset_token(token) == role
+
+
+@pytest.mark.asyncio
+async def test_brevo_diagnostics_logs_status_without_secret_or_sender(monkeypatch, caplog):
+    from app.core.config import settings
+    from app.services import auth_service
+
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "test-brevo-api-key")
+    monkeypatch.setattr(settings, "BREVO_SENDER_MAIL", "private-sender@example.com")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://session-monitoring-system.vercel.app")
+    monkeypatch.setattr(auth_service, "_brevo_diagnostics_checked", False)
+    requests = []
+
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"senders": [{"email": "private-sender@example.com", "active": True}]}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return None
+        async def get(self, url, headers):
+            requests.append((url, headers))
+            return FakeResponse()
+
+    monkeypatch.setattr(auth_service.httpx, "AsyncClient", FakeClient)
+    await auth_service.diagnose_brevo_configuration()
+
+    assert [url for url, _ in requests] == [
+        "https://api.brevo.com/v3/account",
+        "https://api.brevo.com/v3/senders",
+    ]
+    assert all(headers["api-key"] == "test-brevo-api-key" for _, headers in requests)
+    assert "api_key_present=True" in caplog.text
+    assert "key_kind=unknown_prefix" in caplog.text
+    assert "Configured Brevo sender is listed as active: True" in caplog.text
+    assert "test-brevo-api-key" not in caplog.text
+    assert "private-sender@example.com" not in caplog.text
