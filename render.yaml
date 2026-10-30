@@ -20,3 +20,9 @@ services:
         value: https://session-monitoring-system.vercel.app
       - key: TIMEZONE
         value: Asia/Kolkata
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_MAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: College Session Monitoring System

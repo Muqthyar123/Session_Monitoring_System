@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.schemas.user import UserRole, UserResponse
 
 
@@ -34,4 +34,16 @@ class LoginResponse(BaseModel):
 
 class PasswordChangeRequest(BaseModel):
     old_password: str
+    new_password: str = Field(..., min_length=8, max_length=12)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetTokenRequest(BaseModel):
+    token: str = Field(..., min_length=32, max_length=256)
+
+
+class ResetPasswordRequest(ResetTokenRequest):
     new_password: str = Field(..., min_length=8, max_length=12)

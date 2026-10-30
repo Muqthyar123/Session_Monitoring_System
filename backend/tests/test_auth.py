@@ -1,8 +1,13 @@
 import pytest
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
 from httpx import AsyncClient
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.db.mongodb import get_database
 from app.schemas.user import UserRole
+from app.services.auth_service import reset_password
+from fastapi import HTTPException
 
 
 @pytest.mark.asyncio
@@ -61,6 +66,13 @@ async def test_invalid_password_returns_401(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_forgot_password_route_is_registered_and_enumeration_safe(client: AsyncClient):
+    res = await client.post("/api/auth/forgot-password", json={"email": "unregistered@example.com"})
+    assert res.status_code == 200
+    assert "If an account exists" in res.json()["message"]
+
+
+@pytest.mark.asyncio
 async def test_inactive_user_login_fails(client: AsyncClient):
     db = get_database()
     await db.users.insert_one({
@@ -89,3 +101,65 @@ async def test_portal_mismatch_returns_403(client: AsyncClient):
     # CR attempting to login via ADMIN portal
     res = await client.post("/api/auth/login", json={"email": "cruser@test.com", "password": "secret123", "portal": "ADMIN"})
     assert res.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["ADMIN", "MENTOR", "CR", "LR"])
+async def test_password_reset_is_hashed_one_time_and_updates_account(role: str):
+    db = get_database()
+    user_id = await db.users.insert_one({
+        "name": "Reset Test", "email": f"reset-{role.lower()}@test.com",
+        "password_hash": hash_password("Oldpass123"), "role": role, "is_active": True,
+    })
+    token = secrets.token_urlsafe(40)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    await db.password_reset_tokens.insert_one({
+        "user_id": str(user_id.inserted_id), "role": role, "token_hash": token_hash,
+        "created_at": datetime.now(timezone.utc), "expires_at": datetime.now(timezone.utc) + timedelta(minutes=20), "used_at": None,
+    })
+    await reset_password(token, "Newpass123")
+    updated = await db.users.find_one({"_id": user_id.inserted_id})
+    assert verify_password("Newpass123", updated["password_hash"])
+    assert not verify_password("Oldpass123", updated["password_hash"])
+    stored_token = await db.password_reset_tokens.find_one({"token_hash": token_hash})
+    assert stored_token["used_at"] is not None
+    with pytest.raises(HTTPException) as exc:
+        await reset_password(token, "Againpass123")
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["ADMIN", "MENTOR", "CR", "LR"])
+async def test_brevo_reset_request_stores_only_token_hash(role: str, monkeypatch):
+    from app.core.config import settings
+    from app.services import auth_service
+
+    db = get_database()
+    email = f"mail-{role.lower()}@test.com"
+    await db.users.insert_one({"name": "Mail Test", "email": email, "role": role, "is_active": True})
+    monkeypatch.setattr(settings, "BREVO_API_KEY", "test-key")
+    monkeypatch.setattr(settings, "BREVO_SENDER_MAIL", "verified@example.com")
+    captured = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return None
+        async def post(self, url, json, headers):
+            captured.append((url, json, headers))
+            return FakeResponse()
+
+    monkeypatch.setattr(auth_service.httpx, "AsyncClient", FakeClient)
+    await auth_service.request_password_reset(email)
+    assert captured[0][0] == "https://api.brevo.com/v3/smtp/email"
+    assert captured[0][2]["api-key"] == "test-key"
+    token = captured[0][1]["textContent"].rsplit("token=", 1)[1]
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    record = await db.password_reset_tokens.find_one({"token_hash": token_hash})
+    assert record["role"] == role
+    assert token not in str(record)
+    assert await auth_service.verify_password_reset_token(token) == role

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     FRONTEND_URL: str = "http://localhost:5173"
     TIMEZONE: str = "Asia/Kolkata"
+    BREVO_API_KEY: Optional[str] = None
+    BREVO_SENDER_MAIL: Optional[str] = None
+    BREVO_SENDER_NAME: str = "College Session Monitoring System"
 
     FIREBASE_PROJECT_ID: Optional[str] = None
     FIREBASE_PRIVATE_KEY: Optional[str] = None
