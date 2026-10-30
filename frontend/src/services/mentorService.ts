@@ -65,6 +65,9 @@ export interface MentorDashboardData {
   totalAbsenteesToday: number;
   yearCounts: MentorYearCardItem[];
   sectionCounts: MentorSectionCardItem[];
+  attendanceSessions?: Array<{sessionId: string; label: string; present: number; absent: number; total: number; attendancePercentage: number; completedSubmissions: number; submissionDetails: Array<{year: string; section: string; submittedBy: string; submittedAt?: string}>}>;
+  absentBothSessions?: number;
+  absentOneSession?: number;
 }
 
 // ----------------------------------------------------

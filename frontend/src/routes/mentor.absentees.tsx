@@ -98,6 +98,7 @@ function AbsenteeCard({
               <Badge variant="outline" className="text-[10px]">
                 {record.year} &bull; {record.section}
               </Badge>
+              {record.sessionId && <Badge variant="secondary" className="text-[10px]">{record.sessionId === "SESSION_1" ? "Before Lunch" : record.sessionId === "SESSION_2" ? "After Lunch" : record.sessionId}</Badge>}
             </div>
           </div>
           <Badge variant="destructive" className="gap-1">
@@ -373,7 +374,8 @@ function MentorAbsenteesPage() {
       selectedYear && selectedSection
         ? getMentorAbsentees(selectedYear, selectedSection)
         : Promise.resolve([]),
-    [selectedYear, selectedSection]
+    [selectedYear, selectedSection],
+    15000
   );
 
   // Local section filter search

@@ -7,6 +7,7 @@ export interface AbsenteeStudentItem {
   date: string;
   year: string;
   section: string;
+  sessionId?: string;
   rollNumber: string;
   studentId?: string;
   studentName: string;
@@ -46,11 +47,8 @@ export interface StudentAttendanceSubmissionStatus {
   date: string;
   year: string;
   section: string;
-  submittedBy?: string | null;
-  submittedByRole?: string | null;
-  submittedAt?: string | null;
-  absentCount: number;
-  absentRolls: string[];
+  sessions: Array<{sessionId: "SESSION_1" | "SESSION_2"; label: string; startTime: string; endTime: string; isOpen: boolean; isSubmitted: boolean; submittedBy?: string | null; submittedByRole?: string | null; submittedAt?: string | null; absentCount: number; absentRolls: string[]; status: string}>;
+  timetable: {configured: boolean; reason?: string; workingDay?: boolean};
 }
 
 export interface AbsenteeYearSummary {
@@ -65,6 +63,19 @@ export interface AbsenteeSectionSummary {
   year?: string;
   studentCount?: number;
   absenteeCount?: number;
+}
+
+export interface AdminStudentAttendanceSummary {
+  date: string;
+  sessions: Array<{year: string; branch?: string; section: string; sessionId: string; present: number; absent: number; total: number; attendancePercentage: number; submittedBy?: string; submittedAt?: string; status: string}>;
+  totalPresent: number;
+  totalAbsent: number;
+  completedSubmissions: number;
+}
+
+export async function getAdminStudentAttendanceSummary(date?: string): Promise<AdminStudentAttendanceSummary> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : "";
+  return request<AdminStudentAttendanceSummary>(`/admin/student-attendance/summary${query}`);
 }
 
 export async function getCRLRStudents(): Promise<StudentItem[]> {
@@ -82,6 +93,7 @@ export async function getCRLRSubmissionStatus(year?: string, section?: string): 
 export async function submitStudentAttendance(payload: {
   year: string;
   section: string;
+  sessionId: "SESSION_1" | "SESSION_2";
   absentees: Array<{
     rollNumber: string;
     studentId?: string;
@@ -89,7 +101,7 @@ export async function submitStudentAttendance(payload: {
     studentPhone?: string;
     parentPhone?: string;
   }>;
-}): Promise<{ message: string; absent_count: number }> {
+}): Promise<{ message: string; absent_count: number; session_id: string }> {
   return request<any>("/crlr/student-attendance", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -134,6 +146,7 @@ export async function correctStudentAttendance(payload: {
   recordId?: string;
   rollNumber?: string;
   date?: string;
+  sessionId?: "SESSION_1" | "SESSION_2";
   newStatus?: string;
   reason: string;
 }): Promise<AbsenteeStudentItem> {

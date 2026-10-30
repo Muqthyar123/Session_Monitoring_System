@@ -102,10 +102,22 @@ async def test_faculty_analytics_multi_faculty_sessions():
 
 
 @pytest.mark.asyncio
-async def test_crlr_duplicate_prevention_and_status():
+async def test_crlr_duplicate_prevention_and_two_sessions(monkeypatch):
+    from datetime import datetime, timezone
+    from app.services import student_attendance_service as attendance_module
     db = get_database()
     await db.student_attendance.delete_many({})
     await db.student_attendance_submissions.delete_many({})
+    await db.students.delete_many({})
+
+    now = datetime.now(timezone.utc)
+    async def open_windows(year, section, now_local=None):
+        return {"configured": True, "timetableUpdatedAt": now, "windows": [
+            {"sessionId": "SESSION_1", "label": "Before Lunch", "startTime": "09:00 AM", "endTime": "12:40 PM", "isOpen": True},
+            {"sessionId": "SESSION_2", "label": "After Lunch", "startTime": "01:20 PM", "endTime": "04:00 PM", "isOpen": True},
+        ]}
+    monkeypatch.setattr(attendance_module, "get_attendance_windows", open_windows)
+    await db.students.insert_one({"name": "Student One", "roll_number": "22CS2A01", "year": "2nd Year", "section": "A"})
 
     crlr_user1 = {"id": "cr-1", "_id": "cr-1", "name": "Rahul Kumar", "role": "CR", "section": "A", "year": "2nd Year"}
     crlr_user2 = {"id": "lr-1", "_id": "lr-1", "name": "Sneha Sharma", "role": "LR", "section": "A", "year": "2nd Year"}
@@ -130,10 +142,11 @@ async def test_crlr_duplicate_prevention_and_status():
 
     # 2. Check status after submission
     status_after = await get_student_attendance_submission_status("2nd Year", "A")
-    assert status_after["isSubmittedToday"] is True
-    assert "Rahul Kumar" in status_after["submittedBy"]
-    assert status_after["absentCount"] == 1
-    assert "22CS2A01" in status_after["absentRolls"]
+    session_one = next(s for s in status_after["sessions"] if s["sessionId"] == "SESSION_1")
+    assert session_one["isSubmitted"] is True
+    assert "Rahul Kumar" in session_one["submittedBy"]
+    assert session_one["absentCount"] == 1
+    assert "22CS2A01" in session_one["absentRolls"]
 
     # 3. Second submission attempt by LR should raise 409 Conflict
     req2 = StudentAttendanceSubmitRequest(
@@ -145,6 +158,12 @@ async def test_crlr_duplicate_prevention_and_status():
         await submit_student_attendance(req2, crlr_user2)
     assert exc_info.value.status_code == 409
     assert "already been submitted" in exc_info.value.detail
+
+    # Session 2 has independent records and can be submitted on the same day.
+    req3 = StudentAttendanceSubmitRequest(year="2nd Year", section="A", absentees=[], sessionId="SESSION_2")
+    res3 = await submit_student_attendance(req3, crlr_user2)
+    assert res3["session_id"] == "SESSION_2"
+    assert await db.student_attendance_sessions.count_documents({"session_id": "SESSION_2", "status": "Present"}) == 1
 
 
 @pytest.mark.asyncio

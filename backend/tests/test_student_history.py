@@ -13,13 +13,17 @@ from app.services.student_attendance_service import (
 
 
 @pytest.mark.asyncio
-async def test_student_history_and_reason_audit():
+async def test_student_history_and_reason_audit(monkeypatch):
+    from app.services import student_attendance_service as attendance_module
     db = get_database()
 
     # Seed a student
     await db.students.delete_many({})
     await db.student_attendance.delete_many({})
     await db.student_attendance_submissions.delete_many({})
+    async def open_windows(year, section, now_local=None):
+        return {"configured": True, "windows": [{"sessionId": "SESSION_1", "isOpen": True, "startTime": "09:00 AM", "endTime": "12:40 PM"}, {"sessionId": "SESSION_2", "isOpen": True, "startTime": "01:20 PM", "endTime": "04:00 PM"}]}
+    monkeypatch.setattr(attendance_module, "get_attendance_windows", open_windows)
 
     stu_doc = {
         "name": "BODAPATI PALLAVI",

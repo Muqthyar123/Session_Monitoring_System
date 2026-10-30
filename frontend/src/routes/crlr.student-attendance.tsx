@@ -66,10 +66,14 @@ function CRLRStudentAttendancePage() {
       user?.year && user?.section
         ? getCRLRSubmissionStatus(user.year, user.section)
         : Promise.resolve(null),
-    [user?.year, user?.section]
+    [user?.year, user?.section],
+    15000
   );
 
-  const isSubmittedToday = subStatus?.isSubmittedToday ?? false;
+  const [selectedSession, setSelectedSession] = useState<"SESSION_1" | "SESSION_2">("SESSION_1");
+  const selectedWindow = subStatus?.sessions?.find((session) => session.sessionId === selectedSession);
+  const isSubmittedToday = selectedWindow?.isSubmitted ?? false;
+  const isWindowOpen = selectedWindow?.isOpen ?? false;
 
   const [search, setSearch] = useState("");
   // Set of rollNumbers marked as ABSENT
@@ -83,10 +87,11 @@ function CRLRStudentAttendancePage() {
 
   // Auto-sync submitted absentees if attendance is already submitted
   useEffect(() => {
-    if (subStatus?.isSubmittedToday && subStatus.absentRolls) {
-      setAbsentRolls(new Set(subStatus.absentRolls));
+    if (subStatus?.sessions) {
+      const active = subStatus.sessions.find((session) => session.sessionId === selectedSession);
+      setAbsentRolls(new Set(active?.absentRolls ?? []));
     }
-  }, [subStatus]);
+  }, [subStatus, selectedSession]);
 
   const handleCorrectAttendance = async () => {
     if (!correctionTarget) return;
@@ -101,6 +106,7 @@ function CRLRStudentAttendancePage() {
         rollNumber: correctionTarget.rollNumber,
         newStatus: "Present",
         reason: reasonTrimmed,
+        sessionId: selectedSession,
       });
       toast.success(`Corrected attendance for ${correctionTarget.name} to PRESENT.`);
       setAbsentRolls((prev) => {
@@ -185,6 +191,7 @@ function CRLRStudentAttendancePage() {
       const res = await submitStudentAttendance({
         year: user.year,
         section: user.section,
+        sessionId: selectedSession,
         absentees: absenteesPayload,
       });
 
@@ -205,7 +212,7 @@ function CRLRStudentAttendancePage() {
     <CRLRLayout>
       <PageHeader
         title="Provide Student Attendance"
-        description={`Mark absent students for ${user?.year || "Year"} — Section ${user?.section || "Section"}. All others will be marked Present.`}
+        description={`Mark attendance for ${user?.year || "Year"} — Section ${user?.section || "Section"}. Each session is submitted separately.`}
       />
 
       {showSundayNoClass ? (
@@ -220,6 +227,18 @@ function CRLRStudentAttendancePage() {
         </Card>
       ) : (
         <>
+          {!subStatus?.timetable?.configured ? (
+            <Card className="border-amber-500/30 bg-amber-500/10"><CardContent className="py-4 text-sm text-amber-900 dark:text-amber-200">{subStatus?.timetable?.reason || "Timetable configuration needs attention before attendance can be marked."}</CardContent></Card>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {subStatus.sessions.map((session) => <button key={session.sessionId} type="button" onClick={() => setSelectedSession(session.sessionId)} className={`rounded-lg border p-4 text-left transition-colors ${selectedSession === session.sessionId ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50"}`}>
+                <div className="flex items-center justify-between"><span className="font-semibold">{session.sessionId === "SESSION_1" ? "Session 1 · Before Lunch" : "Session 2 · After Lunch"}</span><Badge variant={session.isSubmitted ? "default" : session.isOpen ? "outline" : "secondary"}>{session.isSubmitted ? "Submitted" : session.isOpen ? "Available" : "Not Available"}</Badge></div>
+                <p className="mt-1 text-sm text-muted-foreground">{session.startTime} – {session.endTime}</p>
+                {session.isSubmitted && <p className="mt-1 text-xs text-muted-foreground">Submitted by {session.submittedBy}{session.submittedAt ? ` at ${new Date(session.submittedAt).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}` : ""} · {session.absentCount} absent</p>}
+              </button>)}
+            </div>
+          )}
+          {selectedWindow && !selectedWindow.isOpen && !selectedWindow.isSubmitted && <p className="text-sm text-muted-foreground">{selectedSession === "SESSION_2" && subStatus?.sessions?.[0]?.isOpen ? "Session 2 opens after lunch." : `Attendance can be marked from ${selectedWindow.startTime} to ${selectedWindow.endTime} (Asia/Kolkata).`}</p>}
           {/* Already Submitted Warning Banner */}
           {isSubmittedToday && (
             <Card className="border-emerald-500/30 bg-emerald-50/70 dark:bg-emerald-950/30">
@@ -229,13 +248,11 @@ function CRLRStudentAttendancePage() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                    Today's Attendance Submitted & Locked
+                    {selectedSession === "SESSION_1" ? "Session 1 Attendance Submitted" : "Session 2 Attendance Submitted"}
                   </p>
                   <p className="text-xs text-emerald-800 dark:text-emerald-300/80">
-                    Attendance for {user?.year} Section {user?.section} was submitted by{" "}
-                    <strong>{subStatus?.submittedBy}</strong>
-                    {subStatus?.submittedAt ? ` on ${new Date(subStatus.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""}{" "}
-                    ({subStatus?.absentCount ?? 0} absentees recorded). Submissions reset tomorrow.
+                    Attendance for {user?.year} Section {user?.section} was submitted by <strong>{selectedWindow?.submittedBy}</strong>
+                    {selectedWindow?.submittedAt ? ` on ${new Date(selectedWindow.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ""} ({selectedWindow?.absentCount ?? 0} absentees recorded).
                   </p>
                 </div>
               </CardContent>
@@ -474,16 +491,16 @@ function CRLRStudentAttendancePage() {
                     className="w-full"
                     size="lg"
                     onClick={handleSubmit}
-                    disabled={submitting || !students || students.length === 0}
+                    disabled={submitting || !students || students.length === 0 || !isWindowOpen || !subStatus?.timetable?.configured}
                   >
                     <Send className="size-4 mr-2" />
-                    {submitting ? "Submitting..." : "Submit Attendance Record"}
+                    {submitting ? "Submitting..." : `Submit ${selectedSession === "SESSION_1" ? "Session 1" : "Session 2"} Attendance`}
                   </Button>
                 )}
 
                 {isSubmittedToday && (
                   <p className="text-[11px] text-center text-muted-foreground">
-                    Only one attendance submission is permitted per section each day. Use <strong>Update</strong> button next to an absent student to correct their status with a mandatory audit reason.
+                    This session is locked. Use <strong>Update</strong> next to an absent student to record a correction reason.
                   </p>
                 )}
               </CardContent>

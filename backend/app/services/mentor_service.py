@@ -32,6 +32,18 @@ tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 STANDARD_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 
+async def _find_attendance(db, query: Dict[str, Any]) -> List[dict]:
+    legacy = await db.student_attendance.find(query).to_list(length=50000)
+    for row in legacy:
+        row.setdefault("session_id", "SESSION_1")
+    session_records = await db.student_attendance_sessions.find(query).to_list(length=50000)
+    return legacy + session_records
+
+
+async def _count_attendance(db, query: Dict[str, Any]) -> int:
+    return (await db.student_attendance.count_documents(query)) + (await db.student_attendance_sessions.count_documents(query))
+
+
 def _clean_section_code(sec: str) -> str:
     """Normalize section code, e.g. 'II-CSE-B' -> 'CSE-B', 'B' -> 'CSE-B', 'CSE-J' -> 'CSE-J', 'III-CSE-C1' -> 'CSE-C1'."""
     s = (sec or "").strip().upper()
@@ -210,10 +222,8 @@ async def get_mentor_sections_summary(year: str, current_user: Optional[dict] = 
             {"roll_number": {"$in": list(active_pa_keys)}},
         ]})
     attendance_counts = {section: 0 for section in all_secs}
-    attendance_cursor = db.student_attendance.find(
-        {"$and": attendance_clauses}, {"section": 1}
-    )
-    async for record in attendance_cursor:
+    attendance_rows = await _find_attendance(db, {"$and": attendance_clauses})
+    for record in attendance_rows:
         code = _clean_section_code(record.get("section") or "")
         if code in attendance_counts:
             attendance_counts[code] += 1
@@ -272,7 +282,33 @@ async def get_mentor_dashboard_data(current_user: dict) -> MentorDashboardRespon
             {"student_id": {"$in": list(active_pa_keys)}},
             {"roll_number": {"$in": list(active_pa_keys)}},
         ]
-    total_absentees_today = await db.student_attendance.count_documents(att_today_query)
+    total_absentees_today = await _count_attendance(db, att_today_query)
+
+    # Session-wise attendance snapshot from persisted MongoDB records.
+    session_query: Dict[str, Any] = {"date": today_date}
+    if assigned_ids is not None and assigned_rolls is not None:
+        session_query["$or"] = [{"student_id": {"$in": assigned_ids}}, {"roll_number": {"$in": assigned_rolls}}]
+    today_records = await _find_attendance(db, session_query)
+    session_summaries = []
+    for session_id, label in (("SESSION_1", "Before Lunch"), ("SESSION_2", "After Lunch")):
+        rows = [row for row in today_records if row.get("session_id") == session_id]
+        present = sum(1 for row in rows if row.get("status") == "Present")
+        absent = sum(1 for row in rows if row.get("status") == "Absent")
+        pairs = {(row.get("year"), row.get("section")) for row in rows}
+        markers = []
+        for year_value, section_value in pairs:
+            marker = await db.student_attendance_submissions.find_one({"year": year_value, "section": section_value, "date": today_date, "session_id": session_id})
+            if marker:
+                markers.append(marker)
+        session_summaries.append({"sessionId": session_id, "label": label, "present": present, "absent": absent,
+            "total": present + absent, "attendancePercentage": round(present * 100 / (present + absent), 1) if present + absent else 0,
+            "completedSubmissions": len(markers), "submissionDetails": [{"year": marker.get("year"), "section": marker.get("section"), "submittedBy": marker.get("submitted_by"), "submittedAt": marker.get("submitted_at")} for marker in markers]})
+    absent_sessions_by_student: Dict[str, set] = {}
+    for row in today_records:
+        if row.get("status") == "Absent":
+            absent_sessions_by_student.setdefault(str(row.get("student_id") or row.get("roll_number")), set()).add(row.get("session_id"))
+    absent_both = sum(1 for values in absent_sessions_by_student.values() if {"SESSION_1", "SESSION_2"}.issubset(values))
+    absent_one = sum(1 for values in absent_sessions_by_student.values() if len(values) == 1)
 
     # 3. Dynamic years
     db_years = await db.students.distinct("year", base_stu_query)
@@ -313,7 +349,7 @@ async def get_mentor_dashboard_data(current_user: dict) -> MentorDashboardRespon
                     {"roll_number": {"$in": list(active_pa_keys)}},
                 ]
             })
-        abs_cnt = await db.student_attendance.count_documents({"$and": abs_clauses})
+        abs_cnt = await _count_attendance(db, {"$and": abs_clauses})
         year_cards.append(MentorYearCard(
             year=y,
             studentCount=stu_cnt,
@@ -343,6 +379,9 @@ async def get_mentor_dashboard_data(current_user: dict) -> MentorDashboardRespon
         totalAbsenteesToday=total_absentees_today,
         yearCounts=year_cards,
         sectionCounts=section_cards,
+        attendanceSessions=session_summaries,
+        absentBothSessions=absent_both,
+        absentOneSession=absent_one,
     )
 
 
@@ -388,7 +427,7 @@ async def get_mentor_years_summary(current_user: Optional[dict] = None) -> List[
                     {"roll_number": {"$in": list(active_pa_keys)}},
                 ]
             })
-        abs_cnt = await db.student_attendance.count_documents({"$and": abs_clauses})
+        abs_cnt = await _count_attendance(db, {"$and": abs_clauses})
         res.append(MentorYearCard(
             year=y,
             studentCount=stu_cnt,
@@ -539,7 +578,7 @@ async def get_mentor_absentee_years_summary(current_user: Optional[dict] = None)
                     {"roll_number": {"$in": list(active_pa_keys)}},
                 ]
             })
-        abs_cnt = await db.student_attendance.count_documents({"$and": abs_clauses})
+        abs_cnt = await _count_attendance(db, {"$and": abs_clauses})
 
         y_clause = build_year_filter_clause(y)
         clauses = [c for c in [base_stu_query, y_clause if y_clause else {"year": y}] if c]
@@ -601,12 +640,10 @@ async def get_mentor_scoped_absentees(
             ]
         })
 
-    cursor = db.student_attendance.find({"$and": query_clauses}).sort("roll_number", 1)
-
     records: List[Dict[str, Any]] = []
     id_list: List[str] = []
     roll_list: List[str] = []
-    async for doc in cursor:
+    for doc in sorted(await _find_attendance(db, {"$and": query_clauses}), key=lambda row: row.get("roll_number", "")):
         doc["_id"] = str(doc["_id"])
         if doc.get("student_id"):
             id_list.append(str(doc["student_id"]))
@@ -680,12 +717,10 @@ async def search_absentees_global(
         })
 
     query = {"$and": clauses}
-    cursor = db.student_attendance.find(query).sort("roll_number", 1)
-
     records: List[Dict[str, Any]] = []
     id_list: List[str] = []
     roll_list: List[str] = []
-    async for doc in cursor:
+    for doc in sorted(await _find_attendance(db, query), key=lambda row: row.get("roll_number", "")):
         doc["_id"] = str(doc["_id"])
         if doc.get("student_id"):
             id_list.append(str(doc["student_id"]))
@@ -719,16 +754,26 @@ async def update_absence_comment(
     clean_id = (record_id or "").strip()
 
     doc = None
+    source_collection = db.student_attendance
     if ObjectId.is_valid(clean_id):
         doc = await db.student_attendance.find_one({"_id": ObjectId(clean_id)})
+        if not doc:
+            doc = await db.student_attendance_sessions.find_one({"_id": ObjectId(clean_id)})
+            if doc: source_collection = db.student_attendance_sessions
     if not doc:
         doc = await db.student_attendance.find_one({"_id": clean_id})
+        if not doc:
+            doc = await db.student_attendance_sessions.find_one({"_id": clean_id})
+            if doc: source_collection = db.student_attendance_sessions
     if not doc:
         today_date = datetime.now(tz_kolkata).strftime("%Y-%m-%d")
         doc = await db.student_attendance.find_one({
             "roll_number": clean_id.upper(),
             "date": today_date,
         })
+        if not doc:
+            doc = await db.student_attendance_sessions.find_one({"roll_number": clean_id.upper(), "date": today_date})
+            if doc: source_collection = db.student_attendance_sessions
     if not doc:
         doc = await db.student_attendance.find_one({
             "$or": [
@@ -736,6 +781,9 @@ async def update_absence_comment(
                 {"roll_number": clean_id.upper()},
             ]
         }, sort=[("date", -1), ("created_at", -1)])
+        if not doc:
+            doc = await db.student_attendance_sessions.find_one({"$or": [{"student_id": clean_id}, {"roll_number": clean_id.upper()}]}, sort=[("date", -1), ("created_at", -1)])
+            if doc: source_collection = db.student_attendance_sessions
     if not doc:
         raise HTTPException(status_code=404, detail="Attendance record not found.")
 
@@ -761,7 +809,7 @@ async def update_absence_comment(
     actor_name = current_user.get("name", "Mentor")
     actual_id = doc["_id"]
 
-    await db.student_attendance.update_one(
+    await source_collection.update_one(
         {"_id": actual_id},
         {
             "$set": {
@@ -783,6 +831,6 @@ async def update_absence_comment(
         "created_at": now_utc,
     })
 
-    updated = await db.student_attendance.find_one({"_id": actual_id})
+    updated = await source_collection.find_one({"_id": actual_id})
     updated["_id"] = str(updated["_id"])
     return StudentAttendanceRecordResponse(**updated)

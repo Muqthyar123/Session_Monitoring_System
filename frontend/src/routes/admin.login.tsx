@@ -115,6 +115,8 @@ function AdminLoginPage() {
             </Button>
           </form>
 
+          <div className="mt-3 text-center text-sm"><Link to="/forgot-password" className="font-medium text-primary underline underline-offset-4">Forgot Password?</Link></div>
+
           <div className="mt-6 flex items-center justify-center gap-3 text-sm text-muted-foreground">
             <Link to="/auth/login" className="font-medium text-primary underline underline-offset-4">
               CR / LR Login

@@ -61,6 +61,18 @@ export async function logout(): Promise<void> {
   setStoredToken(null);
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  await request<Record<string, never>>("/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+export async function verifyPasswordResetToken(token: string): Promise<{ valid: boolean; role: Role }> {
+  return request<{ valid: boolean; role: Role }>("/auth/verify-reset-token", { method: "POST", body: JSON.stringify({ token }) });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<string> {
+  return request<string>("/auth/reset-password", { method: "POST", body: JSON.stringify({ token, new_password: newPassword }) });
+}
+
 export function homeRouteForRole(role: Role): string {
   if (role === "ADMIN") return "/admin/dashboard";
   if (role === "MENTOR") return "/mentor/absentees";

@@ -62,47 +62,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Session sync warning (%s).", type(e).__name__)
 
-    # Ensure configured administrator account exists and password matches
-    try:
-        from datetime import datetime, timezone
-        from bson import ObjectId
-        from app.core.security import hash_password, verify_password
-        from app.db.mongodb import get_database
-        from app.schemas.user import UserRole
-        db = get_database()
-        admin_email = "moturisireesha@gmail.com"
-        admin_pass = "sireesha@nec"
-        existing_admin = await db.users.find_one({"email": admin_email})
-        if not existing_admin:
-            now = datetime.now(timezone.utc)
-            await db.users.insert_one({
-                "_id": ObjectId(),
-                "name": "Sireesha",
-                "email": admin_email,
-                "password_hash": hash_password(admin_pass),
-                "role": UserRole.ADMIN.value,
-                "is_active": True,
-                "created_at": now,
-                "updated_at": now,
-            })
-            logger.info("Administrator account (%s) initialized.", admin_email)
-        elif not verify_password(admin_pass, existing_admin.get("password_hash", "")):
-            now = datetime.now(timezone.utc)
-            await db.users.update_one(
-                {"_id": existing_admin["_id"]},
-                {
-                    "$set": {
-                        "password_hash": hash_password(admin_pass),
-                        "role": UserRole.ADMIN.value,
-                        "is_active": True,
-                        "updated_at": now,
-                    }
-                },
-            )
-            logger.info("Administrator credentials (%s) synchronized.", admin_email)
-    except Exception as e:
-        logger.warning("Admin provisioning check warning (%s).", type(e).__name__)
-
     start_scheduler()
     logger.info("Scheduler initialized.")
     logger.info("Application startup complete.")

@@ -36,6 +36,7 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getUploadHistory } from "@/services/uploadService";
 import { useAuth } from "@/context/AuthContext";
+import { getAdminStudentAttendanceSummary } from "@/services/studentAttendanceService";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({
@@ -74,6 +75,7 @@ function AdminDashboardPage() {
     [user?.role],
     15000,
   );
+  const studentAttendance = useAsyncData(() => getAdminStudentAttendanceSummary(), [], 15000);
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -85,6 +87,16 @@ function AdminDashboardPage() {
   return (
     <AdminLayout>
       <PageHeader title="Dashboard" description={today} />
+
+      <Card>
+        <CardHeader><CardTitle>Student Attendance by Session</CardTitle><CardDescription>Attendance submissions saved in MongoDB. Refreshes every 15 seconds.</CardDescription></CardHeader>
+        <CardContent>
+          {studentAttendance.loading ? <LoadingState rows={2} label="Loading student attendance..." /> : studentAttendance.error ? <ErrorState message={studentAttendance.error} onRetry={studentAttendance.reload} /> : <div className="space-y-3">
+            <div className="flex flex-wrap gap-4 text-sm font-medium"><span>Present: {studentAttendance.data?.totalPresent ?? 0}</span><span>Absent: {studentAttendance.data?.totalAbsent ?? 0}</span><span>Completed: {studentAttendance.data?.completedSubmissions ?? 0}</span></div>
+            {studentAttendance.data?.sessions.length ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="p-2">Year</th><th className="p-2">Branch · Section</th><th className="p-2">Session</th><th className="p-2">Present / Absent</th><th className="p-2">Rate</th><th className="p-2">Submission</th></tr></thead><tbody>{studentAttendance.data.sessions.map((item) => <tr key={`${item.year}-${item.section}-${item.sessionId}`} className="border-b"><td className="p-2">{item.year}</td><td className="p-2">{item.branch || "—"} · {item.section}</td><td className="p-2">{item.sessionId === "SESSION_1" ? "Before Lunch" : item.sessionId === "SESSION_2" ? "After Lunch" : item.sessionId}</td><td className="p-2">{item.present} / {item.absent}</td><td className="p-2">{item.attendancePercentage}%</td><td className="p-2">{item.status}{item.submittedBy ? ` · ${item.submittedBy}` : ""}</td></tr>)}</tbody></table></div> : <EmptyState title="No student attendance submitted" description="Today's session submissions will appear here." />}
+          </div>}
+        </CardContent>
+      </Card>
 
       {dashboard.loading ? (
         <LoadingState rows={5} label="Loading dashboard..." />

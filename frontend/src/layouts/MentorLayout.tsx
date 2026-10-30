@@ -6,7 +6,6 @@ import {
   UserX,
   CalendarClock,
   BarChart3,
-  LogOut,
   Menu,
   GraduationCap,
   X,
@@ -14,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/common/RoleGuard";
+import { LogoutConfirmation } from "@/components/common/LogoutConfirmation";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -67,12 +67,7 @@ export function MentorLayout({ children }: { children: ReactNode }) {
           </div>
           {nav}
           <div className="shrink-0 border-t border-sidebar-border p-3">
-            <button
-              onClick={handleSignOut}
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            >
-              <LogOut className="size-4" /> Logout
-            </button>
+            <LogoutConfirmation onConfirm={handleSignOut} compact />
           </div>
         </aside>
 
@@ -99,12 +94,7 @@ export function MentorLayout({ children }: { children: ReactNode }) {
               </div>
               {nav}
               <div className="shrink-0 border-t border-sidebar-border p-3">
-                <button
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent"
-                >
-                  <LogOut className="size-4" /> Logout
-                </button>
+                <LogoutConfirmation onConfirm={handleSignOut} compact />
               </div>
             </aside>
           </div>
@@ -130,9 +120,7 @@ export function MentorLayout({ children }: { children: ReactNode }) {
                   Mentor ID: {user?.mentorId || user?.email}
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={handleSignOut}>
-                <LogOut className="size-4" /> Logout
-              </Button>
+              <LogoutConfirmation onConfirm={handleSignOut} />
             </div>
           </header>
           <main className="min-w-0 flex-1 overflow-y-auto space-y-6 p-4 sm:p-6">{children}</main>

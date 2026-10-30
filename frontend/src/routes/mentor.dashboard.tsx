@@ -132,6 +132,21 @@ function MentorDashboardPage() {
             />
           </section>
 
+          <Card>
+            <CardHeader><CardTitle>Today’s Student Attendance</CardTitle><CardDescription>Session records from MongoDB. This dashboard refreshes every 15 seconds.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(data.attendanceSessions ?? []).map((session) => <div key={session.sessionId} className="rounded-lg border p-4">
+                  <div className="flex items-center justify-between"><p className="font-semibold">{session.label}</p><Badge variant="outline">{session.sessionId}</Badge></div>
+                  <p className="mt-3 text-sm">Present {session.present} · Absent {session.absent} · {session.attendancePercentage}%</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{session.completedSubmissions} section submissions</p>
+                  {session.submissionDetails.map((submission) => <p key={`${submission.year}-${submission.section}`} className="mt-1 text-xs text-muted-foreground">{submission.year} · {submission.section} — {submission.submittedBy}{submission.submittedAt ? ` at ${new Date(submission.submittedAt).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"})}` : ""}</p>)}
+                </div>)}
+              </div>
+              <p className="text-xs text-muted-foreground">Absent in both sessions: {data.absentBothSessions ?? 0} · Absent in one session: {data.absentOneSession ?? 0}</p>
+            </CardContent>
+          </Card>
+
           {/* Primary Quick Access Hub */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Link to="/mentor/students" className="block group">

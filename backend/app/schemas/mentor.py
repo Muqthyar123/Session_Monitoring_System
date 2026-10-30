@@ -39,6 +39,9 @@ class MentorDashboardResponse(BaseModel):
     total_absentees_today: int = Field(..., alias="totalAbsenteesToday")
     year_counts: List[MentorYearCard] = Field(..., alias="yearCounts")
     section_counts: List[MentorSectionCard] = Field(..., alias="sectionCounts")
+    attendance_sessions: List[Dict[str, Any]] = Field(default_factory=list, alias="attendanceSessions")
+    absent_both_sessions: int = Field(0, alias="absentBothSessions")
+    absent_one_session: int = Field(0, alias="absentOneSession")
 
     model_config = ConfigDict(populate_by_name=True)
 

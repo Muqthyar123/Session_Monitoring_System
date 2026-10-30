@@ -165,11 +165,12 @@ class FakeIndexCollection:
 
 
 @pytest.mark.asyncio
-async def test_unique_index_migration_preserves_data_and_replaces_legacy_index():
+async def test_unique_index_migration_stops_instead_of_replacing_legacy_index():
     collection = FakeIndexCollection()
-    await indexes._ensure_index(collection, [("roll_number", 1)], unique=True)
-    assert collection.dropped == ["legacy_1"]
-    assert collection.created == [([( "roll_number", 1)], {"unique": True})]
+    with pytest.raises(RuntimeError, match="manual review"):
+        await indexes._ensure_index(collection, [("roll_number", 1)], unique=True)
+    assert collection.dropped == []
+    assert collection.created == []
 
 
 @pytest.mark.asyncio

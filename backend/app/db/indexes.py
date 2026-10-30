@@ -6,7 +6,7 @@ logger = logging.getLogger("fams.indexes")
 
 
 async def _ensure_index(collection, keys, **options):
-    """Reuse compatible indexes; safely migrate legacy non-unique patterns."""
+    """Create compatible indexes; stop instead of replacing an existing index."""
     expected_keys = [(field, direction) for field, direction in keys]
     expected_unique = bool(options.get("unique", False))
     expected_partial = options.get("partialFilterExpression")
@@ -27,20 +27,13 @@ async def _ensure_index(collection, keys, **options):
         if expected_partial:
             pipeline.append({"$match": expected_partial})
         pipeline.extend([
-            {"$group": {
-                "_id": {field: f"${field}" for field, _ in expected_keys},
-                "count": {"$sum": 1},
-            }},
-            {"$match": {"count": {"$gt": 1}}},
-            {"$limit": 1},
+            {"$group": {"_id": {field: f"${field}" for field, _ in expected_keys}, "count": {"$sum": 1}}},
+            {"$match": {"count": {"$gt": 1}}}, {"$limit": 1},
         ])
         duplicates = await collection.aggregate(pipeline).to_list(length=1)
         if duplicates:
-            raise RuntimeError("Duplicate documents prevent required unique index creation.")
-
-        logger.info("Replacing legacy index %s after confirming uniqueness.", name)
-        await collection.drop_index(name)
-        break
+            raise RuntimeError("Duplicate documents prevent required unique index creation; no index or data was changed.")
+        raise RuntimeError(f"Existing index {name} is incompatible with the requested index; manual review is required. No index or data was changed.")
 
     return await collection.create_index(keys, **options)
 
@@ -73,11 +66,11 @@ async def create_db_indexes():
         await _ensure_index(db.students, [("year", ASCENDING), ("section", ASCENDING), ("roll_number", ASCENDING)])
 
 
-        # student_attendance collection
-        await _ensure_index(db.student_attendance,
-            [("year", ASCENDING), ("section", ASCENDING), ("date", ASCENDING), ("roll_number", ASCENDING)],
-            unique=True,
-        )
+        # Attendance session indexes are applied by the explicit non-destructive
+        # migration script after an operator verifies a production backup.
+        await _ensure_index(db.password_reset_tokens, [("token_hash", ASCENDING)], unique=True)
+        await _ensure_index(db.password_reset_tokens, [("user_id", ASCENDING), ("expires_at", ASCENDING)])
+        await _ensure_index(db.password_reset_tokens, [("expires_at", ASCENDING)], expireAfterSeconds=0)
         await _ensure_index(db.student_attendance, [("date", DESCENDING)])
         await _ensure_index(db.student_attendance, [("roll_number", ASCENDING)])
 

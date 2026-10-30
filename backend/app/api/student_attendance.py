@@ -23,8 +23,67 @@ from app.services.student_attendance_service import (
     correct_student_attendance,
 )
 from app.services.student_service import get_students
+from app.db.mongodb import get_database
+from datetime import datetime
+from app.core.config import settings
+import zoneinfo
 
 router = APIRouter(tags=["Student Attendance & Analytics"])
+
+
+@router.get("/admin/student-attendance/summary", response_model=ApiResponse[dict])
+async def get_admin_student_attendance_summary_api(
+    date: Optional[str] = Query(None), year: Optional[str] = Query(None),
+    branch: Optional[str] = Query(None), section: Optional[str] = Query(None),
+    session_id: Optional[str] = Query(None, alias="sessionId"),
+    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+):
+    db = get_database()
+    day = date or datetime.now(zoneinfo.ZoneInfo(settings.TIMEZONE)).strftime("%Y-%m-%d")
+    query = {"date": day}
+    if year: query["year"] = year
+    if branch: query["branch"] = branch.upper()
+    if section: query["section"] = section.upper()
+    if session_id:
+        if session_id not in {"SESSION_1", "SESSION_2"}:
+            raise HTTPException(status_code=400, detail="Invalid attendance session.")
+        query["session_id"] = session_id
+    records = await db.student_attendance.find(query).to_list(length=50000)
+    records.extend(await db.student_attendance_sessions.find(query).to_list(length=50000))
+    for record in records:
+        record.setdefault("session_id", "SESSION_1")
+    groups = {}
+    for record in records:
+        key = (record.get("year", ""), record.get("branch", ""), record.get("section", ""), record.get("session_id", "LEGACY"))
+        group = groups.setdefault(key, {"year": key[0], "branch": key[1], "section": key[2], "sessionId": key[3], "present": 0, "absent": 0})
+        group[record.get("status", "Absent").lower()] += 1
+    local_now = datetime.now(zoneinfo.ZoneInfo(settings.TIMEZONE))
+    day_timetables = await db.timetables.find({"day": local_now.strftime("%A")}).to_list(length=10000)
+    for timetable in day_timetables:
+        if year and timetable.get("year") != year: continue
+        if section and str(timetable.get("section", "")).upper() != section.upper(): continue
+        sec = str(timetable.get("section", "")).upper()
+        yr = str(timetable.get("year", ""))
+        if branch:
+            parts = sec.split("-")
+            if len(parts) < 3 or parts[-2] != branch.upper(): continue
+        inferred_branch = sec.split("-")[-2] if len(sec.split("-")) >= 3 else ""
+        for sid in ("SESSION_1", "SESSION_2"):
+            if session_id and sid != session_id: continue
+            groups.setdefault((yr, inferred_branch, sec, sid), {"year": yr, "branch": inferred_branch, "section": sec, "sessionId": sid, "present": 0, "absent": 0})
+    items = []
+    for group in groups.values():
+        total = group["present"] + group["absent"]
+        marker = await db.student_attendance_submissions.find_one({"year": group["year"], "section": group["section"], "date": day, "session_id": group["sessionId"]})
+        if not marker and group["sessionId"] == "SESSION_1":
+            marker = await db.student_attendance_submissions.find_one({"year": group["year"], "section": group["section"], "date": day, "session_id": {"$exists": False}})
+        items.append({**group, "total": total, "attendancePercentage": round(group["present"] * 100 / total, 1) if total else 0,
+                      "submittedBy": marker.get("submitted_by") if marker else None,
+                      "submittedAt": marker.get("submitted_at") if marker else None,
+                      "status": "Completed" if marker else "Pending"})
+    return ApiResponse(success=True, data={"date": day, "sessions": items,
+        "totalPresent": sum(item["present"] for item in items), "totalAbsent": sum(item["absent"] for item in items),
+        "completedSubmissions": sum(item["status"] == "Completed" for item in items)})
 
 
 # ----------------------------------------------------
@@ -58,6 +117,9 @@ async def get_crlr_student_attendance_status_api(
     req_sec = section or current_user.get("section") or ""
     if not req_sec:
         raise HTTPException(status_code=400, detail="Section is required to check submission status.")
+    role = current_user.get("role")
+    if role in [UserRole.CR.value, UserRole.LR.value] and (req_sec.strip().upper() != (current_user.get("section") or "").strip().upper() or req_year.strip() != (current_user.get("year") or "").strip()):
+        raise HTTPException(status_code=403, detail="You can only view attendance status for your assigned section.")
 
     status_data = await get_student_attendance_submission_status(req_year, req_sec, date)
     return ApiResponse(success=True, data=status_data)

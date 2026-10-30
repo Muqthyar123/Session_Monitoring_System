@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { GraduationCap, LogIn, Lock, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -97,6 +97,8 @@ function MentorLoginPage() {
               {loading ? "Signing in..." : "Sign In to Mentor Portal"}
             </Button>
           </form>
+
+          <div className="mt-3 text-center text-sm"><Link to="/forgot-password" className="font-medium text-primary underline underline-offset-4">Forgot Password?</Link></div>
 
           <div className="mt-4 rounded-md border border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-xs text-muted-foreground">
             <p className="font-semibold text-emerald-800 dark:text-emerald-300">Mentor Sign-in</p>

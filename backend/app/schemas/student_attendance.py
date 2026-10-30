@@ -17,6 +17,7 @@ class StudentAttendanceSubmitRequest(BaseModel):
     year: str
     section: str
     absentees: List[AbsenteeItem]
+    session_id: str = Field("SESSION_1", alias="sessionId", pattern=r"^SESSION_[12]$")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -30,6 +31,7 @@ class StudentAttendanceCorrectRequest(BaseModel):
     new_status: str = Field("Present", alias="newStatus")
     reason: str = Field(..., description="Mandatory reason explaining attendance correction")
     date: Optional[str] = None
+    session_id: Optional[str] = Field(None, alias="sessionId", pattern=r"^SESSION_[12]$")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -39,6 +41,7 @@ class StudentAttendanceRecordResponse(BaseModel):
     date: str
     year: str
     section: str
+    session_id: Optional[str] = Field(None, alias="sessionId")
     roll_number: str = Field(..., alias="rollNumber")
     student_id: Optional[str] = Field(None, alias="studentId")
     student_name: str = Field(..., alias="studentName")
