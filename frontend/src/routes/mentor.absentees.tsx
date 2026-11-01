@@ -1,8 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  Phone,
-  PhoneCall,
   ChevronRight,
   ArrowLeft,
   Calendar,
@@ -21,6 +19,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/utils/exportUtils";
+import { HistoryExportToolbar } from "@/components/attendance/HistoryExportToolbar";
+import { CallHistoryPanel } from "@/components/attendance/CallHistoryPanel";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
 import { cn } from "@/lib/utils";
@@ -54,8 +54,6 @@ interface AbsenteeCardProps {
   onDateChange: (field: "from" | "to", val: string) => void;
   onSaveNormal: () => void;
   onSavePlanned: () => void;
-  calledState?: { student?: boolean; parent?: boolean };
-  onCallToggle: (type: "student" | "parent") => void;
   lockedInfo?: { reason: string; updatedBy?: string };
 }
 
@@ -71,12 +69,8 @@ function AbsenteeCard({
   onDateChange,
   onSaveNormal,
   onSavePlanned,
-  calledState,
-  onCallToggle,
   lockedInfo,
 }: AbsenteeCardProps) {
-  const isStudentCalled = calledState?.student;
-  const isParentCalled = calledState?.parent;
 
   const isReasonLocked = Boolean(
     (record.reason && record.reason.trim()) ||
@@ -120,64 +114,7 @@ function AbsenteeCard({
           )}
         </div>
 
-        {/* Contact & Phone Dialers with Smooth Color Toggle */}
-        <div className="grid grid-cols-2 gap-2">
-          {record.studentPhone ? (
-            <a
-              href={`tel:${record.studentPhone}`}
-              onClick={() => onCallToggle("student")}
-              className={cn(
-                "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
-                isStudentCalled
-                  ? "bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-900/90 shadow-inner"
-                  : "bg-emerald-600 text-white hover:bg-emerald-700"
-              )}
-              title={`Call Student (${record.studentPhone})`}
-            >
-              {isStudentCalled ? (
-                <>
-                  <CheckCircle2 className="size-3.5 text-emerald-400 shrink-0" /> Called Student
-                </>
-              ) : (
-                <>
-                  <Phone className="size-3.5 shrink-0" /> Call Student
-                </>
-              )}
-            </a>
-          ) : (
-            <Button variant="outline" size="sm" disabled className="text-xs">
-              No Student Phone
-            </Button>
-          )}
-
-          {record.parentPhone ? (
-            <a
-              href={`tel:${record.parentPhone}`}
-              onClick={() => onCallToggle("parent")}
-              className={cn(
-                "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-semibold transition-colors duration-200",
-                isParentCalled
-                  ? "bg-blue-950/80 text-blue-300 border border-blue-500/50 hover:bg-blue-900/90 shadow-inner"
-                  : "bg-blue-600 text-white hover:bg-blue-700"
-              )}
-              title={`Call Parent (${record.parentPhone})`}
-            >
-              {isParentCalled ? (
-                <>
-                  <CheckCircle2 className="size-3.5 text-blue-400 shrink-0" /> Called Parent
-                </>
-              ) : (
-                <>
-                  <PhoneCall className="size-3.5 shrink-0" /> Call Parent
-                </>
-              )}
-            </a>
-          ) : (
-            <Button variant="outline" size="sm" disabled className="text-xs">
-              No Parent Phone
-            </Button>
-          )}
-        </div>
+        <CallHistoryPanel attendanceId={record.id || record._id || record.rollNumber} studentPhone={record.studentPhone} parentPhone={record.parentPhone} />
 
         {/* Dual Mode Reason Section */}
         <div className="space-y-2.5 pt-1 border-t">
@@ -430,8 +367,6 @@ function MentorAbsenteesPage() {
   // Permanently locked reasons map for instant dynamic UI updates without reload
   const [lockedReasonMap, setLockedReasonMap] = useState<Record<string, { reason: string; updatedBy?: string }>>({});
 
-  // Dialer call tracker for smooth color/badge toggle
-  const [calledMap, setCalledMap] = useState<Record<string, { student?: boolean; parent?: boolean }>>({});
 
   const handleModeChange = (id: string, mode: "NORMAL" | "PLANNED") => {
     setAbsenceModes((prev) => ({ ...prev, [id]: mode }));
@@ -559,6 +494,7 @@ function MentorAbsenteesPage() {
           ) : undefined
         }
       />
+      <HistoryExportToolbar role="MENTOR" year={selectedYear} section={selectedSection} />
 
       <div className="space-y-6">
         {/* Global Absentee Search Bar */}
@@ -675,13 +611,6 @@ function MentorAbsenteesPage() {
                       onDateChange={(field, val) => handleDateChange(recordId, field, val)}
                       onSaveNormal={() => handleSaveNormalReason(record)}
                       onSavePlanned={() => handleSavePlannedReason(record)}
-                      {...(calledMap[recordId] !== undefined && { calledState: calledMap[recordId] })}
-                      onCallToggle={(type) =>
-                        setCalledMap((prev) => ({
-                          ...prev,
-                          [recordId]: { ...prev[recordId], [type]: true },
-                        }))
-                      }
                       {...((lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]) !== undefined && {
                         lockedInfo: lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber],
                       })}
@@ -913,13 +842,6 @@ function MentorAbsenteesPage() {
                       onDateChange={(field, val) => handleDateChange(recordId, field, val)}
                       onSaveNormal={() => handleSaveNormalReason(record)}
                       onSavePlanned={() => handleSavePlannedReason(record)}
-                      {...(calledMap[recordId] !== undefined && { calledState: calledMap[recordId] })}
-                      onCallToggle={(type) =>
-                        setCalledMap((prev) => ({
-                          ...prev,
-                          [recordId]: { ...prev[recordId], [type]: true },
-                        }))
-                      }
                       {...((lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber]) !== undefined && {
                         lockedInfo: lockedReasonMap[recordId] || lockedReasonMap[record.rollNumber],
                       })}

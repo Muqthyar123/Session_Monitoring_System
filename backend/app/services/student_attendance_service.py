@@ -157,6 +157,26 @@ async def submit_student_attendance(
     req_year = data.year.strip()
     session_id = data.session_id
 
+    # Suspension dates are ISO calendar dates in the configured institutional timezone.
+    suspension_query = {
+        "status": {"$in": ["ACTIVE", "SCHEDULED"]},
+        "years": req_year,
+        "start_date": {"$lte": date_str},
+        "end_date": {"$gte": date_str},
+        "$and": [
+            {"$or": [{"attendance_type": "STUDENT"}, {"attendance_type": "BOTH"}]},
+            {"$or": [{"all_sections_years": req_year}, {f"sections_by_year.{req_year}": req_sec}]},
+            {"cancelled_at": {"$exists": False}},
+        ],
+    }
+    suspension = await db.attendance_suspensions.find_one(suspension_query)
+    if suspension:
+        raise HTTPException(status_code=423, detail={
+            "message": "Student attendance marking is suspended for this section.",
+            "startDate": suspension.get("start_date"), "endDate": suspension.get("end_date"),
+            "reason": suspension.get("reason"),
+        })
+
     windows = await get_attendance_windows(req_year, req_sec, now_local)
     if not windows.get("configured"):
         raise HTTPException(status_code=400, detail=windows.get("reason", "Timetable configuration needs attention."))
@@ -232,6 +252,13 @@ async def submit_student_attendance(
     except Exception:
         await db.student_attendance_submissions.delete_one({"year": req_year, "section": req_sec, "date": date_str, "session_id": session_id, "submitted_by_id": str(current_user.get("id") or current_user.get("_id") or "")})
         raise HTTPException(status_code=409, detail="Attendance could not be committed. Refresh and try again.") from None
+
+    # Preserve the submitted draft as history; never delete a draft silently.
+    await db.attendance_drafts.update_one(
+        {"user_id": str(current_user.get("_id") or current_user.get("id") or ""), "year": req_year,
+         "section": req_sec, "date": date_str, "session_id": session_id, "status": "DRAFT"},
+        {"$set": {"status": "SUBMITTED", "submitted_at": now_utc, "updated_at": now_utc}},
+    )
 
     return {
         "message": f"Successfully submitted {session_id} attendance for {req_year} Section {req_sec}.",
@@ -373,6 +400,7 @@ async def save_absence_reason(
     update_payload = {
         "reason": reason.strip(),
         "reason_updated_by": actor_name,
+        "reason_updated_at": now_utc,
         "updated_at": now_utc,
     }
     if actor_id:

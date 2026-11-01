@@ -207,18 +207,36 @@ export async function downloadApiFile(path: string, filename: string) {
   }
 
   const url = buildApiUrl(path);
-  const response = await fetch(url, { headers, mode: "cors" });
+  let response: Response;
+  try {
+    response = await fetch(url, { headers, mode: "cors" });
+  } catch (error) {
+    throw new ApiError(error instanceof Error ? `Could not reach the download service: ${error.message}` : "Could not reach the download service.", 0);
+  }
 
-  if (!response.ok) {
-    throw new ApiError(`Failed to download template file`, response.status);
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.ok || contentType.includes("application/json")) {
+    const body = await response.json().catch(async () => ({ detail: await response.text().catch(() => "") }));
+    const detail = body?.error?.message ?? body?.detail?.message ?? body?.detail ?? body?.message;
+    const message = response.status === 404 && path.startsWith("/history/absentee-export")
+      ? "The backend serving this page does not have the absentee export route yet. Restart the local FastAPI server or redeploy the updated Render backend, then retry."
+      : typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `Download failed with HTTP ${response.status}.`;
+    throw new ApiError(message, response.status, body?.error?.details);
   }
 
   const blob = await response.blob();
+  if (blob.size === 0) throw new ApiError("The server returned an empty export file.", response.status);
+  const disposition = response.headers.get("content-disposition") || "";
+  const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const regularName = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  const downloadName = encodedName ? decodeURIComponent(encodedName) : regularName || filename;
   const blobUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = blobUrl;
-  link.download = filename;
+  link.download = downloadName;
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(blobUrl);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 }
 

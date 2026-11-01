@@ -6,8 +6,6 @@ import {
   ChevronRight,
   GraduationCap,
   Calendar,
-  Phone,
-  PhoneCall,
   History,
   CheckCircle2,
   AlertTriangle,
@@ -43,6 +41,8 @@ import {
   type AbsenteeStudentItem,
 } from "@/services/studentAttendanceService";
 import { getStudents, type StudentItem } from "@/services/studentService";
+import { HistoryExportToolbar } from "@/components/attendance/HistoryExportToolbar";
+import { CallHistoryPanel } from "@/components/attendance/CallHistoryPanel";
 
 export const Route = createFileRoute("/admin/student-history")({
   head: () => ({
@@ -222,6 +222,7 @@ function AdminStudentHistoryPage() {
           </div>
         }
       />
+      <HistoryExportToolbar role="ADMIN" year={selectedYear} section={selectedSection} />
 
       {/* Global Search Bar */}
       <div className="relative max-w-lg">
@@ -540,35 +541,6 @@ function AdminStudentHistoryPage() {
 
           {activeStudent && (
             <div className="space-y-4 py-2">
-              {/* Phone Action Dialers */}
-              <div className="grid grid-cols-2 gap-3">
-                {activeStudent.studentPhone ? (
-                  <a
-                    href={`tel:${activeStudent.studentPhone}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors shadow-xs"
-                  >
-                    <Phone className="size-3.5" /> Call Student ({activeStudent.studentPhone})
-                  </a>
-                ) : (
-                  <Button variant="outline" size="sm" disabled className="text-xs">
-                    No Student Phone
-                  </Button>
-                )}
-
-                {activeStudent.parentPhone ? (
-                  <a
-                    href={`tel:${activeStudent.parentPhone}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shadow-xs"
-                  >
-                    <PhoneCall className="size-3.5" /> Call Parent ({activeStudent.parentPhone})
-                  </a>
-                ) : (
-                  <Button variant="outline" size="sm" disabled className="text-xs">
-                    No Parent Phone
-                  </Button>
-                )}
-              </div>
-
               {/* History list */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -655,6 +627,8 @@ function AdminStudentHistoryPage() {
                             {log.faculty || "Assigned Faculty"}
                           </div>
                         </div>
+
+                        {log.status === "Absent" && <CallHistoryPanel attendanceId={log.id} studentPhone={activeStudent.studentPhone || log.studentPhone} parentPhone={activeStudent.parentPhone || log.parentPhone} />}
 
                         {log.correctionReason && (
                           <div className="rounded-md bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 p-2.5 text-xs space-y-1">

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -21,6 +22,8 @@ import {
   Clock,
   Repeat2,
   UserCog,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -36,6 +39,13 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getUploadHistory } from "@/services/uploadService";
 import { useAuth } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { cancelAttendanceSuspension, createAttendanceSuspension, getAttendanceSuspensions, type AttendanceSuspension } from "@/services/studentAttendanceService";
+import { getStudentFilterOptions } from "@/services/studentService";
+import { getSections, type Section } from "@/services/sectionService";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({
@@ -84,7 +94,6 @@ function AdminDashboardPage() {
   return (
     <AdminLayout>
       <PageHeader title="Dashboard" description={today} />
-
       {dashboard.loading ? (
         <LoadingState rows={5} label="Loading dashboard..." />
       ) : dashboard.error ? (
@@ -153,6 +162,8 @@ function AdminDashboardPage() {
         </>
       ) : null}
 
+      {user?.role === "ADMIN" && <AttendanceSuspensionPanel />}
+
       <section className="space-y-3">
         <h2 className="text-base font-semibold">Recent Alerts</h2>
         {alerts.loading ? (
@@ -205,4 +216,64 @@ function AdminDashboardPage() {
       </Card> : null}
     </AdminLayout>
   );
+}
+
+function AttendanceSuspensionPanel() {
+  const suspensions = useAsyncData<AttendanceSuspension[]>(getAttendanceSuspensions, [], 15000);
+  const yearsData = useAsyncData(getStudentFilterOptions, []);
+  const [scopes, setScopes] = useState<Array<{ id: number; year: string; section: string }>>([{ id: 0, year: "", section: "" }]);
+  const [nextScopeId, setNextScopeId] = useState(1);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [type, setType] = useState("BOTH");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const activate = async () => {
+    const sectionsByYear: Record<string, string[]> = {};
+    const allSectionsYears: string[] = [];
+    for (const scope of scopes) {
+      const year = scope.year.trim();
+      if (!year) { toast.error("Select an academic year for every scope row."); return; }
+      if (scope.section === "__ALL_SECTIONS__") allSectionsYears.push(year);
+      else if (!scope.section) { toast.error(`Select a section or All Sections for ${year}.`); return; }
+      else sectionsByYear[year] = [...(sectionsByYear[year] || []), scope.section];
+    }
+    const allYears = new Set(allSectionsYears);
+    for (const year of allYears) delete sectionsByYear[year];
+    const years = [...new Set([...Object.keys(sectionsByYear), ...allSectionsYears])];
+    if (!years.length || !startDate || !endDate) { toast.error("Choose at least one year and both dates."); return; }
+    const confirmed = window.confirm(`Suspend ${type.toLowerCase()} attendance for ${years.join(", ")} from ${startDate} through ${endDate}?`);
+    if (!confirmed) return;
+    setSaving(true);
+    setRetrying(false);
+    try {
+      await createAttendanceSuspension({ years, sectionsByYear, allSectionsYears, startDate, endDate, attendanceType: type, reason }, () => setRetrying(true));
+      toast.success("Attendance suspension activated.");
+      await suspensions.reload?.();
+      setReason("");
+      setScopes([{ id: 0, year: "", section: "" }]);
+      setNextScopeId(1);
+    } catch (err: any) { toast.error(err.message || "Could not create suspension."); }
+    finally { setSaving(false); setRetrying(false); }
+  };
+  return <Card className="mb-6"><CardHeader><CardTitle>Attendance Suspension Management</CardTitle><CardDescription>Add one scope row per year or section. Choose All Sections to suspend the entire academic year. Dates use Asia/Kolkata.</CardDescription></CardHeader><CardContent className="space-y-4">
+    <div className="space-y-3">
+      {scopes.map((scope, index) => <SuspensionScopeRow key={scope.id} years={yearsData.data?.years || []} scope={scope} onChange={(next) => setScopes((prev) => prev.map((item) => item.id === scope.id ? next : item))} onRemove={() => setScopes((prev) => prev.length > 1 ? prev.filter((item) => item.id !== scope.id) : prev)} canRemove={scopes.length > 1} index={index} />)}
+      <Button type="button" variant="outline" size="sm" onClick={() => { setScopes((prev) => [...prev, { id: nextScopeId, year: "", section: "" }]); setNextScopeId((id) => id + 1); }}><Plus className="mr-2 size-4" />Add year or section</Button>
+    </div>
+    <div className="grid gap-3 md:grid-cols-2"><div className="space-y-1"><Label>Suspension type</Label><select className="h-10 w-full rounded-md border bg-background px-3" value={type} onChange={(e) => setType(e.target.value)}><option value="STUDENT">Student Attendance</option><option value="FACULTY">Faculty Attendance</option><option value="BOTH">Both</option></select></div><div className="space-y-1"><Label>Start date</Label><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div><div className="space-y-1"><Label>End date</Label><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div><div className="space-y-1 md:col-span-2"><Label>Optional reason</Label><Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} /></div></div>
+    <div className="space-y-1"><Button onClick={activate} disabled={saving || yearsData.loading}>{saving ? retrying ? "Reconnecting…" : "Activating…" : "Activate suspension"}</Button>{saving && retrying && <p className="text-xs text-muted-foreground" aria-live="polite">The backend is waking up. Retrying safely; please keep this page open.</p>}</div>
+    <div className="space-y-2">{(suspensions.data || []).map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"><div><strong>{item.status}</strong> · {item.attendance_type} · {item.years.join(", ")} · {item.start_date} to {item.end_date}{item.reason ? ` · ${item.reason}` : ""}</div>{item.status === "ACTIVE" || item.status === "SCHEDULED" ? <Button variant="outline" size="sm" onClick={async () => { if (!window.confirm("Cancel this attendance suspension?")) return; try { await cancelAttendanceSuspension(item.id); await suspensions.reload?.(); toast.success("Suspension cancelled."); } catch (err: any) { toast.error(err.message || "Could not cancel suspension."); } }}>Cancel</Button> : null}</div>)}</div>
+  </CardContent></Card>;
+}
+
+function SuspensionScopeRow({ years, scope, onChange, onRemove, canRemove, index }: { years: string[]; scope: { id: number; year: string; section: string }; onChange: (scope: { id: number; year: string; section: string }) => void; onRemove: () => void; canRemove: boolean; index: number }) {
+  const sectionData = useAsyncData<Section[]>(() => scope.year ? getSections(scope.year, undefined, true) : Promise.resolve([]), [scope.year]);
+  const options = [...new Map((sectionData.data || []).map((item) => [item.sectionName.trim().toUpperCase(), item.sectionName.trim()])).values()];
+  return <div className="grid items-end gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+    <div className="min-w-0 space-y-1.5"><Label htmlFor={`suspension-year-${scope.id}`}>Academic year {index + 1}</Label><select id={`suspension-year-${scope.id}`} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={scope.year} onChange={(event) => onChange({ ...scope, year: event.target.value, section: "" })}><option value="">Select academic year</option>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select></div>
+    <div className="min-w-0 space-y-1.5"><Label htmlFor={`suspension-section-${scope.id}`}>Section(s)</Label><select id={`suspension-section-${scope.id}`} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={scope.section} disabled={!scope.year || sectionData.loading} onChange={(event) => onChange({ ...scope, section: event.target.value })}><option value="">Select a section</option><option value="__ALL_SECTIONS__">All sections in this year</option>{options.map((section) => <option key={section} value={section}>{section}</option>)}</select></div>
+    {canRemove && <Button type="button" variant="ghost" size="icon" aria-label="Remove year and section" onClick={onRemove}><Trash2 className="size-4" /></Button>}
+  </div>;
 }

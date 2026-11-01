@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarClock, Calendar } from "lucide-react";
 import { CRLRLayout } from "@/layouts/CRLRLayout";
@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { getActiveSessions } from "@/services/sessionService";
 import { useAuth } from "@/context/AuthContext";
+import { getAttendanceControlStatus } from "@/services/studentAttendanceService";
 import type { ClassSession } from "@/data/mock/mockData";
 
 export const Route = createFileRoute("/crlr/attendance")({
@@ -26,6 +27,21 @@ export const Route = createFileRoute("/crlr/attendance")({
 function AttendancePage() {
   const { user } = useAuth();
   const section = user?.section ?? "";
+  const [suspended, setSuspended] = useState(false);
+  const [suspensionMessage, setSuspensionMessage] = useState("");
+  const attendanceDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+  useEffect(() => {
+    if (!user?.year || !section) return;
+    const refresh = () => getAttendanceControlStatus(user.year!, section, attendanceDate, "SESSION_1", "FACULTY")
+      .then((control) => {
+        setSuspended(control.suspended);
+        setSuspensionMessage(control.suspensions.map((x) => `${x.startDate} through ${x.endDate}${x.reason ? ` — ${x.reason}` : ""}`).join(" · "));
+      }).catch(() => {});
+    void refresh();
+    const timer = window.setInterval(refresh, 15000);
+    return () => window.clearInterval(timer);
+  }, [user?.year, section, attendanceDate]);
 
   const isSunday = new Date().getDay() === 0;
 
@@ -59,6 +75,8 @@ function AttendancePage() {
         description={`Section ${section} — period-wise faculty attendance portal`}
       />
 
+      {suspended && <Card className="my-4 border-amber-500/40 bg-amber-50/70 p-4 dark:bg-amber-950/20"><p className="font-semibold">Faculty attendance is suspended</p><p className="text-sm text-muted-foreground">{suspensionMessage}</p></Card>}
+
       {loading ? (
         <LoadingState rows={3} label="Loading class schedule..." />
       ) : error ? (
@@ -73,6 +91,8 @@ function AttendancePage() {
             </p>
           </div>
         </Card>
+      ) : suspended ? (
+        <EmptyState title="Attendance marking is suspended" description="Your scheduled sessions remain available in history after the suspension ends." icon={CalendarClock} />
       ) : sessions.length === 0 ? (
         <EmptyState
           title="No sessions scheduled for today"

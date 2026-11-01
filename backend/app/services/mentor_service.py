@@ -816,6 +816,7 @@ async def update_absence_comment(
                 "reason": comment.strip(),
                 "reason_updated_by": actor_name,
                 "reason_updated_by_id": str(current_user.get("_id", "")),
+                "reason_updated_at": now_utc,
                 "updated_at": now_utc,
             }
         },

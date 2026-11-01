@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.api import (
     analytics,
+    absentee_reports,
+    attendance_controls,
     attendance,
     auth,
     departments,
@@ -240,6 +242,8 @@ app.include_router(timetable.router, prefix=api_router_prefix)
 app.include_router(sessions.router, prefix=api_router_prefix)
 app.include_router(attendance.router, prefix=api_router_prefix)
 app.include_router(student_attendance.router, prefix=api_router_prefix)
+app.include_router(attendance_controls.router, prefix=api_router_prefix)
+app.include_router(absentee_reports.router, prefix=api_router_prefix)
 app.include_router(notifications.router, prefix=api_router_prefix)
 app.include_router(push.router, prefix=api_router_prefix)
 app.include_router(analytics.router, prefix=api_router_prefix)

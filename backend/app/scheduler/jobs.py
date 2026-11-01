@@ -31,6 +31,22 @@ async def process_scheduled_sessions_job():
 
         for session in todays_sessions:
             s_id = session["_id"]
+            session_year = str(session.get("year") or "").strip()
+            session_section = str(session.get("section") or "").strip().upper()
+            is_faculty_suspended = await db.attendance_suspensions.find_one({
+                "years": session_year,
+                "start_date": {"$lte": date_str},
+                "end_date": {"$gte": date_str},
+                "cancelled_at": {"$exists": False},
+                "$and": [
+                    {"$or": [{"attendance_type": "FACULTY"}, {"attendance_type": "BOTH"}]},
+                    {"$or": [{"all_sections_years": session_year}, {f"sections_by_year.{session_year}": session_section}]},
+                ],
+            })
+            if is_faculty_suspended:
+                # Keep existing notification history and session data; skip any automated
+                # faculty response reminders/escalations/missed-response updates.
+                continue
             start_time_str = session["start_time"]
 
             # Parse start time in Kolkata timezone

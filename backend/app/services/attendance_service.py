@@ -22,6 +22,19 @@ async def submit_attendance(
     now_local = datetime.now(tz_kolkata)
     now_utc = datetime.now(timezone.utc)
     user_sec = (current_user.get("section") or "II-CSE-B").strip().upper()
+    today_for_suspension = now_local.strftime("%Y-%m-%d")
+    user_year = str(current_user.get("year") or "").strip()
+    if user_year:
+        suspended = await db.attendance_suspensions.find_one({
+            "years": user_year, "start_date": {"$lte": today_for_suspension}, "end_date": {"$gte": today_for_suspension},
+            "cancelled_at": {"$exists": False},
+            "$and": [
+                {"$or": [{"attendance_type": "FACULTY"}, {"attendance_type": "BOTH"}]},
+                {"$or": [{"all_sections_years": user_year}, {f"sections_by_year.{user_year}": user_sec}]},
+            ],
+        })
+        if suspended:
+            raise HTTPException(status_code=423, detail="Faculty attendance marking is suspended for this section.")
 
     session = None
     if ObjectId.is_valid(data.session_id):

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, UserX, Search, Send, GraduationCap, Calendar, Lock, AlertCircle, Download, Edit3, UserCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +26,8 @@ import {
   getCRLRSubmissionStatus,
   submitStudentAttendance,
   correctStudentAttendance,
+  getAttendanceControlStatus,
+  saveAttendanceDraft,
 } from "@/services/studentAttendanceService";
 import type { StudentItem } from "@/services/studentService";
 import { getSessions } from "@/services/sessionService";
@@ -79,6 +81,46 @@ function CRLRStudentAttendancePage() {
   // Set of rollNumbers marked as ABSENT
   const [absentRolls, setAbsentRolls] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [attendanceControl, setAttendanceControl] = useState<Awaited<ReturnType<typeof getAttendanceControlStatus>> | null>(null);
+  const draftVersion = useRef(0);
+  const attendanceDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+  useEffect(() => {
+    if (!user?.year || !user.section) return;
+    let cancelled = false;
+    setDraftLoaded(false);
+    getAttendanceControlStatus(user.year, user.section, attendanceDate, selectedSession).then((control) => {
+      if (cancelled) return;
+      setAttendanceControl(control);
+      const draft = control.draft;
+      setAbsentRolls(new Set(draft?.status === "DRAFT" ? draft.absent_rolls : []));
+      draftVersion.current = draft?.version ?? 0;
+      setDraftLoaded(true);
+    }).catch((err: any) => {
+      if (!cancelled) { setDraftLoaded(true); toast.error(err.message || "Could not load saved attendance draft."); }
+    });
+    return () => { cancelled = true; };
+  }, [user?.year, user?.section, selectedSession, attendanceDate]);
+
+  useEffect(() => {
+    if (!user?.year || !user.section) return;
+    const timer = window.setInterval(() => {
+      getAttendanceControlStatus(user.year!, user.section!, attendanceDate, selectedSession)
+        .then((control) => setAttendanceControl(control)).catch(() => {});
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [user?.year, user?.section, attendanceDate, selectedSession]);
+
+  useEffect(() => {
+    if (!draftLoaded || isSubmittedToday || !user?.year || !user.section || attendanceControl?.suspended) return;
+    const timer = window.setTimeout(() => {
+      saveAttendanceDraft({ year: user.year!, section: user.section!, date: attendanceDate, sessionId: selectedSession, absentRolls: [...absentRolls], version: draftVersion.current })
+        .then((draft) => { draftVersion.current = draft.version; })
+        .catch((err: any) => toast.error(err.message || "Could not save attendance draft."));
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [absentRolls, draftLoaded, isSubmittedToday, user?.year, user?.section, attendanceDate, selectedSession, attendanceControl?.suspended]);
 
   // Attendance Correction state
   const [correctionTarget, setCorrectionTarget] = useState<StudentItem | null>(null);
@@ -89,7 +131,7 @@ function CRLRStudentAttendancePage() {
   useEffect(() => {
     if (subStatus?.sessions) {
       const active = subStatus.sessions.find((session) => session.sessionId === selectedSession);
-      setAbsentRolls(new Set(active?.absentRolls ?? []));
+      if (active?.isSubmitted) setAbsentRolls(new Set(active.absentRolls ?? []));
     }
   }, [subStatus, selectedSession]);
 
@@ -136,6 +178,10 @@ function CRLRStudentAttendancePage() {
   }, [students, search]);
 
   const toggleAbsent = (rollNumber: string) => {
+    if (attendanceControl?.suspended) {
+      toast.error("Attendance marking is suspended for this section.");
+      return;
+    }
     if (isSubmittedToday) {
       toast.info("Attendance has already been submitted for today and is locked.");
       return;
@@ -180,6 +226,8 @@ function CRLRStudentAttendancePage() {
 
     setSubmitting(true);
     try {
+      const savedDraft = await saveAttendanceDraft({ year: user.year, section: user.section, date: attendanceDate, sessionId: selectedSession, absentRolls: [...absentRolls], version: draftVersion.current });
+      draftVersion.current = savedDraft.version;
       const absenteesPayload = selectedAbsentees.map((s) => ({
         rollNumber: s.rollNumber,
         studentId: s.id,
@@ -227,6 +275,7 @@ function CRLRStudentAttendancePage() {
         </Card>
       ) : (
         <>
+          {attendanceControl?.suspended && <Card className="my-4 border-amber-500/40 bg-amber-50/70 dark:bg-amber-950/20"><CardContent className="flex items-start gap-3 py-4"><AlertCircle className="mt-0.5 size-5 text-amber-700" /><div><p className="font-semibold">Student attendance is suspended</p><p className="text-sm text-muted-foreground">{attendanceControl.suspensions.map((s) => `${s.startDate} through ${s.endDate}${s.reason ? ` — ${s.reason}` : ""}`).join(" · ")}. Your saved draft is preserved.</p></div></CardContent></Card>}
           {!subStatus?.timetable?.configured ? (
             <Card className="border-amber-500/30 bg-amber-500/10"><CardContent className="py-4 text-sm text-amber-900 dark:text-amber-200">{subStatus?.timetable?.reason || "Timetable configuration needs attention before attendance can be marked."}</CardContent></Card>
           ) : (
@@ -386,7 +435,7 @@ function CRLRStudentAttendancePage() {
                           <div className="flex items-center gap-3">
                             <Checkbox
                               checked={isAbsent}
-                              disabled={isSubmittedToday}
+                            disabled={isSubmittedToday || !!attendanceControl?.suspended || !draftLoaded}
                               onCheckedChange={() => toggleAbsent(s.rollNumber)}
                               className="size-5 border-rose-500 data-[state=checked]:bg-rose-600 data-[state=checked]:text-white"
                             />
@@ -491,7 +540,7 @@ function CRLRStudentAttendancePage() {
                     className="w-full"
                     size="lg"
                     onClick={handleSubmit}
-                    disabled={submitting || !students || students.length === 0 || !isWindowOpen || !subStatus?.timetable?.configured}
+                    disabled={submitting || !students || students.length === 0 || !isWindowOpen || !subStatus?.timetable?.configured || !!attendanceControl?.suspended || !draftLoaded}
                   >
                     <Send className="size-4 mr-2" />
                     {submitting ? "Submitting..." : `Submit ${selectedSession === "SESSION_1" ? "Session 1" : "Session 2"} Attendance`}
