@@ -45,18 +45,18 @@ async def _scoped_absences(db, user: dict, year: Optional[str], section: Optiona
     if date_clause: query_parts.append({"date": date_clause})
     if user.get("role") == UserRole.MENTOR.value:
         assigned_ids = await get_mentor_assigned_student_ids(user)
-        # The mentor dashboard's existing legacy mode returns None when no
-        # assignment data is configured anywhere and allows the dashboard's
-        # normal year/section filtered views. Keep exports consistent with
-        # that behavior. An empty list means assignments are configured but
-        # this mentor has no students, so that must remain an empty result.
-        if assigned_ids == []:
-            return []
-        if assigned_ids is not None:
-            oids = [ObjectId(item) for item in assigned_ids if ObjectId.is_valid(item)]
-            assigned_students = await db.students.find({"_id": {"$in": oids}}, {"roll_number": 1}).to_list(length=10000)
-            rolls = [str(s.get("roll_number", "")).strip().upper() for s in assigned_students if s.get("roll_number")]
-            query_parts.append({"$or": [{"student_id": {"$in": assigned_ids}}, {"roll_number": {"$in": rolls}}]})
+        if assigned_ids is None:
+            # Only privileged roles may receive an unrestricted assignment set.
+            raise HTTPException(403, "Mentor assignments could not be resolved; ask an administrator to review Mentor Mapping.")
+        if not assigned_ids:
+            raise HTTPException(403, "No mentor-to-student assignments are configured for this account. Ask an administrator to create or review a mapping.")
+        oids = [ObjectId(item) for item in assigned_ids if ObjectId.is_valid(item)]
+        assigned_students = await db.students.find({"_id": {"$in": oids}}, {"roll_number": 1}).to_list(length=10000)
+        rolls = {str(s.get("roll_number", "")).strip().upper() for s in assigned_students if s.get("roll_number")}
+        rolls.update(item.strip().upper() for item in assigned_ids if item and not ObjectId.is_valid(item))
+        if roll_number and roll_number.strip().upper() not in rolls and roll_number.strip() not in assigned_ids:
+            raise HTTPException(403, "This student is outside your mentor assignments.")
+        query_parts.append({"$or": [{"student_id": {"$in": assigned_ids}}, {"roll_number": {"$in": sorted(rolls)}}]})
     query = {"$and": query_parts}
     rows = []
     for collection, default_session in ((db.student_attendance, "SESSION_1"), (db.student_attendance_sessions, None)):

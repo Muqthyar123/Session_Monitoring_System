@@ -1,4 +1,5 @@
 from typing import List, Optional
+from bson import ObjectId
 from fastapi import APIRouter, Depends, Query, status, HTTPException
 from app.core.dependencies import get_current_user, require_roles
 from app.schemas.common import ApiResponse
@@ -23,12 +24,37 @@ from app.services.student_attendance_service import (
     correct_student_attendance,
 )
 from app.services.student_service import get_students
+from app.services.mentor_mapping_service import get_mentor_assigned_student_ids
 from app.db.mongodb import get_database
 from datetime import datetime
 from app.core.config import settings
 import zoneinfo
 
 router = APIRouter(tags=["Student Attendance & Analytics"])
+
+
+async def _mentor_history_scope(current_user: dict) -> tuple[set[str], set[str]]:
+    """Resolve current mentor IDs and roll numbers from Mongo on each request."""
+    assigned_ids = await get_mentor_assigned_student_ids(current_user)
+    if not assigned_ids:
+        return set(), set()
+    assigned_id_set = {str(item) for item in assigned_ids}
+    assigned_rolls = {
+        str(item).strip().upper()
+        for item in assigned_ids
+        if item and not ObjectId.is_valid(str(item))
+    }
+    object_ids = [ObjectId(item) for item in assigned_ids if ObjectId.is_valid(str(item))]
+    if object_ids:
+        students = await get_database().students.find(
+            {"_id": {"$in": object_ids}}, {"roll_number": 1}
+        ).to_list(length=10000)
+        assigned_rolls.update(
+            str(student.get("roll_number") or "").strip().upper()
+            for student in students
+            if student.get("roll_number")
+        )
+    return assigned_id_set, assigned_rolls
 
 
 @router.get("/admin/student-attendance/summary", response_model=ApiResponse[dict])
@@ -223,6 +249,13 @@ async def get_student_analytics_summary_api(
 ):
     """Get student cards with total absences & attendance percentage for a section."""
     summary = await get_students_analytics_summary(year, section)
+    if current_user.get("role") == UserRole.MENTOR.value:
+        assigned_ids, assigned_rolls = await _mentor_history_scope(current_user)
+        summary = [
+            student for student in summary
+            if str(student.student_id or "") in assigned_ids
+            or student.roll_number.strip().upper() in assigned_rolls
+        ]
     return ApiResponse(success=True, data=summary)
 
 
@@ -232,5 +265,9 @@ async def get_student_complete_history_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
     """Get complete absence history for a student sorted newest first."""
+    if current_user.get("role") == UserRole.MENTOR.value:
+        assigned_ids, assigned_rolls = await _mentor_history_scope(current_user)
+        if roll_number.strip().upper() not in assigned_rolls and roll_number.strip() not in assigned_ids:
+            raise HTTPException(status_code=403, detail="This student is outside your mentor assignments.")
     history = await get_student_complete_history(roll_number)
     return ApiResponse(success=True, data=history)

@@ -71,53 +71,139 @@ def generate_mentor_mapping_excel_template() -> bytes:
 async def get_mentor_assigned_student_ids(current_user: dict) -> Optional[List[str]]:
     """
     Returns list of student _id strings assigned to the mentor.
-    If current_user is ADMIN or COORDINATOR, returns None (full access).
-    If current_user is MENTOR, returns list of student ID strings (can be empty list if none mapped).
+    Admin/coordinator callers receive None (full access). Mentors receive their
+    mapped student IDs. An unconfigured mentor receives an empty list, never an
+    implicit all-students scope.
     """
     role = current_user.get("role")
     if role in [UserRole.ADMIN.value, "ADMIN", "DEPARTMENT_COORDINATOR", "COORDINATOR"]:
         return None
 
     db = get_database()
-    mentor_user_id = str(current_user.get("_id", ""))
-    mentor_name = (current_user.get("name") or "").strip()
-    mentor_email = (current_user.get("email") or "").strip().lower()
+    identifiers: Set[str] = set()
+    for key in ("_id", "id", "mentor_id", "mentorId", "roll_number", "rollNumber", "email"):
+        value = current_user.get(key)
+        if value is not None and str(value).strip():
+            identifiers.add(str(value).strip())
+    emails = {value.casefold() for value in identifiers if "@" in value}
+    names = {
+        str(current_user.get(key) or "").strip()
+        for key in ("name", "mentor_name", "mentorName")
+        if str(current_user.get(key) or "").strip()
+    }
+    current_user_id = str(current_user.get("_id") or current_user.get("id") or "")
+    unique_legacy_names: Set[str] = set()
+    for name in names:
+        matching_users = await db.users.find({
+            "role": {"$in": [UserRole.MENTOR.value, "MENTOR"]},
+            "name": {"$regex": f"^{re.escape(name)}$", "$options": "i"},
+        }, {"_id": 1}).to_list(length=2)
+        if len(matching_users) == 1 and str(matching_users[0]["_id"]) == current_user_id:
+            unique_legacy_names.add(name)
 
-    # 1. Fetch from mentor_student_mappings
-    mappings = await db.mentor_student_mappings.find({
-        "$or": [
-            {"mentor_id": mentor_user_id},
-            {"mentor_email": mentor_email},
-            {"mentor_name": {"$regex": f"^{re.escape(mentor_name)}$", "$options": "i"}},
+    # The mapping importer stores users._id as a string. Include BSON ObjectId
+    # variants for older records and camelCase aliases written by legacy tools.
+    id_values: list[Any] = list(identifiers)
+    id_values.extend(ObjectId(value) for value in identifiers if ObjectId.is_valid(value))
+    identity_clauses: list[dict] = []
+    if id_values:
+        for field in ("mentor_id", "mentorId", "mentor_user_id", "mentorUserId"):
+            identity_clauses.append({field: {"$in": id_values}})
+    if emails:
+        for field in ("mentor_email", "mentorEmail"):
+            identity_clauses.append({field: {"$regex": f"^(?:{'|'.join(re.escape(item) for item in sorted(emails))})$", "$options": "i"}})
+
+    mappings = []
+    if identity_clauses:
+        mappings = await db.mentor_student_mappings.find({"$or": identity_clauses}).to_list(length=5000)
+    # Legacy imports may have no mentor ID or email. Use exact case-insensitive
+    # name matching only as a fallback when stable identifiers found no rows.
+    if not mappings and unique_legacy_names:
+        name_clauses = [
+            {field: {"$regex": f"^{re.escape(name)}$", "$options": "i"}}
+            for name in unique_legacy_names
+            for field in ("mentor_name", "mentorName")
         ]
-    }).to_list(length=1000)
+        mappings = await db.mentor_student_mappings.find({"$or": name_clauses}).to_list(length=5000)
 
     assigned_ids: Set[str] = set()
-    for m in mappings:
-        for s_id in m.get("student_ids", []):
-            if s_id:
-                assigned_ids.add(str(s_id))
+    full_section_mappings = []
+    for mapping in mappings:
+        raw_student_ids = mapping.get("student_ids", mapping.get("studentIds", [])) or []
+        if not raw_student_ids:
+            matched_students = mapping.get("matched_students", mapping.get("matchedStudents", [])) or []
+            raw_student_ids = [
+                item.get("student_id") or item.get("studentId") or item.get("_id") or item.get("id") or item.get("roll_number") or item.get("rollNumber")
+                if isinstance(item, dict) else item
+                for item in matched_students
+            ]
+        for student_id in raw_student_ids:
+            if student_id and str(student_id).strip():
+                assigned_ids.add(str(student_id).strip())
+        # A full-section mapping remains section-scoped even after roster
+        # changes; include its current roster in addition to saved IDs.
+        if mapping.get("is_full_section", mapping.get("isFullSection", False)):
+            full_section_mappings.append(mapping)
 
-    # 2. Also check students collection for direct mentor_id / mentor_name assignment
-    students_cursor = db.students.find({
-        "$or": [
-            {"mentor_id": mentor_user_id},
-            {"mentor_name": {"$regex": f"^{re.escape(mentor_name)}$", "$options": "i"}},
-        ]
-    }, {"_id": 1})
-    async for s in students_cursor:
-        assigned_ids.add(str(s["_id"]))
-
-    if not assigned_ids:
-        total_mappings_in_system = await db.mentor_student_mappings.count_documents({})
-        total_students_with_mentor = await db.students.count_documents({
-            "mentor_id": {"$exists": True, "$nin": [None, ""]}
+    # Support full-section assignments when the mapping record is authoritative
+    # but predates the saved student_ids list.
+    for mapping in full_section_mappings:
+        year = str(mapping.get("year") or "").strip()
+        section = str(mapping.get("section") or "").strip()
+        if not year or not section:
+            continue
+        section_clean = section.upper()
+        section_normalized = (
+            section_clean.replace("II-", "")
+            .replace("I-", "")
+            .replace("III-", "")
+            .replace("IV-", "")
+            .replace("CSE-", "")
+            .replace("SECTION", "")
+            .strip()
+        )
+        section_candidates = list({
+            section_clean,
+            section_normalized,
+            f"CSE-{section_normalized}",
+            f"II-CSE-{section_normalized}",
+            f"I-CSE-{section_normalized}",
+            f"III-CSE-{section_normalized}",
+            f"IV-CSE-{section_normalized}",
+            f"II-{section_normalized}",
         })
-        if total_mappings_in_system == 0 and total_students_with_mentor == 0:
-            # No mentor mappings configured in system yet -> unconfigured fallback mode
-            return None
+        section_query = {"section": {"$in": section_candidates}}
+        student_query = {"$and": [build_year_filter_clause(year), section_query]}
+        branch = str(mapping.get("branch") or "").strip()
+        if branch:
+            student_query["$and"].append({"branch": {"$regex": f"^{re.escape(branch)}$", "$options": "i"}})
+        cursor = db.students.find(student_query, {"_id": 1})
+        async for student in cursor:
+            assigned_ids.add(str(student["_id"]))
 
-    return list(assigned_ids)
+    # Direct student fields are also synchronized by the existing admin import.
+    direct_clauses: list[dict] = []
+    if id_values:
+        for field in ("mentor_id", "mentorId", "mentor_user_id", "mentorUserId"):
+            direct_clauses.append({field: {"$in": id_values}})
+    if emails:
+        for field in ("mentor_email", "mentorEmail"):
+            direct_clauses.append({field: {"$regex": f"^(?:{'|'.join(re.escape(item) for item in sorted(emails))})$", "$options": "i"}})
+    if direct_clauses:
+        students_cursor = db.students.find({"$or": direct_clauses}, {"_id": 1})
+        async for student in students_cursor:
+            assigned_ids.add(str(student["_id"]))
+    if not assigned_ids and unique_legacy_names:
+        legacy_name_clauses = [
+            {field: {"$regex": f"^{re.escape(name)}$", "$options": "i"}}
+            for name in unique_legacy_names
+            for field in ("mentor_name", "mentorName")
+        ]
+        students_cursor = db.students.find({"$or": legacy_name_clauses}, {"_id": 1})
+        async for student in students_cursor:
+            assigned_ids.add(str(student["_id"]))
+
+    return sorted(assigned_ids)
 
 
 async def is_student_assigned_to_mentor(student_id_or_roll: str, current_user: dict) -> bool:

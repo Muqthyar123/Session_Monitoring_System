@@ -63,7 +63,7 @@ function MentorAttendanceHistoryPage() {
     loading: loadingYears,
     error: errorYears,
     reload: reloadYears,
-  } = useAsyncData(() => getMentorStudentsYears(), []);
+  } = useAsyncData(() => getMentorStudentsYears(), [], 30000);
 
   // LEVEL 2: Fetch dynamic sections for the selected year
   const {
@@ -73,7 +73,8 @@ function MentorAttendanceHistoryPage() {
     reload: reloadSections,
   } = useAsyncData(
     () => (selectedYear ? getMentorStudentsSections(selectedYear) : Promise.resolve([])),
-    [selectedYear]
+    [selectedYear],
+    30000
   );
 
   // LEVEL 3: Fetch summary when year & section selected
@@ -87,7 +88,8 @@ function MentorAttendanceHistoryPage() {
       selectedYear && selectedSection
         ? getStudentAnalyticsSummary(selectedYear, selectedSection)
         : Promise.resolve([]),
-    [selectedYear, selectedSection]
+    [selectedYear, selectedSection],
+    30000
   );
 
   // Selected student for complete history modal
@@ -100,7 +102,8 @@ function MentorAttendanceHistoryPage() {
   } = useAsyncData(
     () =>
       activeStudent ? getStudentCompleteHistory(activeStudent.rollNumber) : Promise.resolve([]),
-    [activeStudent]
+    [activeStudent],
+    30000
   );
 
   const filteredSummary = useMemo(() => {

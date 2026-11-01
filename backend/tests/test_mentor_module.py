@@ -49,7 +49,7 @@ async def test_complete_mentor_flow(client: AsyncClient):
     headers = {"Authorization": f"Bearer {token}"}
 
     # 3. Insert Students for testing hierarchy
-    await db.students.insert_many([
+    student_res = await db.students.insert_many([
         {
             "batch": 2029,
             "branch": "CSE",
@@ -90,6 +90,24 @@ async def test_complete_mentor_flow(client: AsyncClient):
             "updated_at": now_utc,
         },
     ])
+    await db.mentor_student_mappings.insert_one({
+        "mentor_id": mentor_user_id,
+        "mentor_name": "Dr. Siva Nageswara Rao",
+        "mentor_email": "drssnr@nrtec.in",
+        "year": "2nd Year",
+        "section": "CSE-J",
+        "student_ids": [str(student_id) for student_id in student_res.inserted_ids[:2]],
+        "is_full_section": False,
+    })
+    await db.mentor_student_mappings.insert_one({
+        "mentor_id": mentor_user_id,
+        "mentor_name": "Dr. Siva Nageswara Rao",
+        "mentor_email": "drssnr@nrtec.in",
+        "year": "3rd Year",
+        "section": "CSE-A",
+        "student_ids": [str(student_res.inserted_ids[2])],
+        "is_full_section": False,
+    })
 
     # 4. Insert Today's Absentee Record
     att_res = await db.student_attendance.insert_one({

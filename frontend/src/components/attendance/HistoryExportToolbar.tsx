@@ -33,25 +33,54 @@ export function HistoryExportToolbar({ year, section, role }: { year?: string | 
 
   useEffect(() => {
     let active = true;
-    const loadYears = role === "MENTOR" ? getMentorStudentsYears() : getMentorAbsenteesYears();
-    loadYears.then((items) => {
-      if (active) setYears(items.map((item) => ({ year: item.year })).filter((item) => item.year));
-    }).catch((error: any) => toast.error(error.message || "Could not load academic years."));
-    return () => { active = false; };
-  }, [role]);
+    let firstLoad = true;
+    const updateYears = () => {
+      const load = role === "MENTOR" ? getMentorStudentsYears() : getMentorAbsenteesYears();
+      load.then((items) => {
+        if (active) {
+          const nextYears = items.map((item) => ({ year: item.year })).filter((item) => item.year);
+          setYears(nextYears);
+          if (selectedYear && !nextYears.some((item) => item.year === selectedYear)) {
+            setSelectedYear("");
+            setSelectedSection("");
+          }
+        }
+      }).catch((error: any) => {
+        if (active && firstLoad) toast.error(error.message || "Could not load academic years.");
+      }).finally(() => { firstLoad = false; });
+    };
+    updateYears();
+    const interval = window.setInterval(updateYears, 30000);
+    window.addEventListener("focus", updateYears);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", updateYears); };
+  }, [role, selectedYear]);
 
   useEffect(() => {
     let active = true;
+    let firstLoad = true;
     setSections([]);
     if (!selectedYear) return;
-    const loadSections = role === "MENTOR"
-      ? getMentorStudentsSections(selectedYear)
-      : getMentorAbsenteesSections(selectedYear);
-    loadSections.then((items) => {
-      if (active) setSections(items.map((item) => ({ section: item.section })).filter((item) => item.section));
-    }).catch((error: any) => toast.error(error.message || "Could not load sections for this year."));
-    return () => { active = false; };
-  }, [role, selectedYear]);
+    const updateSections = () => {
+      const load = role === "MENTOR"
+        ? getMentorStudentsSections(selectedYear)
+        : getMentorAbsenteesSections(selectedYear);
+      load.then((items) => {
+        if (active) {
+          const nextSections = items.map((item) => ({ section: item.section })).filter((item) => item.section);
+          setSections(nextSections);
+          if (selectedSection && !nextSections.some((item) => item.section.toUpperCase() === selectedSection.toUpperCase())) {
+            setSelectedSection("");
+          }
+        }
+      }).catch((error: any) => {
+        if (active && firstLoad) toast.error(error.message || "Could not load sections for this year.");
+      }).finally(() => { firstLoad = false; });
+    };
+    updateSections();
+    const interval = window.setInterval(updateSections, 30000);
+    window.addEventListener("focus", updateSections);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", updateSections); };
+  }, [role, selectedYear, selectedSection]);
 
   const uniqueSections = useMemo(() => [...new Map(sections.map((item) => [item.section.toUpperCase(), item])).values()], [sections]);
 
