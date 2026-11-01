@@ -6,7 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { downloadAbsenteeHistory } from "@/services/studentAttendanceService";
-import { getMentorAbsenteesSections, getMentorAbsenteesYears } from "@/services/mentorService";
+import {
+  getMentorAbsenteesSections,
+  getMentorAbsenteesYears,
+  getMentorStudentsSections,
+  getMentorStudentsYears,
+} from "@/services/mentorService";
 
 type YearOption = { year: string };
 type SectionOption = { section: string };
@@ -28,21 +33,25 @@ export function HistoryExportToolbar({ year, section, role }: { year?: string | 
 
   useEffect(() => {
     let active = true;
-    getMentorAbsenteesYears().then((items) => {
+    const loadYears = role === "MENTOR" ? getMentorStudentsYears() : getMentorAbsenteesYears();
+    loadYears.then((items) => {
       if (active) setYears(items.map((item) => ({ year: item.year })).filter((item) => item.year));
     }).catch((error: any) => toast.error(error.message || "Could not load academic years."));
     return () => { active = false; };
-  }, []);
+  }, [role]);
 
   useEffect(() => {
     let active = true;
     setSections([]);
     if (!selectedYear) return;
-    getMentorAbsenteesSections(selectedYear).then((items) => {
+    const loadSections = role === "MENTOR"
+      ? getMentorStudentsSections(selectedYear)
+      : getMentorAbsenteesSections(selectedYear);
+    loadSections.then((items) => {
       if (active) setSections(items.map((item) => ({ section: item.section })).filter((item) => item.section));
     }).catch((error: any) => toast.error(error.message || "Could not load sections for this year."));
     return () => { active = false; };
-  }, [selectedYear]);
+  }, [role, selectedYear]);
 
   const uniqueSections = useMemo(() => [...new Map(sections.map((item) => [item.section.toUpperCase(), item])).values()], [sections]);
 

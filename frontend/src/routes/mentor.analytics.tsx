@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
+import { HistoryExportToolbar } from "@/components/attendance/HistoryExportToolbar";
 import { EmptyState, ErrorState, LoadingState } from "@/components/common/States";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -130,6 +131,7 @@ function MentorAttendanceHistoryPage() {
           ) : undefined
         }
       />
+      <HistoryExportToolbar role="MENTOR" year={selectedYear} section={selectedSection} />
 
       {/* LEVEL 1: Dynamic Academic Year Cards */}
       {!selectedYear && (

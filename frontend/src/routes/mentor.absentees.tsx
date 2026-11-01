@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/utils/exportUtils";
-import { HistoryExportToolbar } from "@/components/attendance/HistoryExportToolbar";
 import { CallHistoryPanel } from "@/components/attendance/CallHistoryPanel";
 import { MentorLayout } from "@/layouts/MentorLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -494,8 +493,6 @@ function MentorAbsenteesPage() {
           ) : undefined
         }
       />
-      <HistoryExportToolbar role="MENTOR" year={selectedYear} section={selectedSection} />
-
       <div className="space-y-6">
         {/* Global Absentee Search Bar */}
         <Card className="border-rose-500/20 bg-rose-50/20 dark:bg-rose-950/10">

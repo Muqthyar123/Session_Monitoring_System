@@ -45,14 +45,18 @@ async def _scoped_absences(db, user: dict, year: Optional[str], section: Optiona
     if date_clause: query_parts.append({"date": date_clause})
     if user.get("role") == UserRole.MENTOR.value:
         assigned_ids = await get_mentor_assigned_student_ids(user)
-        if assigned_ids is None:
-            raise HTTPException(403, "Mentor student assignments are not configured; export is denied until access is scoped.")
-        if not assigned_ids:
+        # The mentor dashboard's existing legacy mode returns None when no
+        # assignment data is configured anywhere and allows the dashboard's
+        # normal year/section filtered views. Keep exports consistent with
+        # that behavior. An empty list means assignments are configured but
+        # this mentor has no students, so that must remain an empty result.
+        if assigned_ids == []:
             return []
-        oids = [ObjectId(item) for item in assigned_ids if ObjectId.is_valid(item)]
-        assigned_students = await db.students.find({"_id": {"$in": oids}}, {"roll_number": 1}).to_list(length=10000)
-        rolls = [str(s.get("roll_number", "")).strip().upper() for s in assigned_students if s.get("roll_number")]
-        query_parts.append({"$or": [{"student_id": {"$in": assigned_ids}}, {"roll_number": {"$in": rolls}}]})
+        if assigned_ids is not None:
+            oids = [ObjectId(item) for item in assigned_ids if ObjectId.is_valid(item)]
+            assigned_students = await db.students.find({"_id": {"$in": oids}}, {"roll_number": 1}).to_list(length=10000)
+            rolls = [str(s.get("roll_number", "")).strip().upper() for s in assigned_students if s.get("roll_number")]
+            query_parts.append({"$or": [{"student_id": {"$in": assigned_ids}}, {"roll_number": {"$in": rolls}}]})
     query = {"$and": query_parts}
     rows = []
     for collection, default_session in ((db.student_attendance, "SESSION_1"), (db.student_attendance_sessions, None)):
