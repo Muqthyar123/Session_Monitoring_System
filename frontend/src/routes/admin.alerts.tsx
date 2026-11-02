@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { BellRing, Download, CheckCheck, RefreshCw, Filter, AlertTriangle, Clock, UserX, Info } from "lucide-react";
+import { BellRing, Download, CheckCheck, RefreshCw, Filter, AlertTriangle, Clock, UserX, Info, ChevronDown } from "lucide-react";
 import { downloadApiFile } from "@/services/apiClient";
 import { AdminLayout } from "@/layouts/AdminLayout";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -21,6 +21,7 @@ import { getAdminAlertHistory, acknowledgeAlert } from "@/services/sessionServic
 import type { AdminAlert } from "@/data/mock/mockData";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export const Route = createFileRoute("/admin/alerts")({
   head: () => ({
@@ -109,7 +110,18 @@ function AlertsPage() {
               <RefreshCw className={`size-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
-            {(["pdf", "xlsx", "csv"] as const).map((format) => <Button key={format} variant="outline" size="sm" onClick={() => handleExport(format)}><Download className="size-4 mr-2" />{format.toUpperCase()}</Button>)}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm"><Download className="size-4" />Export<ChevronDown className="size-4" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-40">
+                {(["pdf", "xlsx", "csv"] as const).map((format) => (
+                  <DropdownMenuItem key={format} onSelect={() => void handleExport(format)}>
+                    <Download className="size-4" />{format.toUpperCase()}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       />
