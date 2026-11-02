@@ -78,7 +78,10 @@ const alertColumns: Column<AdminAlert>[] = [
 function AdminDashboardPage() {
   const { user } = useAuth();
   const dashboard = useAsyncData(() => getAdminDashboard(), [], 15000);
-  const alerts = useAsyncData(() => getAlerts(), [], 15000);
+  const alerts = useAsyncData(() => {
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    return getAlerts(undefined, undefined, { fromDate: day, toDate: day });
+  }, [], 15000);
   const uploads = useAsyncData(
     () => user?.role === "ADMIN" ? getUploadHistory(0, 8) : Promise.resolve([]),
     [user?.role],
@@ -264,7 +267,7 @@ function AttendanceSuspensionPanel() {
     </div>
     <div className="grid gap-3 md:grid-cols-2"><div className="space-y-1"><Label>Suspension type</Label><select className="h-10 w-full rounded-md border bg-background px-3" value={type} onChange={(e) => setType(e.target.value)}><option value="STUDENT">Student Attendance</option><option value="FACULTY">Faculty Attendance</option><option value="BOTH">Both</option></select></div><div className="space-y-1"><Label>Start date</Label><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div><div className="space-y-1"><Label>End date</Label><Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div><div className="space-y-1 md:col-span-2"><Label>Optional reason</Label><Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} /></div></div>
     <div className="space-y-1"><Button onClick={activate} disabled={saving || yearsData.loading}>{saving ? retrying ? "Reconnecting…" : "Activating…" : "Activate suspension"}</Button>{saving && retrying && <p className="text-xs text-muted-foreground" aria-live="polite">The backend is waking up. Retrying safely; please keep this page open.</p>}</div>
-    <div className="space-y-2">{(suspensions.data || []).map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"><div><strong>{item.status}</strong> · {item.attendance_type} · {item.years.join(", ")} · {item.start_date} to {item.end_date}{item.reason ? ` · ${item.reason}` : ""}</div>{item.status === "ACTIVE" || item.status === "SCHEDULED" ? <Button variant="outline" size="sm" onClick={async () => { if (!window.confirm("Cancel this attendance suspension?")) return; try { await cancelAttendanceSuspension(item.id); await suspensions.reload?.(); toast.success("Suspension cancelled."); } catch (err: any) { toast.error(err.message || "Could not cancel suspension."); } }}>Cancel</Button> : null}</div>)}</div>
+    <div className="space-y-2">{(suspensions.data || []).map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm"><div><strong>{item.status}</strong> · {item.attendance_type} · {item.years.map((year) => `${year}: ${item.all_sections_years.includes(year) ? "all sections" : (item.sections_by_year[year] || []).join(", ")}`).join("; ")} · {item.start_date} to {item.end_date}{item.reason ? ` · ${item.reason}` : ""}</div>{item.status === "ACTIVE" || item.status === "SCHEDULED" ? <Button variant="outline" size="sm" onClick={async () => { if (!window.confirm("Cancel this attendance suspension?")) return; try { await cancelAttendanceSuspension(item.id); await suspensions.reload?.(); toast.success("Suspension cancelled."); } catch (err: any) { toast.error(err.message || "Could not cancel suspension."); } }}>Cancel</Button> : null}</div>)}</div>
   </CardContent></Card>;
 }
 

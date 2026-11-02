@@ -84,6 +84,7 @@ export interface AdminAlert {
   reportedBy: "CR" | "LR";
   reason: "Faculty not available" | "No response within 10 minutes";
   status: "New" | "Acknowledged";
+  created_at?: string;
 }
 
 export interface AppNotification {

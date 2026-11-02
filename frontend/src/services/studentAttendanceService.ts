@@ -84,13 +84,12 @@ export async function createAttendanceSuspension(
   const idBytes = crypto.getRandomValues(new Uint8Array(12));
   const requestId = Array.from(idBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   const body = JSON.stringify({ ...payload, requestId });
-  const retryDelays = [2500, 5000, 8000, 12000, 15000, 20000];
+  const retryDelays = [1500, 3000, 6000, 10000];
   for (let attempt = 0; ; attempt += 1) {
     try {
       return await request<AttendanceSuspension>("/admin/attendance-suspensions", { method: "POST", body });
     } catch (error: any) {
-      const transient = error?.status === 502 || error?.status === 503 || error?.status === 504 ||
-        (error?.status === 500 && String(error?.message || "").includes("Unable to connect to the backend server"));
+      const transient = [0, 408, 502, 503, 504].includes(error?.status);
       if (!transient || attempt >= retryDelays.length) throw error;
       onRetry?.(attempt + 1);
       await new Promise((resolve) => window.setTimeout(resolve, retryDelays[attempt]));

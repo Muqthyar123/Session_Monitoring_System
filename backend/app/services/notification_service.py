@@ -1,4 +1,5 @@
 import logging
+import hashlib
 from datetime import datetime, timezone
 from typing import List, Optional
 from bson import ObjectId
@@ -19,6 +20,7 @@ async def create_in_app_notification(
     subject: Optional[str] = None,
     time_str: Optional[str] = None,
     session_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
 ) -> dict:
     db = get_database()
     now = datetime.now(timezone.utc)
@@ -34,8 +36,13 @@ async def create_in_app_notification(
         "is_read": False,
         "created_at": now,
     }
-    res = await db.notifications.insert_one(doc)
-    doc["_id"] = str(res.inserted_id)
+    if idempotency_key:
+        doc["_id"] = ObjectId(hashlib.sha256(idempotency_key.encode("utf-8")).digest()[:12])
+        await db.notifications.update_one({"_id": doc["_id"]}, {"$setOnInsert": doc}, upsert=True)
+    else:
+        res = await db.notifications.insert_one(doc)
+        doc["_id"] = res.inserted_id
+    doc["_id"] = str(doc["_id"])
     return doc
 
 
@@ -154,7 +161,9 @@ async def notify_immediate_faculty_absent(
         "status": "New",
         "created_at": now,
     }
-    await db.admin_alerts.insert_one(alert_doc)
+    event_key = f"faculty-response:{session_doc['_id']}:{status}"
+    alert_doc["_id"] = ObjectId(hashlib.sha256(event_key.encode("utf-8")).digest()[:12])
+    alert_result = await db.admin_alerts.update_one({"_id": alert_doc["_id"]}, {"$setOnInsert": alert_doc}, upsert=True)
 
     # Notify all admin users
     admins = await db.users.find({"role": UserRole.ADMIN.value, "is_active": True}).to_list(length=100)
@@ -170,14 +179,16 @@ async def notify_immediate_faculty_absent(
             subject=subj,
             time_str=time_str,
             session_id=str(session_doc["_id"]),
+            idempotency_key=f"{event_key}:recipient:{a_id}",
         )
 
-    await send_push_notification_to_users(
-        user_ids=admin_ids,
-        title=sub_title,
-        body=msg,
-        data={"session_id": str(session_doc["_id"]), "type": status},
-    )
+    if alert_result.upserted_id:
+        await send_push_notification_to_users(
+            user_ids=admin_ids,
+            title=sub_title,
+            body=msg,
+            data={"session_id": str(session_doc["_id"]), "type": status},
+        )
 
 
 async def notify_10min_no_response(session_doc: dict):
@@ -199,7 +210,9 @@ async def notify_10min_no_response(session_doc: dict):
         "status": "New",
         "created_at": now,
     }
-    await db.admin_alerts.insert_one(alert_doc)
+    event_key = f"no-response:{session_doc['_id']}"
+    alert_doc["_id"] = ObjectId(hashlib.sha256(event_key.encode("utf-8")).digest()[:12])
+    alert_result = await db.admin_alerts.update_one({"_id": alert_doc["_id"]}, {"$setOnInsert": alert_doc}, upsert=True)
 
     admins = await db.users.find({"role": UserRole.ADMIN.value, "is_active": True}).to_list(length=100)
     admin_ids = [str(a["_id"]) for a in admins]
@@ -217,11 +230,13 @@ async def notify_10min_no_response(session_doc: dict):
             subject=subj,
             time_str=time_str,
             session_id=str(session_doc["_id"]),
+            idempotency_key=f"{event_key}:recipient:{a_id}",
         )
 
-    await send_push_notification_to_users(
-        user_ids=admin_ids,
-        title=title,
-        body=msg,
-        data={"session_id": str(session_doc["_id"]), "type": "NO_RESPONSE_ALERT"},
-    )
+    if alert_result.upserted_id:
+        await send_push_notification_to_users(
+            user_ids=admin_ids,
+            title=title,
+            body=msg,
+            data={"session_id": str(session_doc["_id"]), "type": "NO_RESPONSE_ALERT"},
+        )

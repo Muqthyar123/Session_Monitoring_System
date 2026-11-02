@@ -108,9 +108,11 @@ export async function request<T>(
   };
 
   const url = buildApiUrl(path);
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), 45000);
 
   try {
-    const response = await fetch(url, mergedOptions);
+    const response = await fetch(url, { ...mergedOptions, signal: mergedOptions.signal || controller.signal });
 
     if (response.status === 401 && path === "/auth/me" && token) {
       // Validate and clear a stale session during startup. Other request-level
@@ -145,10 +147,14 @@ export async function request<T>(
     const isNetworkError =
       err?.name === "TypeError" ||
       (typeof err?.message === "string" && err.message.toLowerCase().includes("failed to fetch"));
-    const friendlyMessage = isNetworkError
+    const friendlyMessage = err?.name === "AbortError"
+      ? "The backend did not respond within 45 seconds. The request may have completed; refresh the list before trying again."
+      : isNetworkError
       ? "Unable to connect to the backend server. If the server is spinning up after inactivity (Render cold start), please try again in a few seconds."
       : (err?.message || "Failed to connect to the backend server.");
-    throw new ApiError(friendlyMessage, 500);
+    throw new ApiError(friendlyMessage, err?.name === "AbortError" ? 408 : isNetworkError ? 0 : 500);
+  } finally {
+    globalThis.clearTimeout(timeout);
   }
 }
 

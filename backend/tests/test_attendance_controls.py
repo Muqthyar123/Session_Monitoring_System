@@ -48,6 +48,17 @@ async def test_overlapping_suspension_remains_effective_after_cancelling_one():
 
 
 @pytest.mark.asyncio
+async def test_suspension_request_id_makes_activation_retry_idempotent():
+    db = get_database()
+    user = {"_id": ObjectId(), "name": "Admin", "role": "ADMIN"}
+    payload = SuspensionCreate(years=["3rd Year"], sectionsByYear={"3rd Year": ["CSE-B"]}, startDate="2026-01-01", endDate="2030-12-31", attendanceType="BOTH", requestId="0123456789abcdef01234567")
+    first = await create_suspension(payload, user)
+    retry = await create_suspension(payload, user)
+    assert first.data["id"] == retry.data["id"]
+    assert await db.attendance_suspensions.count_documents({}) == 1
+
+
+@pytest.mark.asyncio
 async def test_suspension_blocks_direct_student_attendance_submission():
     db = get_database()
     user = {"_id": ObjectId(), "id": "admin-1", "name": "CR", "role": "CR", "year": "2nd Year", "section": "CSE-A"}

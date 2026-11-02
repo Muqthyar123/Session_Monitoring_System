@@ -7,6 +7,7 @@ import re
 import zoneinfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from bson import ObjectId
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 
