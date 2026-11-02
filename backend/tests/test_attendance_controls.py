@@ -15,6 +15,8 @@ from app.api.attendance_controls import (
 from app.db.mongodb import get_database
 from app.services.student_attendance_service import submit_student_attendance
 from app.schemas.student_attendance import StudentAttendanceSubmitRequest
+from app.services.attendance_service import submit_attendance
+from app.schemas.attendance import AttendanceSubmitRequest
 
 
 @pytest.mark.asyncio
@@ -72,3 +74,21 @@ async def test_suspension_blocks_direct_student_attendance_submission():
         await submit_student_attendance(request, user)
     assert exc.value.status_code == 423
     assert await db.student_attendance_submissions.count_documents({"date": today}) == 0
+
+
+@pytest.mark.asyncio
+async def test_faculty_suspension_blocks_direct_attendance_api_service():
+    db = get_database()
+    user = {"_id": ObjectId(), "id": "cr-1", "name": "CR", "role": "CR", "year": "2nd Year", "section": "CSE-A"}
+    import zoneinfo
+    from app.core.config import settings
+    today = datetime.now(zoneinfo.ZoneInfo(settings.TIMEZONE)).date().isoformat()
+    await db.attendance_suspensions.insert_one({
+        "years": ["2nd Year"], "sections_by_year": {"2nd Year": ["CSE-A"]}, "all_sections_years": [],
+        "start_date": today, "end_date": today, "attendance_type": "FACULTY", "status": "ACTIVE",
+    })
+    request = AttendanceSubmitRequest(sessionId="session-not-needed", status="PRESENT")
+    with pytest.raises(HTTPException) as exc:
+        await submit_attendance(request, user)
+    assert exc.value.status_code == 423
+    assert await db.attendance_records.count_documents({}) == 0
