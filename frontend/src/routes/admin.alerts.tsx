@@ -22,6 +22,7 @@ import type { AdminAlert } from "@/data/mock/mockData";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { downloadNotificationExport } from "@/utils/notificationExport";
 
 export const Route = createFileRoute("/admin/alerts")({
   head: () => ({
@@ -95,7 +96,33 @@ function AlertsPage() {
       const params = new URLSearchParams({ format });
       if (range.fromDate) params.set("fromDate", range.fromDate);
       if (range.toDate) params.set("toDate", range.toDate);
-      await downloadApiFile(`/attendance/alerts/export?${params}`, `Notification_History.${format}`);
+      if (categoryFilter !== ALL) params.set("category", categoryFilter);
+      if (statusFilter !== ALL) params.set("status", statusFilter);
+      if (search) params.set("search", search);
+      try {
+        await downloadApiFile(`/attendance/alerts/export?${params}`, `Notification_History.${format}`);
+      } catch (err: any) {
+        if (err?.status !== 404) throw err;
+        const exported: AdminAlert[] = [];
+        let pageNumber = 1;
+        let totalCount = 0;
+        do {
+          const pageResult = await getAdminAlertHistory({
+            ...range,
+            category: categoryFilter,
+            status: statusFilter,
+            search,
+            page: pageNumber,
+            limit: 200,
+          });
+          exported.push(...pageResult.items);
+          totalCount = pageResult.total;
+          pageNumber += 1;
+          if (!pageResult.items.length) break;
+        } while (exported.length < totalCount);
+        downloadNotificationExport(exported, format);
+      }
+      toast.success(`${format.toUpperCase()} notification export downloaded.`);
     } catch (err: any) { toast.error(err.message || "Could not export notification history."); }
   };
 

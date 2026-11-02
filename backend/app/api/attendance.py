@@ -112,10 +112,27 @@ async def export_admin_alerts_api(
     format: str = Query(..., pattern="^(csv|xlsx|pdf)$"),
     from_date: Optional[str] = Query(None, alias="fromDate"),
     to_date: Optional[str] = Query(None, alias="toDate"),
+    category: Optional[str] = Query(None),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    search: Optional[str] = Query(None, max_length=100),
     admin: dict = Depends(require_roles([UserRole.ADMIN])),
 ):
     db = get_database()
     query = _alert_date_query({}, from_date, to_date)
+    if status_filter and status_filter.upper() != "ALL":
+        query["status"] = {"$regex": f"^{status_filter}$", "$options": "i"}
+    if search and search.strip():
+        token = {"$regex": search.strip(), "$options": "i"}
+        query["$and"] = [{"$or": [{field: token} for field in ("reason", "section", "subject", "session", "reported_by", "title")]}]
+    if category and category.upper() != "ALL":
+        cat_upper = category.strip().upper()
+        terms = {
+            "NO_RESPONSE_10MIN": ["10 min", "no response"],
+            "FACULTY_ABSENT": ["not available", "absent", "substitute"],
+            "FACULTY_STATUS_UPDATED": ["updated", "status", "changed"],
+        }.get(cat_upper)
+        if terms:
+            query["$or"] = [{"reason": {"$regex": term, "$options": "i"}} for term in terms]
     cursor = db.admin_alerts.find(query).sort("created_at", -1)
     docs = await cursor.to_list(length=None)
     columns = ["Notification ID", "Title", "Message", "Type", "Section", "Subject", "Session", "Reported By", "Status", "Created At"]
