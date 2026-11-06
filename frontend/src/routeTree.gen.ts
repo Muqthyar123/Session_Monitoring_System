@@ -41,6 +41,7 @@ import { Route as MentorPlannedAbsencesRouteImport } from './routes/mentor.plann
 import { Route as MentorStudentsRouteImport } from './routes/mentor.students'
 import { Route as SuperAdminBranchesRouteImport } from './routes/super-admin.branches'
 import { Route as SuperAdminDashboardRouteImport } from './routes/super-admin.dashboard'
+import { Route as SuperAdminDepartmentsRouteImport } from './routes/super-admin.departments'
 import { Route as SuperAdminHodsRouteImport } from './routes/super-admin.hods'
 import { Route as SuperAdminLoginRouteImport } from './routes/super-admin.login'
 import { Route as SuperAdminSitesRouteImport } from './routes/super-admin.sites'
@@ -205,6 +206,11 @@ const SuperAdminDashboardRoute = SuperAdminDashboardRouteImport.update({
   path: '/super-admin/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SuperAdminDepartmentsRoute = SuperAdminDepartmentsRouteImport.update({
+  id: '/super-admin/departments',
+  path: '/super-admin/departments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SuperAdminHodsRoute = SuperAdminHodsRouteImport.update({
   id: '/super-admin/hods',
   path: '/super-admin/hods',
@@ -254,6 +260,7 @@ export interface FileRoutesByFullPath {
   '/mentor/students': typeof MentorStudentsRoute
   '/super-admin/branches': typeof SuperAdminBranchesRoute
   '/super-admin/dashboard': typeof SuperAdminDashboardRoute
+  '/super-admin/departments': typeof SuperAdminDepartmentsRoute
   '/super-admin/hods': typeof SuperAdminHodsRoute
   '/super-admin/login': typeof SuperAdminLoginRoute
   '/super-admin/sites': typeof SuperAdminSitesRoute
@@ -291,6 +298,7 @@ export interface FileRoutesByTo {
   '/mentor/students': typeof MentorStudentsRoute
   '/super-admin/branches': typeof SuperAdminBranchesRoute
   '/super-admin/dashboard': typeof SuperAdminDashboardRoute
+  '/super-admin/departments': typeof SuperAdminDepartmentsRoute
   '/super-admin/hods': typeof SuperAdminHodsRoute
   '/super-admin/login': typeof SuperAdminLoginRoute
   '/super-admin/sites': typeof SuperAdminSitesRoute
@@ -329,6 +337,7 @@ export interface FileRoutesById {
   '/mentor/students': typeof MentorStudentsRoute
   '/super-admin/branches': typeof SuperAdminBranchesRoute
   '/super-admin/dashboard': typeof SuperAdminDashboardRoute
+  '/super-admin/departments': typeof SuperAdminDepartmentsRoute
   '/super-admin/hods': typeof SuperAdminHodsRoute
   '/super-admin/login': typeof SuperAdminLoginRoute
   '/super-admin/sites': typeof SuperAdminSitesRoute
@@ -368,6 +377,7 @@ export interface FileRouteTypes {
     | '/mentor/students'
     | '/super-admin/branches'
     | '/super-admin/dashboard'
+    | '/super-admin/departments'
     | '/super-admin/hods'
     | '/super-admin/login'
     | '/super-admin/sites'
@@ -405,6 +415,7 @@ export interface FileRouteTypes {
     | '/mentor/students'
     | '/super-admin/branches'
     | '/super-admin/dashboard'
+    | '/super-admin/departments'
     | '/super-admin/hods'
     | '/super-admin/login'
     | '/super-admin/sites'
@@ -442,6 +453,7 @@ export interface FileRouteTypes {
     | '/mentor/students'
     | '/super-admin/branches'
     | '/super-admin/dashboard'
+    | '/super-admin/departments'
     | '/super-admin/hods'
     | '/super-admin/login'
     | '/super-admin/sites'
@@ -480,6 +492,7 @@ export interface RootRouteChildren {
   MentorStudentsRoute: typeof MentorStudentsRoute
   SuperAdminBranchesRoute: typeof SuperAdminBranchesRoute
   SuperAdminDashboardRoute: typeof SuperAdminDashboardRoute
+  SuperAdminDepartmentsRoute: typeof SuperAdminDepartmentsRoute
   SuperAdminHodsRoute: typeof SuperAdminHodsRoute
   SuperAdminLoginRoute: typeof SuperAdminLoginRoute
   SuperAdminSitesRoute: typeof SuperAdminSitesRoute
@@ -711,6 +724,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/super-admin/departments': {
+      id: '/super-admin/departments'
+      path: '/super-admin/departments'
+      fullPath: '/super-admin/departments'
+      preLoaderRoute: typeof SuperAdminDepartmentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/super-admin/hods': {
       id: '/super-admin/hods'
       path: '/super-admin/hods'
@@ -768,6 +788,7 @@ const rootRouteChildren: RootRouteChildren = {
   MentorStudentsRoute: MentorStudentsRoute,
   SuperAdminBranchesRoute: SuperAdminBranchesRoute,
   SuperAdminDashboardRoute: SuperAdminDashboardRoute,
+  SuperAdminDepartmentsRoute: SuperAdminDepartmentsRoute,
   SuperAdminHodsRoute: SuperAdminHodsRoute,
   SuperAdminLoginRoute: SuperAdminLoginRoute,
   SuperAdminSitesRoute: SuperAdminSitesRoute,

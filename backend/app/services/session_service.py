@@ -300,6 +300,7 @@ async def get_sessions(
     branch: Optional[str] = None,
     status_filter: Optional[str] = None,
     date_str: Optional[str] = None,
+    years: Optional[List[str]] = None,
 ) -> List[ClassSessionResponse]:
     db = get_database()
     now_local = datetime.now(tz_kolkata)
@@ -333,6 +334,8 @@ async def get_sessions(
                 {"year": {"$regex": yr_clean, "$options": "i"}},
             ]
         })
+    elif years is not None:
+        and_clauses.append({"year": {"$in": years}})
 
     if branch and branch.upper() != "ALL":
         b_clean = branch.strip().upper()

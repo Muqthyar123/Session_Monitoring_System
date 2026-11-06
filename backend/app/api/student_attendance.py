@@ -1,7 +1,7 @@
 from typing import List, Optional
 from bson import ObjectId
 from fastapi import APIRouter, Depends, Query, status, HTTPException
-from app.core.dependencies import get_current_user, require_roles
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year, get_assigned_years, get_current_user, require_roles
 from app.schemas.common import ApiResponse
 from app.schemas.student import StudentResponse
 from app.schemas.student_attendance import (
@@ -62,11 +62,24 @@ async def get_admin_student_attendance_summary_api(
     date: Optional[str] = Query(None), year: Optional[str] = Query(None),
     branch: Optional[str] = Query(None), section: Optional[str] = Query(None),
     session_id: Optional[str] = Query(None, alias="sessionId"),
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     db = get_database()
     day = date or datetime.now(zoneinfo.ZoneInfo(settings.TIMEZONE)).strftime("%Y-%m-%d")
     query = {"date": day}
+    scoped_years = None
+    scoped_department = None
+    if admin.get("role") == UserRole.ADMIN.value:
+        if year:
+            enforce_assigned_year(admin, year)
+        scoped_years = get_assigned_years(admin) or []
+        scoped_department = enforce_assigned_department(admin, None)
+        if not scoped_years or not scoped_department:
+            raise HTTPException(status_code=403, detail="HOD account has no configured department/year scope.")
+        if section and scoped_department.casefold() not in section.casefold():
+            raise HTTPException(status_code=403, detail="Access denied for this department's section.")
+        query["year"] = year if year else {"$in": scoped_years}
+        branch = scoped_department
     if year: query["year"] = year
     if branch: query["branch"] = branch.upper()
     if section: query["section"] = section.upper()
@@ -87,6 +100,8 @@ async def get_admin_student_attendance_summary_api(
     day_timetables = await db.timetables.find({"day": local_now.strftime("%A")}).to_list(length=10000)
     for timetable in day_timetables:
         if year and timetable.get("year") != year: continue
+        if scoped_years is not None and timetable.get("year") not in scoped_years: continue
+        if scoped_department and scoped_department.casefold() not in str(timetable.get("section", "")).casefold(): continue
         if section and str(timetable.get("section", "")).upper() != section.upper(): continue
         sec = str(timetable.get("section", "")).upper()
         yr = str(timetable.get("year", ""))
@@ -248,6 +263,11 @@ async def get_student_analytics_summary_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
     """Get student cards with total absences & attendance percentage for a section."""
+    if current_user.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, year)
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in section.casefold():
+            raise HTTPException(status_code=403, detail="Access denied for this department's section.")
     summary = await get_students_analytics_summary(year, section)
     if current_user.get("role") == UserRole.MENTOR.value:
         assigned_ids, assigned_rolls = await _mentor_history_scope(current_user)
@@ -269,5 +289,11 @@ async def get_student_complete_history_api(
         assigned_ids, assigned_rolls = await _mentor_history_scope(current_user)
         if roll_number.strip().upper() not in assigned_rolls and roll_number.strip() not in assigned_ids:
             raise HTTPException(status_code=403, detail="This student is outside your mentor assignments.")
+    elif current_user.get("role") == UserRole.ADMIN.value:
+        student = await get_database().students.find_one({"roll_number": roll_number.strip().upper()})
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found.")
+        enforce_assigned_year(current_user, student.get("year"))
+        enforce_assigned_department(current_user, student.get("department") or student.get("branch"))
     history = await get_student_complete_history(roll_number)
     return ApiResponse(success=True, data=history)

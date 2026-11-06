@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import re
 import zoneinfo
 from typing import Any, Dict, List, Optional
 from bson import ObjectId
@@ -17,6 +18,7 @@ from app.services.mentor_mapping_service import (
     get_mentor_assigned_student_ids,
     is_student_assigned_to_mentor,
 )
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year, get_assigned_years
 
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
 
@@ -63,6 +65,14 @@ def _doc_to_response(doc: dict) -> PlannedAbsenceResponse:
     )
 
 
+def _check_hod_scope(record: dict, current_user: dict) -> None:
+    if current_user.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, record.get("year"))
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in str(record.get("section") or "").casefold():
+            raise HTTPException(status_code=403, detail="This planned absence is outside your department.")
+
+
 async def create_planned_absence(
     data: PlannedAbsenceCreateRequest, current_user: dict
 ) -> PlannedAbsenceResponse:
@@ -98,6 +108,11 @@ async def create_planned_absence(
 
     # 2. RBAC: Verify mentor assignment
     user_role = current_user.get("role", "")
+    if user_role == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, year)
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in section.casefold():
+            raise HTTPException(status_code=403, detail="This student is outside your department.")
     if user_role == UserRole.MENTOR.value or user_role == "MENTOR":
         is_assigned = await is_student_assigned_to_mentor(student_id_str, current_user)
         if not is_assigned:
@@ -209,6 +224,15 @@ async def get_planned_absences(
                 {"mentor_id": mentor_user_id},
                 {"created_by_id": mentor_user_id},
             ]
+    elif user_role == UserRole.ADMIN.value:
+        if year:
+            enforce_assigned_year(current_user, year)
+        years = get_assigned_years(current_user) or []
+        department = enforce_assigned_department(current_user, None)
+        query["$and"] = [
+            {"year": {"$in": years}},
+            {"section": {"$regex": re.escape(department), "$options": "i"}},
+        ]
 
     if student_id:
         clean_sid = student_id.strip()
@@ -278,6 +302,7 @@ async def update_planned_absence(
                 detail="Access denied. You can only edit planned absences for your assigned students.",
             )
 
+    _check_hod_scope(doc, current_user)
     start_date = (data.start_date or doc.get("start_date", "")).strip()
     end_date = (data.end_date or doc.get("end_date", "")).strip()
 
@@ -369,6 +394,7 @@ async def cancel_planned_absence(
                 detail="Access denied. You can only cancel planned absences for your assigned students.",
             )
 
+    _check_hod_scope(doc, current_user)
     now_utc = datetime.now(timezone.utc)
     cancel_reason = (data.cancellation_reason or "").strip() or "Cancelled by user"
 

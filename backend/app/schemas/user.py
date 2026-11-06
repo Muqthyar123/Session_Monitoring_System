@@ -23,11 +23,15 @@ class UserBase(BaseModel):
     employee_id: Optional[str] = Field(None, alias="employeeId")
     phone: Optional[str] = None
     year: Optional[str] = None
+    academic_years: Optional[list[str]] = Field(default_factory=list, alias="academicYears")
     section: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
+    department_id: Optional[str] = Field(None, alias="departmentId")
+    department_code: Optional[str] = Field(None, alias="departmentCode")
     branch: Optional[str] = None
     branch_id: Optional[str] = Field(None, alias="branchId")
+    branch_code: Optional[str] = Field(None, alias="branchCode")
     profile: Optional[str] = None
     is_active: bool = True
 
@@ -47,11 +51,15 @@ class UserUpdate(BaseModel):
     employee_id: Optional[str] = Field(None, alias="employeeId")
     phone: Optional[str] = None
     year: Optional[str] = None
+    academic_years: Optional[list[str]] = Field(None, alias="academicYears")
     section: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
+    department_id: Optional[str] = Field(None, alias="departmentId")
+    department_code: Optional[str] = Field(None, alias="departmentCode")
     branch: Optional[str] = None
     branch_id: Optional[str] = Field(None, alias="branchId")
+    branch_code: Optional[str] = Field(None, alias="branchCode")
     profile: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=8, max_length=32)

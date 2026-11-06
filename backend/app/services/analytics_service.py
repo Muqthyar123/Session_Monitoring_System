@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple, Dict, Any
+import re
 import zoneinfo
 from app.core.config import settings
 from app.db.mongodb import get_database
@@ -7,6 +8,19 @@ from app.schemas.session import FacultyResponseStatus, SessionStatus
 from app.schemas.user import UserRole
 
 tz_kolkata = zoneinfo.ZoneInfo(settings.TIMEZONE)
+
+
+def _organization_scope(years: Optional[List[str]] = None, department: Optional[str] = None) -> dict:
+    clauses = []
+    if years is not None:
+        clauses.append({"year": {"$in": years}})
+    if department:
+        escaped = re.escape(department.strip())
+        clauses.append({"$or": [
+            {"department": department}, {"branch": department},
+            {"section": {"$regex": f"(^|-)({escaped})(-|$)", "$options": "i"}},
+        ]})
+    return {"$and": clauses} if len(clauses) > 1 else (clauses[0] if clauses else {})
 
 
 def clean_display_faculty_name(name: Optional[str]) -> str:
@@ -69,17 +83,33 @@ def is_not_marked_status(val: Optional[str]) -> bool:
     return "NOT MARKED" in v or "CR/LR NOT MARKED" in v or "UNMARKED" in v or v == "EXPIRED"
 
 
-async def get_admin_dashboard_analytics() -> dict:
+async def get_admin_dashboard_analytics(current_user: Optional[dict] = None) -> dict:
     db = get_database()
     now_local = datetime.now(tz_kolkata)
     date_str = now_local.strftime("%Y-%m-%d")
 
-    timetable_sections = set(await db.timetables.distinct("section"))
+    is_hod = bool(current_user and current_user.get("role") == UserRole.ADMIN.value)
+    years = (current_user.get("academic_years") or ([current_user["year"]] if current_user.get("year") else [])) if is_hod else None
+    department = (current_user.get("department_code") or current_user.get("department") or current_user.get("branch")) if is_hod else None
+    scope = _organization_scope(years, department)
+    if is_hod and (not years or not department):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="HOD account has no configured department and academic years.")
+    timetable_sections = set(await db.timetables.distinct("section", scope))
     total_sections = len(timetable_sections)
-    total_crs = await db.users.count_documents({"role": UserRole.CR.value, "is_active": True})
-    total_lrs = await db.users.count_documents({"role": UserRole.LR.value, "is_active": True})
+    crlr_scope = {"role": UserRole.CR.value, "is_active": True}
+    if is_hod:
+        crlr_scope = {"$and": [crlr_scope, _organization_scope(years, department)]}
+    total_crs = await db.users.count_documents(crlr_scope)
+    lr_scope = {"role": UserRole.LR.value, "is_active": True}
+    if is_hod:
+        lr_scope = {"$and": [lr_scope, _organization_scope(years, department)]}
+    total_lrs = await db.users.count_documents(lr_scope)
 
-    sessions_today = await db.sessions.find({"date": date_str}).to_list(length=1000)
+    sessions_query = {"date": date_str}
+    if is_hod:
+        sessions_query = {"$and": [sessions_query, _organization_scope(years, department)]}
+    sessions_today = await db.sessions.find(sessions_query).to_list(length=1000)
     rec_docs_today = await db.attendance_records.find().to_list(length=2000)
     rec_map_today = {str(r.get("session_id")): r for r in rec_docs_today if r.get("session_id")}
 
@@ -113,12 +143,12 @@ async def get_admin_dashboard_analytics() -> dict:
         sub = sum(1 for s in sec_sessions if is_substitute_status(_get_status(s)))
         section_wise.append({"section": s_name, "present": p, "absent": a, "substitute": sub})
 
-    year_cards = await get_year_cards_summary()
+    year_cards = await get_year_cards_summary(years=years, department=department)
     flat_sections_cards = []
     for yc in year_cards:
         flat_sections_cards.extend(yc.get("sections", []))
 
-    faculty_analytics = await get_faculty_analytics(None)
+    faculty_analytics = await get_faculty_analytics(None, years=years, department=department)
 
     return {
         "date": date_str,
@@ -203,14 +233,15 @@ def extract_individual_faculties(doc: dict) -> Tuple[str, List[str]]:
     return clean_subj, cleaned_fac_list
 
 
-async def get_year_cards_summary() -> list:
+async def get_year_cards_summary(years: Optional[List[str]] = None, department: Optional[str] = None) -> list:
     """
     Returns Year-level summary cards along with embedded Section-level cards,
     derived strictly from uploaded timetables and sessions in MongoDB in a single fast batch pass.
     """
     db = get_database()
-    tt_docs = await db.timetables.find({}).to_list(length=10000)
-    sess_docs = await db.sessions.find({}).to_list(length=10000)
+    scope = _organization_scope(years, department)
+    tt_docs = await db.timetables.find(scope).to_list(length=10000)
+    sess_docs = await db.sessions.find(scope).to_list(length=10000)
     rec_docs = await db.attendance_records.find({}).to_list(length=10000)
     rec_map = {str(r.get("session_id")): r for r in rec_docs if r.get("session_id")}
 
@@ -368,7 +399,7 @@ def format_display_section(raw_sec: str, year: str) -> str:
     return f"{roman}-{norm}"
 
 
-async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
+async def get_faculty_analytics(section_name: Optional[str] = None, years: Optional[List[str]] = None, department: Optional[str] = None) -> list:
     """Generates per-faculty attendance analytics including total assigned hours, attended, absent, late, substitute, and percentage."""
     db = get_database()
     query = {}
@@ -380,6 +411,9 @@ async def get_faculty_analytics(section_name: Optional[str] = None) -> list:
                 {"section": norm_filter},
                 {"section": {"$regex": norm_filter, "$options": "i"}}
             ]
+    scope = _organization_scope(years, department)
+    if scope:
+        query = {"$and": [query, scope]} if query else scope
 
     tt_docs = await db.timetables.find(query).to_list(length=5000)
     sess_docs = await db.sessions.find(query).to_list(length=5000)
@@ -623,6 +657,8 @@ async def get_faculty_history(
     end_date: Optional[str] = None,
     section: Optional[str] = None,
     year: Optional[str] = None,
+    years: Optional[List[str]] = None,
+    department: Optional[str] = None,
 ) -> dict:
     """
     Retrieves chronological history and progress statistics for a specific faculty member,
@@ -677,6 +713,9 @@ async def get_faculty_history(
 
     if year and year.upper() != "ALL":
         query["year"] = {"$regex": year.replace("Year", "").strip(), "$options": "i"}
+    scope = _organization_scope(years, department)
+    if scope:
+        query = {"$and": [query, scope]} if query else scope
 
     cursor = db.sessions.find(query).sort([("date", -1), ("start_time", 1)])
     sessions = await cursor.to_list(length=2000)

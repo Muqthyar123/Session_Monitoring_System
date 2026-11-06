@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Response, status, HTTPException
-from app.core.dependencies import get_current_user, require_roles
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year, get_assigned_years, get_current_user, require_roles
 from app.api.upload_utils import read_upload_limited
 from app.schemas.common import ApiResponse
 from app.schemas.timetable import TimetablePeriodResponse
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/admin/timetable", tags=["Timetable Management"])
 @router.post("/upload", response_model=ApiResponse[dict])
 async def upload_timetable_api(
     file: UploadFile = File(...),
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.SUPER_ADMIN])),
 ):
     fn_lower = (file.filename or "").lower()
     if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls")):
@@ -60,7 +60,7 @@ async def upload_timetable_api(
 
 @router.get("/template")
 async def download_timetable_template_api(
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     excel_bytes = generate_timetable_excel_template()
     return Response(
@@ -72,9 +72,13 @@ async def download_timetable_template_api(
 
 @router.get("", response_model=ApiResponse[List[TimetablePeriodResponse]])
 async def get_all_timetables_api(
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     data = await get_all_timetables()
+    if admin.get("role") == UserRole.ADMIN.value:
+        years = get_assigned_years(admin) or []
+        department = enforce_assigned_department(admin, None)
+        data = [item for item in data if item.year in years and department and department.casefold() in item.section.casefold()]
     return ApiResponse(success=True, data=data)
 
 
@@ -84,13 +88,29 @@ async def get_section_timetable_api(
     year: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user),
 ):
+    role = current_user.get("role")
+    if role == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, year)
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in section.casefold():
+            raise HTTPException(status_code=403, detail="Access denied for this department's timetable.")
+    elif role == UserRole.MENTOR.value:
+        enforce_assigned_year(current_user, year)
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in section.casefold():
+            raise HTTPException(status_code=403, detail="Access denied for this department's timetable.")
+    elif role in [UserRole.CR.value, UserRole.LR.value] and current_user.get("section") != section:
+        raise HTTPException(status_code=403, detail="You can only view your assigned section timetable.")
     data = await get_timetable_by_section(section, year=year)
+    if role in [UserRole.ADMIN.value, UserRole.MENTOR.value]:
+        years = get_assigned_years(current_user) or []
+        data = [item for item in data if item.year in years and department and department.casefold() in item.section.casefold()]
     return ApiResponse(success=True, data=data)
 
 
 @router.delete("", response_model=ApiResponse[dict])
 async def delete_all_timetables_api(
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.SUPER_ADMIN])),
 ):
     counts = await delete_all_timetables(actor_id=admin["id"])
     return ApiResponse(
@@ -106,7 +126,7 @@ async def delete_all_timetables_api(
 
 @router.post("/reset", response_model=ApiResponse[dict])
 async def reset_all_timetables_api(
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.SUPER_ADMIN])),
 ):
     counts = await delete_all_timetables(actor_id=admin["id"])
     return ApiResponse(
@@ -123,7 +143,7 @@ async def reset_all_timetables_api(
 @router.delete("/{section}", response_model=ApiResponse[dict])
 async def delete_section_timetable_api(
     section: str,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.SUPER_ADMIN])),
 ):
     counts = await delete_timetable_by_section(section)
     return ApiResponse(

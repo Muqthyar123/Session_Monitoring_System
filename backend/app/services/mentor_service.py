@@ -19,6 +19,7 @@ from app.services.mentor_mapping_service import (
     get_mentor_assigned_student_ids,
     is_student_assigned_to_mentor,
 )
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year
 from app.services.planned_absence_service import batch_get_active_planned_absences_map
 from app.services.student_service import (
     build_year_filter_clause,
@@ -147,13 +148,30 @@ async def _get_canonical_sections_for_year(year_clean: str, base_stu_query: Opti
 async def _get_mentor_scoped_filter(current_user: Optional[dict]) -> Tuple[Optional[Dict[str, Any]], Optional[List[str]], Optional[List[str]]]:
     """
     Returns (student_filter_clause, assigned_ids, assigned_rolls) for DB queries.
-    If current_user has ADMIN role or is None, returns (None, None, None) which means unrestricted.
+    ADMIN records are bounded by their explicit department/year assignments; mentors
+    remain bounded by mentor-student mapping records.
     """
     if not current_user:
         return None, None, None
 
     role = current_user.get("role")
-    if role in [UserRole.ADMIN.value, "ADMIN", "DEPARTMENT_COORDINATOR", "COORDINATOR"]:
+    if role in [UserRole.ADMIN.value, "DEPARTMENT_COORDINATOR", "COORDINATOR"]:
+        department = (current_user.get("department_code") or current_user.get("department") or
+                      current_user.get("branch_code") or current_user.get("branch"))
+        years = current_user.get("academic_years") or ([current_user["year"]] if current_user.get("year") else [])
+        if not department or not years:
+            return {"_id": {"$in": []}}, [], []
+        db = get_database()
+        query = {"$and": [
+            {"$or": [{"department": department}, {"branch": department}]},
+            {"year": {"$in": years}},
+        ]}
+        students = await db.students.find(query, {"_id": 1, "roll_number": 1}).to_list(length=100000)
+        assigned_ids = [str(s["_id"]) for s in students]
+        assigned_rolls = [s["roll_number"].strip().upper() for s in students if s.get("roll_number")]
+        return {"_id": {"$in": [s["_id"] for s in students]}}, assigned_ids, assigned_rolls
+
+    if role in ["SUPER_ADMIN"]:
         return None, None, None
 
     assigned_ids = await get_mentor_assigned_student_ids(current_user)
@@ -166,12 +184,21 @@ async def _get_mentor_scoped_filter(current_user: Optional[dict]) -> Tuple[Optio
 
     valid_oids = [ObjectId(sid) for sid in assigned_ids if ObjectId.is_valid(sid)]
     db = get_database()
-    # Fetch rolls for attendance queries
-    rolls_cursor = db.students.find({"_id": {"$in": valid_oids}}, {"roll_number": 1})
-    assigned_rolls = []
-    async for doc in rolls_cursor:
-        if doc.get("roll_number"):
-            assigned_rolls.append(doc["roll_number"].upper().strip())
+    scope_clauses = [{"_id": {"$in": valid_oids}}]
+    mentor_years = current_user.get("academic_years") or ([current_user["year"]] if current_user.get("year") else [])
+    department = current_user.get("department_code") or current_user.get("department")
+    if mentor_years:
+        scope_clauses.append({"year": {"$in": mentor_years}})
+    if department:
+        scope_clauses.append({"$or": [{"department": department}, {"branch": department}]})
+    scoped_query = {"$and": scope_clauses}
+    # Fetch only mapped students that also match the mentor's explicit org/year scope.
+    scoped_students = await db.students.find(scoped_query, {"_id": 1, "roll_number": 1}).to_list(length=100000)
+    valid_oids = [s["_id"] for s in scoped_students]
+    assigned_ids = [str(s["_id"]) for s in scoped_students]
+    assigned_rolls = [s["roll_number"].strip().upper() for s in scoped_students if s.get("roll_number")]
+    if not valid_oids:
+        return {"_id": {"$in": []}}, [], []
 
     student_filter = {"_id": {"$in": valid_oids}}
     return student_filter, assigned_ids, assigned_rolls
@@ -796,6 +823,11 @@ async def update_absence_comment(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied. You can only update absence notes for your assigned students.",
             )
+    elif user_role == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, doc.get("year"))
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in str(doc.get("section") or "").casefold():
+            raise HTTPException(status_code=403, detail="This attendance record is outside your department.")
 
     # Locking rule: If reason is already saved and non-empty, do not allow resubmission for mentors
     if doc.get("reason") and str(doc.get("reason")).strip():

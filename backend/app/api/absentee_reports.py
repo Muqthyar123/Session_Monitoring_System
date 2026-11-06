@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
-from app.core.dependencies import require_roles
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year, get_assigned_years, is_legacy_unscoped_admin, require_roles
 from app.db.mongodb import get_database
 from app.schemas.user import UserRole
 from app.services.mentor_mapping_service import get_mentor_assigned_student_ids
@@ -57,6 +57,29 @@ async def _scoped_absences(db, user: dict, year: Optional[str], section: Optiona
         if roll_number and roll_number.strip().upper() not in rolls and roll_number.strip() not in assigned_ids:
             raise HTTPException(403, "This student is outside your mentor assignments.")
         query_parts.append({"$or": [{"student_id": {"$in": assigned_ids}}, {"roll_number": {"$in": sorted(rolls)}}]})
+    elif user.get("role") == UserRole.ADMIN.value:
+        if is_legacy_unscoped_admin(user):
+            query = {"$and": query_parts}
+            rows = []
+            # The legacy first Admin remains global until explicitly assigned.
+            for collection, default_session in ((db.student_attendance, "SESSION_1"), (db.student_attendance_sessions, None)):
+                cursor = collection.find(query).sort([("date", -1), ("created_at", -1)])
+                for doc in await cursor.to_list(length=10000):
+                    doc["_id"] = str(doc["_id"])
+                    doc.setdefault("session", default_session)
+                    rows.append(doc)
+            return sorted(rows, key=lambda row: (row.get("date", ""), row.get("created_at", "")), reverse=True)
+        if year:
+            enforce_assigned_year(user, year)
+        years = get_assigned_years(user) or []
+        department = enforce_assigned_department(user, None)
+        if not years or not department:
+            raise HTTPException(403, "HOD account has no configured department/year scope.")
+        if section and department.casefold() not in section.casefold():
+            raise HTTPException(403, "Access denied for this department's section.")
+        query_parts.append({"year": {"$in": years}})
+        query_parts.append({"$or": [{"branch": department}, {"department": department},
+                                     {"section": {"$regex": f"(^|-)({re.escape(department)})(-|$)", "$options": "i"}}]})
     query = {"$and": query_parts}
     rows = []
     for collection, default_session in ((db.student_attendance, "SESSION_1"), (db.student_attendance_sessions, None)):

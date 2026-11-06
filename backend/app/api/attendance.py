@@ -1,10 +1,11 @@
 from typing import List, Optional
 from datetime import datetime, time, timedelta, timezone
 import csv, io
+import re
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, status, HTTPException
 from fastapi.responses import StreamingResponse
-from app.core.dependencies import get_current_user, require_roles
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year, get_assigned_years, get_current_user, require_roles
 from app.schemas.attendance import (
     AdminAlertResponse,
     AttendanceRecordResponse,
@@ -65,10 +66,18 @@ async def get_admin_alerts_api(
     search: Optional[str] = Query(None, max_length=100),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
-    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
 ):
     db = get_database()
     query = _alert_date_query({}, from_date, to_date)
+    if admin.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(admin, None)
+        years = get_assigned_years(admin) or []
+        department = enforce_assigned_department(admin, None)
+        scope = {"$and": [{"$or": [{"year": {"$in": years}}, {"year": {"$exists": False}}]},
+                          {"$or": [{"branch": department}, {"department": department},
+                                   {"section": {"$regex": f"(^|-)({re.escape(department)})(-|$)", "$options": "i"}}]}]}
+        query["$and"] = query.get("$and", []) + [scope]
 
     if status_filter and status_filter.upper() != "ALL":
         query["status"] = {"$regex": f"^{status_filter}$", "$options": "i"}
@@ -115,15 +124,23 @@ async def export_admin_alerts_api(
     category: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
     search: Optional[str] = Query(None, max_length=100),
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     db = get_database()
     query = _alert_date_query({}, from_date, to_date)
+    if admin.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(admin, None)
+        years = get_assigned_years(admin) or []
+        department = enforce_assigned_department(admin, None)
+        query["$and"] = query.get("$and", []) + [{"$and": [
+            {"$or": [{"year": {"$in": years}}, {"year": {"$exists": False}}]},
+            {"$or": [{"branch": department}, {"department": department}, {"section": {"$regex": f"(^|-)({re.escape(department)})(-|$)", "$options": "i"}}]},
+        ]}]
     if status_filter and status_filter.upper() != "ALL":
         query["status"] = {"$regex": f"^{status_filter}$", "$options": "i"}
     if search and search.strip():
         token = {"$regex": search.strip(), "$options": "i"}
-        query["$and"] = [{"$or": [{field: token} for field in ("reason", "section", "subject", "session", "reported_by", "title")]}]
+        query["$and"] = query.get("$and", []) + [{"$or": [{field: token} for field in ("reason", "section", "subject", "session", "reported_by", "title")]}]
     if category and category.upper() != "ALL":
         cat_upper = category.strip().upper()
         terms = {
@@ -172,6 +189,14 @@ async def acknowledge_alert_api(
     if not ObjectId.is_valid(alert_id):
         return ApiResponse(success=False, message="Invalid Alert ID.")
     db = get_database()
+    alert = await db.admin_alerts.find_one({"_id": ObjectId(alert_id)})
+    if not alert:
+        return ApiResponse(success=False, message="Alert not found.")
+    if admin.get("role") == UserRole.ADMIN.value:
+        years = get_assigned_years(admin) or []
+        department = enforce_assigned_department(admin, None)
+        if alert.get("year") not in years or department.casefold() not in str(alert.get("section", "")).casefold():
+            raise HTTPException(status_code=403, detail="Access denied for this alert.")
     await db.admin_alerts.update_one({"_id": ObjectId(alert_id)}, {"$set": {"status": "Acknowledged"}})
     return ApiResponse(success=True, message="Alert acknowledged successfully.")
 

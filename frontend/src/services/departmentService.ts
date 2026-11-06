@@ -8,6 +8,12 @@ export interface Department {
   coordinatorName?: string | null;
   coordinatorEmail?: string | null;
   isActive: boolean;
+  branchId?: string | null;
+  branchCode?: string | null;
+  branchName?: string | null;
+  academicYears?: string[];
+  /** Legacy FastAPI responses may expose the Mongo field without its alias. */
+  academic_years?: string[];
   studentCount: number;
   sectionCount: number;
   facultyCount: number;
@@ -22,6 +28,9 @@ export interface DepartmentCreate {
   coordinatorName?: string | null;
   coordinatorEmail?: string | null;
   isActive?: boolean;
+  branchId?: string;
+  branchCode?: string;
+  academicYears?: string[];
 }
 
 export interface DepartmentUpdate {

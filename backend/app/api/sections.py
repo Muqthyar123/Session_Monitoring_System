@@ -2,7 +2,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from app.core.dependencies import get_current_user, require_roles
+from app.core.dependencies import enforce_assigned_branch, enforce_assigned_department, enforce_assigned_year, get_assigned_department, get_assigned_years, get_current_user, require_roles
 from app.db.mongodb import get_database
 from app.schemas.common import ApiResponse
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
@@ -148,14 +148,24 @@ async def list_sections_api(
 
     user_role = current_user.get("role")
     assigned_branch = current_user.get("branch") or current_user.get("department")
-    if user_role == UserRole.ADMIN.value and assigned_branch:
-        branch = assigned_branch
+    years = None
+    if user_role in [UserRole.ADMIN.value, UserRole.MENTOR.value]:
+        enforce_assigned_branch(current_user, branch)
+        year = enforce_assigned_year(current_user, year)
+        branch = get_assigned_department(current_user)
+        years = get_assigned_years(current_user)
+    elif user_role in [UserRole.CR.value, UserRole.LR.value]:
+        query["section_name"] = current_user.get("section")
+        year = current_user.get("year")
+        branch = current_user.get("department") or current_user.get("branch")
     elif user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
         if assigned_branch:
             branch = assigned_branch
 
     if year and year != "ALL" and year != "all":
         query["year"] = year
+    elif years is not None:
+        query["year"] = {"$in": years}
     if branch and branch != "ALL" and branch != "all":
         b_clean = branch.strip().upper()
         query["$or"] = [
@@ -203,8 +213,10 @@ async def create_section_api(
     db = get_database()
     year_clean = data.year.strip()
     admin_branch = admin.get("branch") or admin.get("department")
-    if admin.get("role") == UserRole.ADMIN.value and admin_branch:
-        data.branch = admin_branch
+    if admin.get("role") == UserRole.ADMIN.value:
+        department = enforce_assigned_department(admin, None)
+        enforce_assigned_year(admin, year_clean)
+        data.branch = department
     branch_clean = (data.branch or data.department or "CSE").strip().upper()
     sec_name = data.section_name.strip().upper()
 
@@ -255,12 +267,18 @@ async def update_section_api(
     existing = await db.sections.find_one({"_id": ObjectId(section_id)})
     if not existing:
         raise HTTPException(status_code=404, detail="Section not found.")
+    if admin.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_department(admin, existing.get("department") or existing.get("branch"))
+        enforce_assigned_year(admin, existing.get("year"))
 
     now = datetime.now(timezone.utc)
     updates = {}
 
     target_year = data.year.strip() if data.year else existing.get("year")
     target_branch = (data.branch or data.department or existing.get("branch") or "CSE").strip().upper()
+    if admin.get("role") == UserRole.ADMIN.value:
+        target_branch = enforce_assigned_department(admin, None) or target_branch
+        enforce_assigned_year(admin, target_year)
     target_sec = data.section_name.strip().upper() if data.section_name else existing.get("section_name")
 
     # Check duplicate uniqueness on update
@@ -314,6 +332,9 @@ async def delete_section_api(
     sec = await db.sections.find_one({"_id": ObjectId(section_id)})
     if not sec:
         raise HTTPException(status_code=404, detail="Section not found.")
+    if admin.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_department(admin, sec.get("department") or sec.get("branch"))
+        enforce_assigned_year(admin, sec.get("year"))
 
     sec_name = sec.get("section_name")
     year = sec.get("year")

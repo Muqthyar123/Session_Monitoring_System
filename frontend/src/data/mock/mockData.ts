@@ -12,8 +12,12 @@ export interface AuthUser {
   year?: string;
   section?: string;
   department?: string;
+  departmentId?: string;
+  departmentCode?: string;
   branch?: string;
   branchId?: string;
+  branchCode?: string;
+  academicYears?: string[];
   mentorId?: string;
 }
 
@@ -148,6 +152,11 @@ export interface HODItem {
   branchCode?: string | null;
   branchName?: string | null;
   branchId?: string | null;
+  departmentCode?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  academicYears?: string[];
+  academic_years?: string[];
   role: string;
   designation?: string;
   isActive: boolean;

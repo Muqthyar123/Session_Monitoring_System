@@ -442,31 +442,7 @@ async def create_branch(
     res = await db.branches.insert_one(doc)
     doc["_id"] = str(res.inserted_id)
 
-    # Sync with departments collection for backward compatibility
-    dept_existing = await db.departments.find_one({"code": code_clean})
-    if not dept_existing:
-        await db.departments.insert_one({
-            "code": code_clean,
-            "name": data.name.strip(),
-            "coordinator_id": hod_id,
-            "coordinator_name": hod_name,
-            "coordinator_email": hod_email,
-            "is_active": data.is_active,
-            "created_at": now,
-            "updated_at": now,
-        })
-    else:
-        await db.departments.update_one(
-            {"code": code_clean},
-            {"$set": {
-                "name": data.name.strip(),
-                "coordinator_id": hod_id,
-                "coordinator_name": hod_name,
-                "coordinator_email": hod_email,
-                "is_active": data.is_active,
-                "updated_at": now,
-            }}
-        )
+    # Branch and department are distinct entities; departments are created explicitly.
 
     enriched = await _enrich_branch_details(doc)
     return ApiResponse(success=True, data=BranchResponse(**enriched), message=f"Branch '{code_clean}' created successfully.")
@@ -601,15 +577,18 @@ async def delete_branch(
         "role": UserRole.ADMIN.value,
         "$or": [{"branch": code}, {"department": code}]
     })
+    department_count = await db.departments.count_documents({
+        "$or": [{"branch_id": str(doc_id)}, {"branch_code": code}, {"code": code}]
+    })
 
-    total_associations = stu_count + sec_count + mentor_count + hod_count
+    total_associations = stu_count + sec_count + mentor_count + hod_count + department_count
 
     if total_associations > 0 and not force:
         raise HTTPException(
             status_code=400,
             detail=(
                 f"Cannot delete branch '{code}': It has {stu_count} students, {sec_count} sections, "
-                f"{mentor_count} mentors, and {hod_count} HOD/Admin accounts. "
+                f"{mentor_count} mentors, {hod_count} HOD/Admin accounts, and {department_count} departments. "
                 "Confirm deletion with force=true to proceed with deactivation/removal."
             ),
         )
@@ -621,8 +600,8 @@ async def delete_branch(
             {"_id": doc_id},
             {"$set": {"is_active": False, "updated_at": datetime.now(timezone.utc)}}
         )
-        await db.departments.update_one(
-            {"code": code},
+        await db.departments.update_many(
+            {"$or": [{"branch_id": str(doc_id)}, {"branch_code": code}, {"code": code}]},
             {"$set": {"is_active": False, "updated_at": datetime.now(timezone.utc)}}
         )
         return ApiResponse(
@@ -632,7 +611,7 @@ async def delete_branch(
         )
 
     await db.branches.delete_one({"_id": doc_id})
-    await db.departments.delete_one({"code": code})
+    await db.departments.delete_many({"$or": [{"branch_id": str(doc_id)}, {"branch_code": code}, {"code": code}]})
     return ApiResponse(
         success=True,
         data={"id": str(doc_id), "code": code, "action": "DELETED"},
@@ -688,20 +667,29 @@ async def list_hods(
     # Cache branches for fast name resolution
     branches = await db.branches.find({}).to_list(length=200)
     branch_map = {b.get("code", "").upper(): b for b in branches}
+    departments = await db.departments.find({}).to_list(length=500)
+    department_map = {d.get("code", "").upper(): d for d in departments}
 
     async for u in cursor:
         u_id = str(u["_id"])
         b_code = (u.get("branch") or u.get("department") or "").upper()
         b_info = branch_map.get(b_code, {})
         b_name = b_info.get("name") or b_code
+        d_code = (u.get("department_code") or u.get("department") or b_code).upper()
+        d_info = department_map.get(d_code, {})
 
-        # Count branch students & mentors
-        stu_count = await db.students.count_documents({
-            "$or": [{"branch": b_code}, {"department": b_code}]
-        })
+        # Counts reflect this HOD's department/year assignment.
+        assigned_years = u.get("academic_years") or u.get("academicYears") or ([u["year"]] if u.get("year") else [])
+        scope_clauses = [{"$or": [{"branch": d_code}, {"department": d_code}]}]
+        if assigned_years:
+            scope_clauses.append({"year": {"$in": assigned_years}})
+        stu_count = await db.students.count_documents({"$and": scope_clauses})
         mentor_count = await db.users.count_documents({
             "role": UserRole.MENTOR.value,
-            "$or": [{"branch": b_code}, {"department": b_code}]
+            "$and": [
+                {"$or": [{"branch": b_code}, {"department": d_code}]},
+                {"$or": [{"academic_years": {"$in": assigned_years}}, {"year": {"$in": assigned_years}}]} if assigned_years else {},
+            ],
         })
 
         hods.append(HODResponse(
@@ -712,6 +700,10 @@ async def list_hods(
             branch_code=b_code,
             branch_name=b_name,
             branch_id=str(b_info.get("_id")) if b_info.get("_id") else None,
+            department_code=d_code,
+            department_name=d_info.get("name") or d_code,
+            department_id=u.get("department_id"),
+            academic_years=u.get("academic_years") or u.get("academicYears") or ([u["year"]] if u.get("year") else []),
             role="ADMIN",
             designation=u.get("designation") or "HOD",
             is_active=u.get("is_active", True),
@@ -731,32 +723,35 @@ async def create_hod(
 ):
     db = get_database()
     email_clean = data.email.strip().lower()
-    branch_code = data.branch_code.strip().upper()
+    branch_code = (data.branch_code or "").strip().upper()
+    department_code = data.department_code.strip().upper()
 
     # 1. Verify branch exists
-    branch_doc = await db.branches.find_one({
-        "$or": [{"code": branch_code}, {"code": {"$regex": f"^{re.escape(branch_code)}$", "$options": "i"}}]
-    })
+    dept_doc = await db.departments.find_one({"code": department_code})
+    if not dept_doc:
+        raise HTTPException(status_code=404, detail=f"Department '{department_code}' does not exist.")
+    branch_code = branch_code or (dept_doc.get("branch_code") or department_code).upper()
+    branch_doc = await db.branches.find_one({"code": branch_code})
+    if not branch_doc and dept_doc.get("branch_id"):
+        branch_doc = await db.branches.find_one({"_id": ObjectId(dept_doc["branch_id"])})
     if not branch_doc:
-        raise HTTPException(status_code=404, detail=f"Branch '{branch_code}' does not exist. Please create the branch first.")
+        raise HTTPException(status_code=404, detail=f"Branch '{branch_code}' does not exist.")
+    if dept_doc.get("branch_id") and str(dept_doc.get("branch_id")) != str(branch_doc["_id"]):
+        raise HTTPException(status_code=400, detail="The selected department does not belong to the selected branch.")
+    if dept_doc.get("branch_code") and dept_doc.get("branch_code", "").casefold() != branch_code.casefold():
+        raise HTTPException(status_code=400, detail="The selected department does not belong to the selected branch.")
+    configured_years = dept_doc.get("academic_years") or ["1st Year", "2nd Year", "3rd Year", "4th Year"]
+    assigned_years = list(dict.fromkeys(y.strip() for y in data.academic_years if y.strip()))
+    if not assigned_years:
+        raise HTTPException(status_code=400, detail="Assign at least one academic year to the HOD account.")
+    invalid_years = set(assigned_years) - set(configured_years)
+    if invalid_years:
+        raise HTTPException(status_code=400, detail=f"Academic years are not configured for {department_code}: {', '.join(sorted(invalid_years))}.")
 
     # 2. Check for duplicate email
     existing_user = await db.users.find_one({"email": email_clean})
     if existing_user:
         raise HTTPException(status_code=400, detail=f"An account with email '{email_clean}' already exists.")
-
-    # 3. Prevent duplicate active HOD assignment for the branch
-    existing_hod = await db.users.find_one({
-        "role": UserRole.ADMIN.value,
-        "is_active": True,
-        "$or": [{"branch": branch_code}, {"department": branch_code}],
-        "designation": {"$regex": "HOD|HEAD", "$options": "i"},
-    })
-    if existing_hod:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Branch '{branch_code}' already has an active HOD ({existing_hod.get('name')}). Please deactivate or reassign the existing HOD first.",
-        )
 
     # 4. Hash password
     initial_pwd = data.password.strip() if data.password else f"{branch_code.lower()}@hod123"
@@ -770,8 +765,12 @@ async def create_hod(
         "role": UserRole.ADMIN.value,
         "designation": "HOD",
         "branch": branch_code,
-        "department": branch_code,
+        "department": department_code,
+        "department_code": department_code,
+        "department_id": str(dept_doc["_id"]),
         "branch_id": str(branch_doc["_id"]),
+        "branch_code": branch_code,
+        "academic_years": assigned_years,
         "phone": data.phone.strip() if data.phone else None,
         "is_active": data.is_active,
         "created_at": now,
@@ -780,28 +779,7 @@ async def create_hod(
     res = await db.users.insert_one(user_doc)
     user_id = str(res.inserted_id)
 
-    # 5. Update branch with assigned HOD
-    await db.branches.update_one(
-        {"_id": branch_doc["_id"]},
-        {"$set": {
-            "hod_id": user_id,
-            "hod_name": data.name.strip(),
-            "hod_email": email_clean,
-            "hod_phone": data.phone.strip() if data.phone else None,
-            "updated_at": now,
-        }}
-    )
-
-    # 6. Backward-compatible sync with departments
-    await db.departments.update_one(
-        {"code": branch_code},
-        {"$set": {
-            "coordinator_id": user_id,
-            "coordinator_name": data.name.strip(),
-            "coordinator_email": email_clean,
-            "updated_at": now,
-        }}
-    )
+    # Do not store a single HOD pointer on a department/branch: assignments live on each user.
 
     # 7. Audit log
     await db.audit_logs.insert_one({
@@ -820,6 +798,10 @@ async def create_hod(
             email=email_clean,
             phone=data.phone.strip() if data.phone else None,
             branch_code=branch_code,
+            department_code=department_code,
+            department_name=dept_doc.get("name", department_code),
+            department_id=str(dept_doc["_id"]),
+            academic_years=assigned_years,
             branch_name=branch_doc.get("name", branch_code),
             branch_id=str(branch_doc["_id"]),
             role="ADMIN",
@@ -846,7 +828,7 @@ async def get_hod_details(
     if not u:
         raise HTTPException(status_code=404, detail="HOD account not found.")
 
-    b_code = (u.get("branch") or u.get("department") or "").upper()
+    b_code = (u.get("branch_code") or u.get("branch") or "").upper()
     b_doc = await db.branches.find_one({"code": b_code}) if b_code else None
 
     stu_count = await db.students.count_documents({"$or": [{"branch": b_code}, {"department": b_code}]})
@@ -862,6 +844,9 @@ async def get_hod_details(
             branch_code=b_code,
             branch_name=b_doc.get("name") if b_doc else b_code,
             branch_id=str(b_doc["_id"]) if b_doc else None,
+            department_code=u.get("department_code") or u.get("department") or b_code,
+            department_id=u.get("department_id"),
+            academic_years=u.get("academic_years") or u.get("academicYears") or ([u["year"]] if u.get("year") else []),
             role="ADMIN",
             designation=u.get("designation") or "HOD",
             is_active=u.get("is_active", True),
@@ -891,6 +876,28 @@ async def update_hod(
     updates: Dict[str, Any] = {"updated_at": now}
     old_branch = (u.get("branch") or u.get("department") or "").upper()
     new_branch = data.branch_code.strip().upper() if data.branch_code else old_branch
+    new_department = (data.department_code or u.get("department_code") or u.get("department") or old_branch).strip().upper()
+    dept_doc = await db.departments.find_one({"code": new_department})
+    if not dept_doc:
+        raise HTTPException(status_code=404, detail=f"Department '{new_department}' does not exist.")
+    new_branch_doc = await db.branches.find_one({"code": new_branch})
+    if not new_branch_doc:
+        raise HTTPException(status_code=404, detail=f"Target branch '{new_branch}' does not exist.")
+    if dept_doc.get("branch_id") and str(dept_doc.get("branch_id")) != str(new_branch_doc["_id"]):
+        raise HTTPException(status_code=400, detail="The selected department does not belong to the selected branch.")
+    if dept_doc.get("branch_code") and dept_doc.get("branch_code", "").casefold() != new_branch.casefold():
+        raise HTTPException(status_code=400, detail="The selected department does not belong to the selected branch.")
+    current_years = u.get("academic_years") or u.get("academicYears") or ([u["year"]] if u.get("year") else [])
+    years = list(dict.fromkeys(y.strip() for y in (data.academic_years if data.academic_years is not None else current_years) if y.strip()))
+    if not years:
+        raise HTTPException(status_code=400, detail="A HOD account must have at least one academic year assigned.")
+    configured_years = dept_doc.get("academic_years") or ["1st Year", "2nd Year", "3rd Year", "4th Year"]
+    if set(years) - set(configured_years):
+        raise HTTPException(status_code=400, detail="One or more academic years are not configured for this department.")
+    updates.update({"department": new_department, "department_code": new_department,
+                    "department_id": str(dept_doc["_id"]), "academic_years": years,
+                    "branch": new_branch, "branch_code": new_branch,
+                    "branch_id": str(new_branch_doc["_id"])})
 
     if data.name is not None:
         updates["name"] = data.name.strip()
@@ -919,22 +926,8 @@ async def update_hod(
         if not new_b_doc:
             raise HTTPException(status_code=404, detail=f"Target branch '{new_branch}' does not exist.")
 
-        # Check if new branch already has another active HOD
-        another_hod = await db.users.find_one({
-            "_id": {"$ne": doc_id},
-            "role": UserRole.ADMIN.value,
-            "is_active": True,
-            "$or": [{"branch": new_branch}, {"department": new_branch}],
-            "designation": {"$regex": "HOD|HEAD", "$options": "i"},
-        })
-        if another_hod:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Branch '{new_branch}' is already assigned to active HOD '{another_hod.get('name')}'.",
-            )
-
         updates["branch"] = new_branch
-        updates["department"] = new_branch
+        updates["branch_code"] = new_branch
         updates["branch_id"] = str(new_b_doc["_id"])
 
         # Clear old branch HOD assignment
@@ -983,6 +976,10 @@ async def update_hod(
             branch_code=new_branch,
             branch_name=b_doc.get("name") if b_doc else new_branch,
             branch_id=str(b_doc["_id"]) if b_doc else None,
+            department_code=new_department,
+            department_name=dept_doc.get("name", new_department),
+            department_id=str(dept_doc["_id"]),
+            academic_years=years,
             role="ADMIN",
             designation="HOD",
             is_active=updated_user.get("is_active", True),

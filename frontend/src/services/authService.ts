@@ -16,8 +16,12 @@ export interface LoginResponsePayload {
     section?: string;
     year?: string;
     department?: string;
+    departmentId?: string;
+    departmentCode?: string;
     branch?: string;
     branchId?: string;
+    branchCode?: string;
+    academicYears?: string[];
     roll_number?: string;
   };
 }
@@ -31,8 +35,12 @@ function toAuthUser(user: LoginResponsePayload["user"]): AuthUser {
     ...(user.section !== undefined ? { section: user.section } : {}),
     ...(user.year !== undefined ? { year: user.year } : {}),
     ...(user.department !== undefined ? { department: user.department } : {}),
+    ...(user.departmentId !== undefined ? { departmentId: user.departmentId } : {}),
+    ...(user.departmentCode !== undefined ? { departmentCode: user.departmentCode } : {}),
     ...(user.branch !== undefined ? { branch: user.branch } : {}),
     ...(user.branchId !== undefined ? { branchId: user.branchId } : {}),
+    ...(user.branchCode !== undefined ? { branchCode: user.branchCode } : {}),
+    ...(user.academicYears !== undefined ? { academicYears: user.academicYears } : {}),
   };
 }
 

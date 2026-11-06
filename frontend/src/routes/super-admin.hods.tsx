@@ -60,6 +60,7 @@ import {
   getBranches,
 } from "@/services/superAdminService";
 import type { HODItem } from "@/data/mock/mockData";
+import { getDepartments, type Department } from "@/services/departmentService";
 
 export const Route = createFileRoute("/super-admin/hods")({
   head: () => ({
@@ -74,6 +75,15 @@ export const Route = createFileRoute("/super-admin/hods")({
 function SuperAdminHodsPage() {
   const { data: hods, loading, error, reload } = useAsyncData(() => getHods(), []);
   const { data: branches } = useAsyncData(() => getBranches(), []);
+  const { data: departments } = useAsyncData(() => getDepartments(), []);
+  const departmentYears = (code: string) => {
+    const department = departments?.find((d) => d.code.trim().toLowerCase() === code.trim().toLowerCase());
+    const configured = department?.academicYears ?? department?.academic_years;
+    // Older department documents may have no year catalog saved yet. Keep the
+    // selector usable with the system's standard years until it is configured.
+    return configured?.length ? configured : ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+  };
+  const toggleYear = (years: string[], year: string) => years.includes(year) ? years.filter((y) => y !== year) : [...years, year];
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>("ALL");
@@ -85,6 +95,8 @@ function SuperAdminHodsPage() {
     email: "",
     phone: "",
     branchCode: "",
+    departmentCode: "",
+    academicYears: [] as string[],
     password: "",
   });
   const [showCreatePassword, setShowCreatePassword] = useState(false);
@@ -98,6 +110,8 @@ function SuperAdminHodsPage() {
     email: "",
     phone: "",
     branchCode: "",
+    departmentCode: "",
+    academicYears: [] as string[],
     isActive: true,
   });
   const [savingEdit, setSavingEdit] = useState(false);
@@ -131,12 +145,15 @@ function SuperAdminHodsPage() {
 
   // Open Create
   const handleOpenCreate = () => {
-    const defaultBranch = branches && branches.length > 0 ? branches[0]?.code ?? "" : "";
+    const defaultDepartment = departments?.[0];
+    const defaultBranch = defaultDepartment?.branchCode || branches?.[0]?.code || "";
     setCreateFormData({
       name: "",
       email: "",
       phone: "",
       branchCode: defaultBranch,
+      departmentCode: defaultDepartment?.code || "",
+      academicYears: [],
       password: "",
     });
     setShowCreatePassword(false);
@@ -146,12 +163,12 @@ function SuperAdminHodsPage() {
   // Submit Create
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createFormData.name.trim() || !createFormData.email.trim() || !createFormData.branchCode) {
-      toast.error("Name, email, and branch are required");
+    if (!createFormData.name.trim() || !createFormData.email.trim() || !createFormData.departmentCode || !createFormData.academicYears.length) {
+      toast.error("Name, email, department, and at least one academic year are required");
       return;
     }
-    if (!createFormData.password || createFormData.password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    if (!createFormData.password || createFormData.password.length < 8) {
+      toast.error("Password must be at least 8 characters");
       return;
     }
 
@@ -163,6 +180,9 @@ function SuperAdminHodsPage() {
         email: createFormData.email,
         phone: createFormData.phone || undefined,
         branchCode: createFormData.branchCode,
+        departmentCode: createFormData.departmentCode,
+        departmentId: departments?.find((d) => d.code === createFormData.departmentCode)?.id,
+        academicYears: createFormData.academicYears,
         branchId: matchedBranch?.id || undefined,
         password: createFormData.password,
         isActive: true,
@@ -185,6 +205,8 @@ function SuperAdminHodsPage() {
       email: hod.email,
       phone: hod.phone || "",
       branchCode: hod.branchCode || "",
+      departmentCode: hod.departmentCode || "",
+      academicYears: hod.academicYears || [],
       isActive: hod.isActive,
     });
     setEditModalOpen(true);
@@ -194,8 +216,8 @@ function SuperAdminHodsPage() {
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingHod) return;
-    if (!editFormData.name.trim() || !editFormData.email.trim() || !editFormData.branchCode) {
-      toast.error("Name, email, and branch are required");
+    if (!editFormData.name.trim() || !editFormData.email.trim() || !editFormData.departmentCode || !editFormData.academicYears.length) {
+      toast.error("Name, email, department, and at least one academic year are required");
       return;
     }
 
@@ -207,6 +229,9 @@ function SuperAdminHodsPage() {
         email: editFormData.email,
         phone: editFormData.phone || undefined,
         branchCode: editFormData.branchCode,
+        departmentCode: editFormData.departmentCode,
+        departmentId: departments?.find((d) => d.code === editFormData.departmentCode)?.id,
+        academicYears: editFormData.academicYears,
         branchId: matchedBranch?.id || undefined,
         isActive: editFormData.isActive,
       });
@@ -232,8 +257,8 @@ function SuperAdminHodsPage() {
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetResetHod) return;
-    if (!newPassword || newPassword.length < 6) {
-      toast.error("New password must be at least 6 characters");
+    if (!newPassword || newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters");
       return;
     }
 
@@ -338,7 +363,7 @@ function SuperAdminHodsPage() {
                     <tr className="border-b border-border bg-muted/40 text-muted-foreground uppercase tracking-wider text-[11px] font-semibold">
                       <th className="py-3 px-4">HOD Name</th>
                       <th className="py-3 px-4">Email / Login ID</th>
-                      <th className="py-3 px-4">Assigned Branch</th>
+                      <th className="py-3 px-4">Department / Years</th>
                       <th className="py-3 px-4">Phone</th>
                       <th className="py-3 px-4 text-center">Status</th>
                       <th className="py-3 px-4 text-right">Actions</th>
@@ -390,14 +415,15 @@ function SuperAdminHodsPage() {
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="font-mono text-indigo-600 border-indigo-200 bg-indigo-50/50">
-                                {hod.branchCode || "—"}
+                                {hod.departmentCode || hod.branchCode || "—"}
                               </Badge>
-                              {hod.branchName && (
+                              {hod.departmentName && (
                                 <span className="text-muted-foreground text-xs truncate max-w-[160px]">
-                                  {hod.branchName}
+                                  {hod.departmentName}
                                 </span>
                               )}
                             </div>
+                            <div className="mt-1 text-[11px] text-muted-foreground">{(hod.academicYears || []).join(", ") || "No years assigned"}</div>
                           </td>
                           <td className="py-3.5 px-4 text-muted-foreground">
                             {hod.phone ? (
@@ -480,6 +506,23 @@ function SuperAdminHodsPage() {
 
             <form onSubmit={handleCreateSubmit} className="space-y-3.5 pt-2">
               <div className="space-y-1">
+                <Label className="text-xs font-semibold">Department *</Label>
+                <Select value={createFormData.departmentCode} onValueChange={(code) => {
+                  const dept = departments?.find((d) => d.code === code);
+                  setCreateFormData({ ...createFormData, departmentCode: code, branchCode: dept?.branchCode || branches?.find((b) => b.id === dept?.branchId)?.code || "", academicYears: [] });
+                }}>
+                  <SelectTrigger className="text-xs"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                  <SelectContent>{(departments || []).map((d) => <SelectItem key={d.id} value={d.code} className="text-xs">{d.code} — {d.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Assigned Academic Years *</Label>
+                <div className="flex flex-wrap gap-3 rounded-md border p-3">
+                  {departmentYears(createFormData.departmentCode).map((year) => <label key={year} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={createFormData.academicYears.includes(year)} onChange={() => setCreateFormData({ ...createFormData, academicYears: toggleYear(createFormData.academicYears, year) })} />{year}</label>)}
+                  {!departmentYears(createFormData.departmentCode).length && <span className="text-xs text-muted-foreground">Choose a department with configured years.</span>}
+                </div>
+              </div>
+              <div className="space-y-1">
                 <Label htmlFor="hod-branch" className="text-xs font-semibold">
                   Branch Assignment *
                 </Label>
@@ -552,7 +595,7 @@ function SuperAdminHodsPage() {
                     type={showCreatePassword ? "text" : "password"}
                     value={createFormData.password}
                     onChange={(e) => setCreateFormData({ ...createFormData, password: e.target.value })}
-                    placeholder="Minimum 6 characters"
+                    placeholder="Minimum 8 characters"
                     className="text-xs pr-9"
                     required
                   />
@@ -602,6 +645,23 @@ function SuperAdminHodsPage() {
             </DialogHeader>
 
             <form onSubmit={handleEditSubmit} className="space-y-3.5 pt-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Department *</Label>
+                <Select value={editFormData.departmentCode} onValueChange={(code) => {
+                  const dept = departments?.find((d) => d.code === code);
+                  setEditFormData({ ...editFormData, departmentCode: code, branchCode: dept?.branchCode || branches?.find((b) => b.id === dept?.branchId)?.code || "", academicYears: [] });
+                }}>
+                  <SelectTrigger className="text-xs"><SelectValue placeholder="Select Department" /></SelectTrigger>
+                  <SelectContent>{(departments || []).map((d) => <SelectItem key={d.id} value={d.code} className="text-xs">{d.code} — {d.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Assigned Academic Years *</Label>
+                <div className="flex flex-wrap gap-3 rounded-md border p-3">
+                  {departmentYears(editFormData.departmentCode).map((year) => <label key={year} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={editFormData.academicYears.includes(year)} onChange={() => setEditFormData({ ...editFormData, academicYears: toggleYear(editFormData.academicYears, year) })} />{year}</label>)}
+                  {!departmentYears(editFormData.departmentCode).length && <span className="text-xs text-muted-foreground">Choose a department with configured years.</span>}
+                </div>
+              </div>
               <div className="space-y-1">
                 <Label htmlFor="edit-hod-branch" className="text-xs font-semibold">
                   Branch Assignment *
@@ -711,7 +771,7 @@ function SuperAdminHodsPage() {
                     type={showNewPassword ? "text" : "password"}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter at least 6 characters"
+                    placeholder="Enter at least 8 characters"
                     className="text-xs pr-9"
                     required
                   />

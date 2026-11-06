@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status, HTTPException
-from app.core.dependencies import require_roles
+from app.core.dependencies import enforce_assigned_year, require_roles
 from app.schemas.common import ApiResponse
 from app.schemas.mentor import (
     MentorCommentRequest,
@@ -61,6 +61,8 @@ async def get_mentor_students_sections_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
     """Retrieve sections belonging to a year scoped by mentor assignments."""
+    if current_user.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, year)
     data = await get_mentor_sections_summary(year, current_user)
     return ApiResponse(success=True, data=data)
 
@@ -73,6 +75,8 @@ async def get_mentor_students_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
     """Retrieve students filtered by year and section, scoped by mentor assignments and enriched with planned absences."""
+    if year and current_user.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, year)
     students = await get_mentor_students_list(year=year, section=section, search=search, current_user=current_user)
     return ApiResponse(success=True, data=students)
 
@@ -105,6 +109,8 @@ async def get_mentor_absentees_sections_api(
     year: str = Query(...),
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
+    if current_user.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, year)
     """Retrieve sections belonging to a year with today's absentee counts scoped by mentor assignments."""
     data = await get_mentor_absentee_sections_summary(year, current_user)
     return ApiResponse(success=True, data=data)
@@ -118,6 +124,8 @@ async def get_mentor_absentees_api(
     current_user: dict = Depends(require_roles([UserRole.MENTOR, UserRole.ADMIN])),
 ):
     """Retrieve today's absentee students for a specific year and section, scoped by mentor assignments."""
+    if current_user.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, year)
     records = await get_mentor_scoped_absentees(year, section, date, current_user=current_user)
     return ApiResponse(success=True, data=records)
 
@@ -158,5 +166,6 @@ async def update_absence_reason_put_api(
         current_user.get("name", "Mentor"),
         actor_id=str(current_user.get("_id", "")),
         actor_role=user_role,
+        current_user=current_user,
     )
     return ApiResponse(success=True, data=updated, message="Absence reason saved successfully.")

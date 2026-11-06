@@ -298,10 +298,13 @@ def build_students_query(
     section: Optional[str] = None,
     search: Optional[str] = None,
     branch: Optional[str] = None,
+    years: Optional[List[str]] = None,
 ) -> dict:
     clauses: List[dict] = []
     if year and year.upper() != "ALL":
         clauses.append(build_year_filter_clause(year))
+    elif years is not None:
+        clauses.append({"year": {"$in": years}})
     if branch and branch.upper() != "ALL":
         branch_value = re.escape(branch.strip())
         clauses.append({"$or": [
@@ -333,9 +336,10 @@ async def get_students(
     branch: Optional[str] = None,
     skip: int = 0,
     limit: int = 10000,
+    years: Optional[List[str]] = None,
 ) -> List[StudentResponse]:
     db = get_database()
-    query = build_students_query(year, section, search, branch)
+    query = build_students_query(year, section, search, branch, years)
     cursor = db.students.find(query).skip(max(skip, 0)).limit(min(max(limit, 1), 10000)).sort("roll_number", 1)
     students = []
     async for s in cursor:
@@ -354,15 +358,17 @@ async def get_students_page(
     *, year: Optional[str] = None, section: Optional[str] = None,
     search: Optional[str] = None, branch: Optional[str] = None,
     page: int = 1, page_size: int = 25,
+    years: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     db = get_database()
     safe_page = max(page, 1)
     safe_size = min(max(page_size, 1), 200)
-    query = build_students_query(year, section, search, branch)
+    query = build_students_query(year, section, search, branch, years)
     total = await db.students.count_documents(query)
     items = await get_students(
         year=year, section=section, search=search, branch=branch,
         skip=(safe_page - 1) * safe_size, limit=safe_size,
+        years=years,
     )
     return {
         "items": items,

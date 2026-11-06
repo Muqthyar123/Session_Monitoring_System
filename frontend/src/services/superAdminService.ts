@@ -120,6 +120,13 @@ export async function deleteBranch(
 // =====================================================================
 // HOD Management
 // =====================================================================
+function normalizeHodYears(hod: HODItem): HODItem {
+  return {
+    ...hod,
+    academicYears: hod.academicYears ?? hod.academic_years ?? [],
+  };
+}
+
 export async function getHods(params?: {
   search?: string;
   branch_code?: string;
@@ -129,11 +136,12 @@ export async function getHods(params?: {
   if (params?.branch_code) query.append("branch_code", params.branch_code);
 
   const qs = query.toString();
-  return request<HODItem[]>(`/super-admin/hods${qs ? `?${qs}` : ""}`);
+  const hods = await request<HODItem[]>(`/super-admin/hods${qs ? `?${qs}` : ""}`);
+  return hods.map(normalizeHodYears);
 }
 
 export async function getHod(hodId: string): Promise<HODItem> {
-  return request<HODItem>(`/super-admin/hods/${hodId}`);
+  return normalizeHodYears(await request<HODItem>(`/super-admin/hods/${hodId}`));
 }
 
 export async function createHod(data: {
@@ -142,6 +150,9 @@ export async function createHod(data: {
   phone?: string | undefined;
   branchCode: string;
   branchId?: string | undefined;
+  departmentCode: string;
+  departmentId?: string;
+  academicYears: string[];
   password?: string | undefined;
   isActive?: boolean | undefined;
 }): Promise<HODItem> {
@@ -159,6 +170,9 @@ export async function updateHod(
     phone?: string | undefined;
     branchCode?: string | undefined;
     branchId?: string | undefined;
+    departmentCode?: string;
+    departmentId?: string;
+    academicYears?: string[];
     password?: string | undefined;
     isActive?: boolean | undefined;
   }

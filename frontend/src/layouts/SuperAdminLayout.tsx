@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Building2,
   GitBranch,
+  Network,
   UserCheck,
   Menu,
   ShieldAlert,
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { to: "/super-admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/super-admin/sites", label: "Sites", icon: Building2 },
   { to: "/super-admin/branches", label: "Branches Management", icon: GitBranch },
+  { to: "/super-admin/departments", label: "Departments", icon: Network },
   { to: "/super-admin/hods", label: "HOD Management", icon: UserCheck },
 ] as const;
 

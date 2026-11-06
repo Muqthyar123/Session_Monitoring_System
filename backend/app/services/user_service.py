@@ -55,7 +55,10 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
     now = datetime.now(timezone.utc)
     hashed_pwd = hash_password(initial_password)
 
-    branch_code = (data.branch or data.department or "").strip().upper() if (data.branch or data.department) else None
+    branch_value = data.branch or data.branch_code or data.department or data.department_code
+    department_value = data.department or data.department_code or branch_value
+    branch_code = branch_value.strip().upper() if branch_value else None
+    department_code = department_value.strip().upper() if department_value else None
 
     user_doc = {
         "name": data.name.strip(),
@@ -67,11 +70,15 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
         "employee_id": data.mentor_id.strip().upper() if data.role == UserRole.MENTOR and data.mentor_id else None,
         "phone": data.phone.strip() if data.phone else None,
         "year": data.year.strip() if data.year else None,
+        "academic_years": list(dict.fromkeys(y.strip() for y in (data.academic_years or []) if y.strip())),
         "section": data.section.strip() if data.section else None,
         "designation": data.designation.strip() if data.designation else None,
-        "department": branch_code,
+        "department": department_code,
+        "department_id": data.department_id.strip() if data.department_id else None,
+        "department_code": department_code,
         "branch": branch_code,
         "branch_id": data.branch_id.strip() if data.branch_id else None,
+        "branch_code": branch_code,
         "profile": data.profile.strip() if data.profile else None,
         "is_active": data.is_active,
         "created_at": now,
@@ -129,6 +136,7 @@ async def get_users(
     crlr_only: bool = False,
     section: Optional[str] = None,
     year: Optional[str] = None,
+    years: Optional[List[str]] = None,
     branch: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = 0,
@@ -146,6 +154,8 @@ async def get_users(
         and_clauses.append({"section": section})
     if year:
         and_clauses.append({"year": year})
+    elif years is not None:
+        and_clauses.append({"$or": [{"year": {"$in": years}}, {"academic_years": {"$in": years}}]})
     if branch and branch.upper() != "ALL":
         b_clean = re.escape(branch.strip())
         and_clauses.append({
@@ -249,16 +259,23 @@ async def update_user(
         updates["phone"] = data.phone.strip() if data.phone else None
     if data.year is not None:
         updates["year"] = data.year.strip() if data.year else None
+    if data.academic_years is not None:
+        updates["academic_years"] = list(dict.fromkeys(y.strip() for y in data.academic_years if y.strip()))
     if data.section is not None:
         updates["section"] = data.section.strip() if data.section else None
     if data.designation is not None:
         updates["designation"] = data.designation.strip() if data.designation else None
     if data.department is not None:
         updates["department"] = data.department.strip() if data.department else None
+    if data.department_code is not None:
+        updates["department_code"] = data.department_code.strip().upper() if data.department_code else None
+    if data.department_id is not None:
+        updates["department_id"] = data.department_id.strip() if data.department_id else None
     if data.branch is not None:
         updates["branch"] = data.branch.strip().upper() if data.branch else None
-        if not data.department:
-            updates["department"] = updates["branch"]
+        updates["branch_code"] = updates["branch"]
+    if data.branch_code is not None:
+        updates["branch_code"] = data.branch_code.strip().upper() if data.branch_code else None
     if data.branch_id is not None:
         updates["branch_id"] = data.branch_id.strip() if data.branch_id else None
     if data.profile is not None:

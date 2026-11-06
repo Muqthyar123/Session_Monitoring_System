@@ -18,11 +18,14 @@ class AuthUserInfo(BaseModel):
     employee_id: Optional[str] = Field(None, alias="employeeId")
     phone: Optional[str] = None
     department: Optional[str] = None
+    department_id: Optional[str] = Field(None, alias="departmentId")
+    department_code: Optional[str] = Field(None, alias="departmentCode")
     branch: Optional[str] = None
     branch_id: Optional[str] = Field(None, alias="branchId")
     designation: Optional[str] = None
     section: Optional[str] = None
     year: Optional[str] = None
+    academic_years: Optional[list[str]] = Field(default_factory=list, alias="academicYears")
     roll_number: Optional[str] = Field(None, alias="rollNumber")
 
     model_config = ConfigDict(populate_by_name=True)

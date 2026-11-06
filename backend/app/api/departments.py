@@ -16,19 +16,6 @@ from app.schemas.user import UserRole
 router = APIRouter(prefix="/admin/departments", tags=["Department Management"])
 
 
-DEFAULT_DEPARTMENTS = [
-    {"code": "CSE", "name": "Computer Science & Engineering"},
-    {"code": "ECE", "name": "Electronics & Communication Engineering"},
-    {"code": "IT", "name": "Information Technology"},
-    {"code": "AIDS", "name": "Artificial Intelligence & Data Science"},
-    {"code": "AIML", "name": "Artificial Intelligence & Machine Learning"},
-    {"code": "EEE", "name": "Electrical & Electronics Engineering"},
-    {"code": "MECH", "name": "Mechanical Engineering"},
-    {"code": "CIVIL", "name": "Civil Engineering"},
-    {"code": "CSBS", "name": "Computer Science & Business Systems"},
-]
-
-
 async def _enrich_department_counts(doc: dict) -> dict:
     db = get_database()
     code = doc.get("code", "")
@@ -103,32 +90,13 @@ async def list_departments_api(
     current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
 ):
     db = get_database()
-    # Auto-seed defaults if database is empty
-    count = await db.departments.count_documents({})
-    if count == 0:
-        now = datetime.now(timezone.utc)
-        seed_docs = [
-            {
-                "code": d["code"],
-                "name": d["name"],
-                "coordinator_id": None,
-                "coordinator_name": None,
-                "coordinator_email": None,
-                "is_active": True,
-                "created_at": now,
-                "updated_at": now,
-            }
-            for d in DEFAULT_DEPARTMENTS
-        ]
-        await db.departments.insert_many(seed_docs)
-
     # If coordinator or branch Admin, check if restricted to their department/branch
     user_role = current_user.get("role")
     query = {}
-    assigned_branch = current_user.get("branch") or current_user.get("department")
-    if (user_role == UserRole.ADMIN.value and assigned_branch) or user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
-        if assigned_branch:
-            query = {"$or": [{"code": assigned_branch.upper()}, {"code": {"$regex": f"^{assigned_branch}$", "$options": "i"}}]}
+    assigned_department = current_user.get("department_code") or current_user.get("department") or current_user.get("branch")
+    if (user_role == UserRole.ADMIN.value and assigned_department) or user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
+        if assigned_department:
+            query = {"code": {"$regex": f"^{re.escape(assigned_department)}$", "$options": "i"}}
 
     cursor = db.departments.find(query).sort("code", 1)
     results = []
@@ -142,7 +110,7 @@ async def list_departments_api(
 @router.post("", response_model=ApiResponse[DepartmentResponse], status_code=status.HTTP_201_CREATED)
 async def create_department_api(
     data: DepartmentCreate,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.SUPER_ADMIN])),
 ):
     db = get_database()
     code_clean = data.code.strip().upper()
@@ -153,10 +121,26 @@ async def create_department_api(
             detail=f"Department with code '{code_clean}' already exists.",
         )
 
+    branch_doc = None
+    if data.branch_id and ObjectId.is_valid(data.branch_id):
+        branch_doc = await db.branches.find_one({"_id": ObjectId(data.branch_id)})
+    elif data.branch_code:
+        branch_doc = await db.branches.find_one({"code": data.branch_code.strip().upper()})
+    elif admin.get("role") == UserRole.ADMIN.value:
+        assigned_code = admin.get("branch_code") or admin.get("branch")
+        if assigned_code:
+            branch_doc = await db.branches.find_one({"code": assigned_code.strip().upper()})
+    if not branch_doc:
+        raise HTTPException(status_code=400, detail="A valid parent branch is required for each department.")
+
     now = datetime.now(timezone.utc)
     doc = {
         "code": code_clean,
         "name": data.name.strip(),
+        "branch_id": str(branch_doc["_id"]),
+        "branch_code": branch_doc.get("code"),
+        "branch_name": branch_doc.get("name"),
+        "academic_years": data.academic_years or ["1st Year", "2nd Year", "3rd Year", "4th Year"],
         "coordinator_id": data.coordinator_id,
         "coordinator_name": data.coordinator_name,
         "coordinator_email": data.coordinator_email,
@@ -192,7 +176,7 @@ async def create_department_api(
 async def update_department_api(
     dept_id: str,
     data: DepartmentUpdate,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.SUPER_ADMIN])),
 ):
     if not ObjectId.is_valid(dept_id):
         raise HTTPException(status_code=400, detail="Invalid Department ID format.")
@@ -218,6 +202,20 @@ async def update_department_api(
 
     if data.name is not None:
         updates["name"] = data.name.strip()
+    if data.branch_id is not None or data.branch_code is not None:
+        branch_doc = None
+        if data.branch_id and ObjectId.is_valid(data.branch_id):
+            branch_doc = await db.branches.find_one({"_id": ObjectId(data.branch_id)})
+        elif data.branch_code:
+            branch_doc = await db.branches.find_one({"code": data.branch_code.strip().upper()})
+        if not branch_doc:
+            raise HTTPException(status_code=400, detail="A valid parent branch is required.")
+        updates.update({"branch_id": str(branch_doc["_id"]), "branch_code": branch_doc.get("code"), "branch_name": branch_doc.get("name")})
+    if data.academic_years is not None:
+        years = list(dict.fromkeys(y.strip() for y in data.academic_years if y.strip()))
+        if not years:
+            raise HTTPException(status_code=400, detail="A department must configure at least one academic year.")
+        updates["academic_years"] = years
     if data.is_active is not None:
         updates["is_active"] = data.is_active
     if data.coordinator_name is not None:
@@ -274,7 +272,7 @@ async def update_department_api(
 @router.delete("/{dept_id}", response_model=ApiResponse[dict])
 async def delete_department_api(
     dept_id: str,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.SUPER_ADMIN])),
 ):
     if not ObjectId.is_valid(dept_id):
         raise HTTPException(status_code=400, detail="Invalid Department ID format.")
@@ -285,9 +283,13 @@ async def delete_department_api(
         raise HTTPException(status_code=404, detail="Department not found.")
 
     code = dept.get("code")
-    # Check if active students or sections are attached
+    # Preserve all historical relationships. Departments with any linked records are soft-deactivated.
     stu_count = await db.students.count_documents({"$or": [{"branch": code}, {"department": code}]})
-    if stu_count > 0:
+    section_count = await db.sections.count_documents({"$or": [{"branch": code}, {"department": code}, {"section_name": {"$regex": re.escape(code), "$options": "i"}}]})
+    user_count = await db.users.count_documents({"$or": [{"department_id": dept_id}, {"department_code": code}, {"department": code}]})
+    timetable_count = await db.timetables.count_documents({"$or": [{"department": code}, {"section": {"$regex": re.escape(code), "$options": "i"}}]})
+    session_count = await db.sessions.count_documents({"$or": [{"department": code}, {"section": {"$regex": re.escape(code), "$options": "i"}}]})
+    if stu_count + section_count + user_count + timetable_count + session_count > 0:
         # Soft deactivate instead of hard delete to preserve relationships
         await db.departments.update_one(
             {"_id": ObjectId(dept_id)},
@@ -296,7 +298,7 @@ async def delete_department_api(
         return ApiResponse(
             success=True,
             data={"id": dept_id, "action": "DEACTIVATED"},
-            message=f"Department '{code}' has {stu_count} enrolled students and was safely deactivated.",
+            message=f"Department '{code}' has linked records and was safely deactivated.",
         )
 
     await db.departments.delete_one({"_id": ObjectId(dept_id)})

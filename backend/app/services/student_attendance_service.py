@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import HTTPException, status
 from app.core.config import settings
 from app.db.mongodb import get_database
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year
 from app.schemas.student_attendance import (
     StudentAttendanceSubmitRequest,
     StudentAttendanceRecordResponse,
@@ -347,6 +348,7 @@ async def save_absence_reason(
     actor_name: str,
     actor_id: Optional[str] = None,
     actor_role: Optional[str] = None,
+    current_user: Optional[dict] = None,
 ) -> StudentAttendanceRecordResponse:
     """Save or update the absence reason for a specific attendance record."""
     db = get_database()
@@ -385,6 +387,12 @@ async def save_absence_reason(
             if doc: source_collection = db.student_attendance_sessions
     if not doc:
         raise HTTPException(status_code=404, detail="Attendance record not found.")
+
+    if current_user and current_user.get("role") == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, doc.get("year"))
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in str(doc.get("section") or "").casefold():
+            raise HTTPException(status_code=403, detail="This attendance record is outside your department.")
 
     # Locking rule: If reason is already saved and non-empty, do not allow resubmission for mentors
     if doc.get("reason") and str(doc.get("reason")).strip():
@@ -502,6 +510,11 @@ async def correct_student_attendance(
                 status_code=403,
                 detail=f"Access forbidden: You can only correct attendance for your assigned section ({user_sec}).",
             )
+    elif user_role == UserRole.ADMIN.value:
+        enforce_assigned_year(current_user, rec_year)
+        department = enforce_assigned_department(current_user, None)
+        if department and department.casefold() not in rec_sec.casefold():
+            raise HTTPException(status_code=403, detail="This attendance record is outside your department.")
 
     # 4. Status update & Audit preservation
     new_status = data.new_status.strip().title() if data.new_status else "Present"

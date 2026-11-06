@@ -11,6 +11,7 @@ from openpyxl.utils import get_column_letter
 
 from app.core.config import settings
 from app.db.mongodb import get_database
+from app.core.dependencies import enforce_assigned_department, enforce_assigned_year, get_assigned_years
 from app.schemas.mentor_mapping import (
     MentorMappingConfirmRequest,
     MentorMappingPreviewResponse,
@@ -208,6 +209,12 @@ async def get_mentor_assigned_student_ids(current_user: dict) -> Optional[List[s
 
 async def is_student_assigned_to_mentor(student_id_or_roll: str, current_user: dict) -> bool:
     """Checks if a student is assigned to the mentor."""
+    # Support legacy accounts whose assignments were embedded directly on the
+    # user record before mentor_student_mappings became the source of truth.
+    target = (student_id_or_roll or "").strip().casefold()
+    embedded = current_user.get("assigned_students") or []
+    if any(str(value).strip().casefold() == target for value in embedded):
+        return True
     assigned_ids = await get_mentor_assigned_student_ids(current_user)
     if assigned_ids is None:
         return True  # Admin has access to all
@@ -495,12 +502,30 @@ async def parse_and_validate_mapping_rows(raw_rows: List[List[str]]) -> Tuple[Li
     return parsed_rows, summary
 
 
-async def preview_mentor_mappings(file_bytes: bytes, filename: str) -> MentorMappingPreviewResponse:
+async def preview_mentor_mappings(file_bytes: bytes, filename: str, current_user: Optional[dict] = None) -> MentorMappingPreviewResponse:
     """Parses workbook and generates mapping preview report."""
     raw_rows = extract_raw_rows_from_file(file_bytes, filename)
     if len(raw_rows) > settings.MAX_IMPORT_ROWS:
         raise HTTPException(status_code=413, detail=f"Import exceeds the {settings.MAX_IMPORT_ROWS} row limit.")
     rows, summary = await parse_and_validate_mapping_rows(raw_rows)
+    if current_user and current_user.get("role") == UserRole.ADMIN.value:
+        db = get_database()
+        department = enforce_assigned_department(current_user, None)
+        for row in rows:
+            if row.status != "VALID":
+                continue
+            try:
+                enforce_assigned_year(current_user, row.year)
+                if department and department.casefold() not in row.section.casefold():
+                    raise HTTPException(status_code=403, detail="Mapping row is outside the assigned department.")
+                mentor = await db.users.find_one({"_id": ObjectId(row.mentor_id)}) if row.mentor_id and ObjectId.is_valid(row.mentor_id) else None
+                if not mentor or (mentor.get("department") or mentor.get("branch") or "").casefold() != (department or "").casefold():
+                    raise HTTPException(status_code=403, detail="Mapping mentor is outside the assigned department.")
+            except HTTPException as exc:
+                row.status = "ERROR"
+                row.error_message = exc.detail
+                summary["valid"] -= 1
+                summary["invalid"] += 1
     return MentorMappingPreviewResponse(
         totalRows=summary["total"],
         validRows=summary["valid"],
@@ -556,6 +581,28 @@ async def commit_mentor_mappings(
 
     if not valid_rows:
         raise HTTPException(status_code=400, detail="No valid mapping rows to commit.")
+
+    if isinstance(current_user, dict) and current_user.get("role") == UserRole.ADMIN.value:
+        if chosen_mode == "REPLACE":
+            raise HTTPException(status_code=403, detail="Only Super Admin may replace all mentor mappings.")
+        department = enforce_assigned_department(current_user, None)
+        ids_to_check = set()
+        for row in valid_rows:
+            enforce_assigned_year(current_user, row.year)
+            if department and department.casefold() not in row.section.casefold():
+                raise HTTPException(status_code=403, detail="Mapping row is outside the assigned department.")
+            mentor = await db.users.find_one({"_id": ObjectId(row.mentor_id)}) if row.mentor_id and ObjectId.is_valid(row.mentor_id) else None
+            if not mentor or (mentor.get("department") or mentor.get("branch") or "").casefold() != (department or "").casefold():
+                raise HTTPException(status_code=403, detail="Mapping mentor is outside the assigned department.")
+            ids_to_check.update(s.get("student_id") for s in row.matched_students if s.get("student_id"))
+        object_ids = [ObjectId(item) for item in ids_to_check if ObjectId.is_valid(item)]
+        students = await db.students.find({"_id": {"$in": object_ids}}).to_list(length=10000)
+        if len(students) != len(object_ids):
+            raise HTTPException(status_code=400, detail="Mapping contains a student record that no longer exists.")
+        for student in students:
+            enforce_assigned_year(current_user, student.get("year"))
+            if department and (student.get("department") or student.get("branch") or "").casefold() != department.casefold():
+                raise HTTPException(status_code=403, detail="Mapping student is outside the assigned department.")
 
     if chosen_mode == "REPLACE":
         # Unassign previous mappings and clear collection
