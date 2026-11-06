@@ -13,6 +13,7 @@ from app.db.indexes import create_db_indexes
 from app.db.mongodb import close_mongo_connection, connect_to_mongo, get_database
 from app.services.admin_provisioning import (
     create_first_admin,
+    create_super_admin,
     reset_admin_password,
     verify_admin_credentials,
     validate_admin_password,
@@ -20,7 +21,7 @@ from app.services.admin_provisioning import (
 
 
 def _prompt_new_password() -> str:
-    password = getpass.getpass("Administrator password (8-12 characters): ")
+    password = getpass.getpass("Password (8-12 characters): ")
     confirmation = getpass.getpass("Confirm password: ")
     validate_admin_password(password)
     if password != confirmation:
@@ -39,12 +40,18 @@ async def run(action: str, email: str, name: str = "") -> int:
             print(f"Initial administrator created in database '{db.name}'.")
             return 0 if result == "created" else 1
 
+        if action == "create-superadmin":
+            password = _prompt_new_password()
+            result = await create_super_admin(db, email, name, password)
+            print(f"Super Administrator created in database '{db.name}'.")
+            return 0 if result == "created" else 1
+
         if action == "verify":
-            password = getpass.getpass("Administrator password: ")
+            password = getpass.getpass("Password: ")
             if await verify_admin_credentials(db, email, password):
-                print("Administrator account, role, and password verified.")
+                print("Account, role, and password verified.")
                 return 0
-            print("Administrator account verification failed.")
+            print("Account verification failed.")
             return 1
 
         password = _prompt_new_password()
@@ -57,7 +64,7 @@ async def run(action: str, email: str, name: str = "") -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("create", "verify", "reset-password"))
+    parser.add_argument("action", choices=("create", "create-superadmin", "verify", "reset-password"))
     parser.add_argument("--email", required=True, help="Administrator email address")
     parser.add_argument("--name", default="System Administrator", help="Name used only when creating the first admin")
     args = parser.parse_args()

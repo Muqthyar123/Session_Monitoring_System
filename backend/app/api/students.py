@@ -30,13 +30,15 @@ async def list_students_api(
     search: Optional[str] = Query(None),
     page: Optional[int] = Query(None, ge=1),
     page_size: Optional[int] = Query(None, ge=1, le=200),
-    current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
+    current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
 ):
     user_role = current_user.get("role")
-    if user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
-        user_dept = current_user.get("department") or current_user.get("branch")
-        if user_dept:
-            branch = user_dept
+    assigned_branch = current_user.get("branch") or current_user.get("department")
+    if user_role == UserRole.ADMIN.value and assigned_branch:
+        branch = assigned_branch
+    elif user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
+        if assigned_branch:
+            branch = assigned_branch
 
     if page is not None or page_size is not None:
         data = await get_students_page(
@@ -50,7 +52,7 @@ async def list_students_api(
 
 @router.get("/filters", response_model=ApiResponse[Dict[str, List[str]]])
 async def get_student_filter_options_api(
-    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
 ):
     from app.db.mongodb import get_database
 
@@ -72,15 +74,18 @@ async def get_student_filter_options_api(
 @router.post("", response_model=ApiResponse[StudentResponse], status_code=status.HTTP_201_CREATED)
 async def create_student_api(
     data: StudentCreate,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
+    admin_branch = admin.get("branch") or admin.get("department")
+    if admin.get("role") == UserRole.ADMIN.value and admin_branch:
+        data.branch = admin_branch
     new_student = await create_student(data, actor_id=admin["id"])
     return ApiResponse(success=True, data=new_student, message="Student created successfully.")
 
 
 @router.get("/template")
 async def download_student_template_api(
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     excel_bytes = generate_student_excel_template()
     return Response(
@@ -93,7 +98,7 @@ async def download_student_template_api(
 @router.post("/import", response_model=ApiResponse[dict])
 async def import_student_excel_api(
     file: UploadFile = File(...),
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     fn_lower = (file.filename or "").lower()
     if not (fn_lower.endswith(".xlsx") or fn_lower.endswith(".xls") or fn_lower.endswith(".csv")):
@@ -124,7 +129,7 @@ async def import_student_excel_api(
 async def update_student_api(
     student_id: str,
     data: StudentUpdate,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     updated = await update_student(student_id, data, actor_id=admin["id"])
     return ApiResponse(success=True, data=updated, message="Student updated successfully.")
@@ -132,7 +137,7 @@ async def update_student_api(
 
 @router.delete("/reset", response_model=ApiResponse[dict])
 async def reset_students_api(
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     deleted_count = await delete_all_students(actor_id=admin["id"])
     return ApiResponse(
@@ -145,7 +150,7 @@ async def reset_students_api(
 @router.delete("/{student_id}", response_model=ApiResponse[dict])
 async def delete_student_api(
     student_id: str,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     await delete_student(student_id, actor_id=admin["id"])
     return ApiResponse(success=True, message="Student deleted successfully.")

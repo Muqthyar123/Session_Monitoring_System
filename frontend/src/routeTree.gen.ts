@@ -39,6 +39,11 @@ import { Route as MentorDashboardRouteImport } from './routes/mentor.dashboard'
 import { Route as MentorLoginRouteImport } from './routes/mentor.login'
 import { Route as MentorPlannedAbsencesRouteImport } from './routes/mentor.planned-absences'
 import { Route as MentorStudentsRouteImport } from './routes/mentor.students'
+import { Route as SuperAdminBranchesRouteImport } from './routes/super-admin.branches'
+import { Route as SuperAdminDashboardRouteImport } from './routes/super-admin.dashboard'
+import { Route as SuperAdminHodsRouteImport } from './routes/super-admin.hods'
+import { Route as SuperAdminLoginRouteImport } from './routes/super-admin.login'
+import { Route as SuperAdminSitesRouteImport } from './routes/super-admin.sites'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -190,6 +195,31 @@ const MentorStudentsRoute = MentorStudentsRouteImport.update({
   path: '/mentor/students',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SuperAdminBranchesRoute = SuperAdminBranchesRouteImport.update({
+  id: '/super-admin/branches',
+  path: '/super-admin/branches',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperAdminDashboardRoute = SuperAdminDashboardRouteImport.update({
+  id: '/super-admin/dashboard',
+  path: '/super-admin/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperAdminHodsRoute = SuperAdminHodsRouteImport.update({
+  id: '/super-admin/hods',
+  path: '/super-admin/hods',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperAdminLoginRoute = SuperAdminLoginRouteImport.update({
+  id: '/super-admin/login',
+  path: '/super-admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuperAdminSitesRoute = SuperAdminSitesRouteImport.update({
+  id: '/super-admin/sites',
+  path: '/super-admin/sites',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -222,6 +252,11 @@ export interface FileRoutesByFullPath {
   '/mentor/login': typeof MentorLoginRoute
   '/mentor/planned-absences': typeof MentorPlannedAbsencesRoute
   '/mentor/students': typeof MentorStudentsRoute
+  '/super-admin/branches': typeof SuperAdminBranchesRoute
+  '/super-admin/dashboard': typeof SuperAdminDashboardRoute
+  '/super-admin/hods': typeof SuperAdminHodsRoute
+  '/super-admin/login': typeof SuperAdminLoginRoute
+  '/super-admin/sites': typeof SuperAdminSitesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -254,6 +289,11 @@ export interface FileRoutesByTo {
   '/mentor/login': typeof MentorLoginRoute
   '/mentor/planned-absences': typeof MentorPlannedAbsencesRoute
   '/mentor/students': typeof MentorStudentsRoute
+  '/super-admin/branches': typeof SuperAdminBranchesRoute
+  '/super-admin/dashboard': typeof SuperAdminDashboardRoute
+  '/super-admin/hods': typeof SuperAdminHodsRoute
+  '/super-admin/login': typeof SuperAdminLoginRoute
+  '/super-admin/sites': typeof SuperAdminSitesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -287,6 +327,11 @@ export interface FileRoutesById {
   '/mentor/login': typeof MentorLoginRoute
   '/mentor/planned-absences': typeof MentorPlannedAbsencesRoute
   '/mentor/students': typeof MentorStudentsRoute
+  '/super-admin/branches': typeof SuperAdminBranchesRoute
+  '/super-admin/dashboard': typeof SuperAdminDashboardRoute
+  '/super-admin/hods': typeof SuperAdminHodsRoute
+  '/super-admin/login': typeof SuperAdminLoginRoute
+  '/super-admin/sites': typeof SuperAdminSitesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -321,6 +366,11 @@ export interface FileRouteTypes {
     | '/mentor/login'
     | '/mentor/planned-absences'
     | '/mentor/students'
+    | '/super-admin/branches'
+    | '/super-admin/dashboard'
+    | '/super-admin/hods'
+    | '/super-admin/login'
+    | '/super-admin/sites'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -353,6 +403,11 @@ export interface FileRouteTypes {
     | '/mentor/login'
     | '/mentor/planned-absences'
     | '/mentor/students'
+    | '/super-admin/branches'
+    | '/super-admin/dashboard'
+    | '/super-admin/hods'
+    | '/super-admin/login'
+    | '/super-admin/sites'
   id:
     | '__root__'
     | '/'
@@ -385,6 +440,11 @@ export interface FileRouteTypes {
     | '/mentor/login'
     | '/mentor/planned-absences'
     | '/mentor/students'
+    | '/super-admin/branches'
+    | '/super-admin/dashboard'
+    | '/super-admin/hods'
+    | '/super-admin/login'
+    | '/super-admin/sites'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -418,6 +478,11 @@ export interface RootRouteChildren {
   MentorLoginRoute: typeof MentorLoginRoute
   MentorPlannedAbsencesRoute: typeof MentorPlannedAbsencesRoute
   MentorStudentsRoute: typeof MentorStudentsRoute
+  SuperAdminBranchesRoute: typeof SuperAdminBranchesRoute
+  SuperAdminDashboardRoute: typeof SuperAdminDashboardRoute
+  SuperAdminHodsRoute: typeof SuperAdminHodsRoute
+  SuperAdminLoginRoute: typeof SuperAdminLoginRoute
+  SuperAdminSitesRoute: typeof SuperAdminSitesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -632,6 +697,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MentorStudentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/super-admin/branches': {
+      id: '/super-admin/branches'
+      path: '/super-admin/branches'
+      fullPath: '/super-admin/branches'
+      preLoaderRoute: typeof SuperAdminBranchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/super-admin/dashboard': {
+      id: '/super-admin/dashboard'
+      path: '/super-admin/dashboard'
+      fullPath: '/super-admin/dashboard'
+      preLoaderRoute: typeof SuperAdminDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/super-admin/hods': {
+      id: '/super-admin/hods'
+      path: '/super-admin/hods'
+      fullPath: '/super-admin/hods'
+      preLoaderRoute: typeof SuperAdminHodsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/super-admin/login': {
+      id: '/super-admin/login'
+      path: '/super-admin/login'
+      fullPath: '/super-admin/login'
+      preLoaderRoute: typeof SuperAdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/super-admin/sites': {
+      id: '/super-admin/sites'
+      path: '/super-admin/sites'
+      fullPath: '/super-admin/sites'
+      preLoaderRoute: typeof SuperAdminSitesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -666,6 +766,11 @@ const rootRouteChildren: RootRouteChildren = {
   MentorLoginRoute: MentorLoginRoute,
   MentorPlannedAbsencesRoute: MentorPlannedAbsencesRoute,
   MentorStudentsRoute: MentorStudentsRoute,
+  SuperAdminBranchesRoute: SuperAdminBranchesRoute,
+  SuperAdminDashboardRoute: SuperAdminDashboardRoute,
+  SuperAdminHodsRoute: SuperAdminHodsRoute,
+  SuperAdminLoginRoute: SuperAdminLoginRoute,
+  SuperAdminSitesRoute: SuperAdminSitesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { resetPassword, verifyPasswordResetToken } from "@/services/authService";
 import type { Role } from "@/data/mock/mockData";
 
-export const Route = createFileRoute("/reset-password")({ validateSearch: (search: Record<string, unknown>) => ({ token: typeof search.token === "string" ? search.token : "" }), component: ResetPasswordPage });
+export const Route = createFileRoute("/reset-password")({ validateSearch: (search: Record<string, unknown>) => ({ token: typeof search["token"] === "string" ? search["token"] : "" }), component: ResetPasswordPage });
 
 function ResetPasswordPage() {
   const { token } = Route.useSearch();

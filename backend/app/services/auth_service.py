@@ -283,7 +283,12 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
         )
 
     role = user.get("role")
-    if login_data.portal == "ADMIN" and role != UserRole.ADMIN.value:
+    if login_data.portal == "SUPER_ADMIN" and role != UserRole.SUPER_ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This portal is strictly for Super Administrators.",
+        )
+    if login_data.portal == "ADMIN" and role not in [UserRole.ADMIN.value, UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account is not an administrator account.",
@@ -299,10 +304,12 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
             detail="This portal is strictly for Mentors.",
         )
 
+    branch_val = user.get("branch") or user.get("department")
     token_data = {
         "sub": str(user["_id"]),
         "email": user["email"],
         "role": role,
+        "branch": branch_val,
     }
     access_token = create_access_token(data=token_data)
 
@@ -312,7 +319,7 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
             "actor_id": str(user["_id"]),
             "actor_email": user["email"],
             "action": "LOGIN",
-            "metadata": {"portal": login_data.portal},
+            "metadata": {"portal": login_data.portal, "role": role},
             "created_at": datetime.now(timezone.utc),
         }
     )
@@ -326,6 +333,8 @@ async def authenticate_user(login_data: LoginRequest) -> LoginResponse:
         employee_id=user.get("employee_id") or user.get("mentor_id"),
         phone=user.get("phone"),
         department=user.get("department"),
+        branch=branch_val,
+        branch_id=user.get("branch_id"),
         designation=user.get("designation"),
         section=user.get("section"),
         year=user.get("year"),

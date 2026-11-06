@@ -74,7 +74,7 @@ function zipStored(files: Array<{ name: string; content: string }>) {
   const centralSize = centrals.reduce((sum, item) => sum + item.length, 0);
   const end = new Uint8Array(22); const ev = new DataView(end.buffer);
   put32(ev, 0, 0x06054b50); put16(ev, 8, files.length); put16(ev, 10, files.length); put32(ev, 12, centralSize); put32(ev, 16, offset);
-  return new Blob([...locals, ...centrals, end], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return new Blob([...locals, ...centrals, end] as unknown as BlobPart[], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
 function exportXlsx(data: string[][], filename: string) {

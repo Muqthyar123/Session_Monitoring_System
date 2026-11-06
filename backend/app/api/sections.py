@@ -147,11 +147,12 @@ async def list_sections_api(
     query = {}
 
     user_role = current_user.get("role")
-    # Department Coordinator RBAC filter
-    if user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
-        user_dept = current_user.get("department") or current_user.get("branch")
-        if user_dept:
-            branch = user_dept
+    assigned_branch = current_user.get("branch") or current_user.get("department")
+    if user_role == UserRole.ADMIN.value and assigned_branch:
+        branch = assigned_branch
+    elif user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
+        if assigned_branch:
+            branch = assigned_branch
 
     if year and year != "ALL" and year != "all":
         query["year"] = year
@@ -197,10 +198,13 @@ async def list_sections_api(
 
 @router.post("", response_model=ApiResponse[SectionResponse], status_code=status.HTTP_201_CREATED)
 async def create_section_api(
-    data: SectionCreate, admin: dict = Depends(require_roles([UserRole.ADMIN]))
+    data: SectionCreate, admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN]))
 ):
     db = get_database()
     year_clean = data.year.strip()
+    admin_branch = admin.get("branch") or admin.get("department")
+    if admin.get("role") == UserRole.ADMIN.value and admin_branch:
+        data.branch = admin_branch
     branch_clean = (data.branch or data.department or "CSE").strip().upper()
     sec_name = data.section_name.strip().upper()
 
@@ -242,7 +246,7 @@ async def create_section_api(
 async def update_section_api(
     section_id: str,
     data: SectionUpdate,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     if not ObjectId.is_valid(section_id):
         raise HTTPException(status_code=400, detail="Invalid Section ID format.")
@@ -301,7 +305,7 @@ async def update_section_api(
 @router.delete("/{section_id}", response_model=ApiResponse[dict])
 async def delete_section_api(
     section_id: str,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     if not ObjectId.is_valid(section_id):
         raise HTTPException(status_code=400, detail="Invalid Section ID format.")

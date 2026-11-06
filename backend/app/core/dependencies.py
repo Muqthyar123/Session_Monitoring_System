@@ -67,20 +67,44 @@ def require_roles(allowed_roles: List[UserRole]):
     return role_checker
 
 
-def get_department_filter(current_user: dict, requested_dept: Optional[str] = None) -> Optional[str]:
+def get_branch_filter(current_user: dict, requested_branch: Optional[str] = None) -> Optional[str]:
     """
-    Returns the department code to filter by:
-    - If user is DEPARTMENT_COORDINATOR, strictly forces their assigned department.
-    - If user is ADMIN, returns requested_dept if specified.
+    Returns the branch code to filter by:
+    - If user is SUPER_ADMIN: returns requested_branch (can access all branches).
+    - If user is ADMIN with an assigned branch: strictly forces their assigned branch.
+      If requested_branch is provided and differs from their assigned branch, raises HTTP 403 Forbidden.
+    - If user is DEPARTMENT_COORDINATOR or COORDINATOR: strictly forces their assigned branch.
+    - If user is ADMIN without an assigned branch: returns requested_branch.
     """
     user_role = current_user.get("role")
+    if user_role == UserRole.SUPER_ADMIN.value:
+        return requested_branch.strip().upper() if requested_branch and requested_branch.upper() != "ALL" else None
+
+    assigned_branch = current_user.get("branch") or current_user.get("department")
     if user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
-        assigned_dept = current_user.get("department") or current_user.get("branch")
-        if not assigned_dept:
+        if not assigned_branch:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Department Coordinator has no assigned department.",
+                detail="Department Coordinator has no assigned branch.",
             )
-        return assigned_dept.strip().upper()
-    return requested_dept.strip().upper() if requested_dept and requested_dept.upper() != "ALL" else None
+        return assigned_branch.strip().upper()
+
+    if user_role == UserRole.ADMIN.value and assigned_branch:
+        assigned_branch_upper = assigned_branch.strip().upper()
+        if requested_branch and requested_branch.upper() != "ALL":
+            if requested_branch.strip().upper() != assigned_branch_upper:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Access denied: You are restricted to your assigned branch ({assigned_branch_upper}).",
+                )
+        return assigned_branch_upper
+
+    return requested_branch.strip().upper() if requested_branch and requested_branch.upper() != "ALL" else None
+
+
+def get_department_filter(current_user: dict, requested_dept: Optional[str] = None) -> Optional[str]:
+    """
+    Backward-compatible department filter alias using get_branch_filter.
+    """
+    return get_branch_filter(current_user, requested_dept)
 

@@ -8,6 +8,7 @@ import {
   CalendarCheck2,
   BellRing,
   Activity,
+  Crown,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -115,7 +116,35 @@ function LandingPage() {
 
             {/* Portal Action Cards */}
             <div className="space-y-3.5">
-              {/* 1. Admin Portal */}
+              {/* 1. Super Admin Portal */}
+              <Link
+                to="/super-admin/login"
+                className="group flex items-center justify-between p-4 sm:p-5 rounded-2xl border border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-r from-indigo-50/60 to-purple-50/40 dark:from-indigo-950/20 dark:to-purple-950/20 hover:border-indigo-500/60 transition-all duration-200 hover:shadow-md cursor-pointer"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-200">
+                    <Crown className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-base text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        Super Admin Portal
+                      </h3>
+                      <span className="rounded-full bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                        MASTER
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Multi-branch, campuses &amp; HOD management
+                    </p>
+                  </div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-200 group-hover:translate-x-1">
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+              </Link>
+
+              {/* 2. Admin Portal */}
               <Link
                 to="/admin/login"
                 className="group flex items-center justify-between p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/30 hover:border-indigo-500/40 transition-all duration-200 hover:shadow-md cursor-pointer"

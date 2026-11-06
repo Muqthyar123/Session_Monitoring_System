@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 from bson import ObjectId
@@ -54,6 +55,8 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
     now = datetime.now(timezone.utc)
     hashed_pwd = hash_password(initial_password)
 
+    branch_code = (data.branch or data.department or "").strip().upper() if (data.branch or data.department) else None
+
     user_doc = {
         "name": data.name.strip(),
         "email": email_clean,
@@ -66,7 +69,9 @@ async def create_user(data: UserCreate, actor_id: Optional[str] = None) -> UserR
         "year": data.year.strip() if data.year else None,
         "section": data.section.strip() if data.section else None,
         "designation": data.designation.strip() if data.designation else None,
-        "department": data.department.strip() if data.department else None,
+        "department": branch_code,
+        "branch": branch_code,
+        "branch_id": data.branch_id.strip() if data.branch_id else None,
         "profile": data.profile.strip() if data.profile else None,
         "is_active": data.is_active,
         "created_at": now,
@@ -124,31 +129,45 @@ async def get_users(
     crlr_only: bool = False,
     section: Optional[str] = None,
     year: Optional[str] = None,
+    branch: Optional[str] = None,
     search: Optional[str] = None,
     skip: int = 0,
     limit: int = 10000,
 ) -> List[UserResponse]:
     db = get_database()
-    query = {}
+    and_clauses: List[dict] = []
 
     if role:
-        query["role"] = role.value
+        and_clauses.append({"role": role.value})
     elif crlr_only:
-        query["role"] = {"$in": ["CR", "LR"]}
+        and_clauses.append({"role": {"$in": ["CR", "LR"]}})
 
     if section:
-        query["section"] = section
+        and_clauses.append({"section": section})
     if year:
-        query["year"] = year
+        and_clauses.append({"year": year})
+    if branch and branch.upper() != "ALL":
+        b_clean = re.escape(branch.strip())
+        and_clauses.append({
+            "$or": [
+                {"branch": {"$regex": f"^{b_clean}$", "$options": "i"}},
+                {"department": {"$regex": f"^{b_clean}$", "$options": "i"}},
+            ]
+        })
     if search:
-        query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"email": {"$regex": search, "$options": "i"}},
-            {"roll_number": {"$regex": search, "$options": "i"}},
-            {"mentor_id": {"$regex": search, "$options": "i"}},
-            {"designation": {"$regex": search, "$options": "i"}},
-            {"department": {"$regex": search, "$options": "i"}},
-        ]
+        and_clauses.append({
+            "$or": [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"email": {"$regex": search, "$options": "i"}},
+                {"roll_number": {"$regex": search, "$options": "i"}},
+                {"mentor_id": {"$regex": search, "$options": "i"}},
+                {"designation": {"$regex": search, "$options": "i"}},
+                {"department": {"$regex": search, "$options": "i"}},
+                {"branch": {"$regex": search, "$options": "i"}},
+            ]
+        })
+
+    query = {"$and": and_clauses} if len(and_clauses) > 1 else (and_clauses[0] if and_clauses else {})
 
     cursor = (
         db.users.find(query, {"password_hash": 0})
@@ -236,6 +255,12 @@ async def update_user(
         updates["designation"] = data.designation.strip() if data.designation else None
     if data.department is not None:
         updates["department"] = data.department.strip() if data.department else None
+    if data.branch is not None:
+        updates["branch"] = data.branch.strip().upper() if data.branch else None
+        if not data.department:
+            updates["department"] = updates["branch"]
+    if data.branch_id is not None:
+        updates["branch_id"] = data.branch_id.strip() if data.branch_id else None
     if data.profile is not None:
         updates["profile"] = data.profile.strip() if data.profile else None
     if data.is_active is not None:

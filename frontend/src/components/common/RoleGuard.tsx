@@ -25,7 +25,9 @@ export function RoleGuard({
         navigate({ to: redirectTo, replace: true });
       } else if (!allow.includes(user.role)) {
         const fallback =
-          user.role === "ADMIN"
+          user.role === "SUPER_ADMIN"
+            ? "/super-admin/dashboard"
+            : user.role === "ADMIN"
             ? "/admin/dashboard"
             : user.role === "MENTOR"
             ? "/mentor/absentees"

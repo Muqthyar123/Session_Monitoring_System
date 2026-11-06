@@ -21,6 +21,7 @@ from app.api import (
     sessions,
     student_attendance,
     students,
+    super_admin,
     timetable,
     uploads,
     users,
@@ -63,6 +64,14 @@ async def lifespan(app: FastAPI):
         logger.info("Real-time sessions synchronized for current date.")
     except Exception as e:
         logger.warning("Session sync warning (%s).", type(e).__name__)
+
+    # Branch, Site, and Super Admin migrations
+    try:
+        from app.services.branch_migration_service import run_branch_and_superadmin_migrations
+        await run_branch_and_superadmin_migrations()
+        logger.info("Branch and Super Admin migrations completed successfully.")
+    except Exception as e:
+        logger.warning("Branch/SuperAdmin migration warning (%s).", type(e).__name__)
 
     start_scheduler()
     logger.info("Scheduler initialized.")
@@ -247,3 +256,4 @@ app.include_router(absentee_reports.router, prefix=api_router_prefix)
 app.include_router(notifications.router, prefix=api_router_prefix)
 app.include_router(push.router, prefix=api_router_prefix)
 app.include_router(analytics.router, prefix=api_router_prefix)
+app.include_router(super_admin.router, prefix=api_router_prefix)

@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator, co
 
 
 class UserRole(str, Enum):
+    SUPER_ADMIN = "SUPER_ADMIN"
     ADMIN = "ADMIN"
     CR = "CR"
     LR = "LR"
@@ -19,11 +20,14 @@ class UserBase(BaseModel):
     role: UserRole
     roll_number: Optional[str] = Field(None, alias="rollNumber")
     mentor_id: Optional[str] = Field(None, alias="mentorId")
+    employee_id: Optional[str] = Field(None, alias="employeeId")
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
+    branch: Optional[str] = None
+    branch_id: Optional[str] = Field(None, alias="branchId")
     profile: Optional[str] = None
     is_active: bool = True
 
@@ -31,7 +35,7 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: Optional[str] = Field(None, min_length=8, max_length=12)
+    password: Optional[str] = Field(None, min_length=8, max_length=32)
 
 
 class UserUpdate(BaseModel):
@@ -40,14 +44,17 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     roll_number: Optional[str] = Field(None, alias="rollNumber")
     mentor_id: Optional[str] = Field(None, alias="mentorId")
+    employee_id: Optional[str] = Field(None, alias="employeeId")
     phone: Optional[str] = None
     year: Optional[str] = None
     section: Optional[str] = None
     designation: Optional[str] = None
     department: Optional[str] = None
+    branch: Optional[str] = None
+    branch_id: Optional[str] = Field(None, alias="branchId")
     profile: Optional[str] = None
     is_active: Optional[bool] = None
-    password: Optional[str] = Field(None, min_length=8, max_length=12)
+    password: Optional[str] = Field(None, min_length=8, max_length=32)
 
     model_config = ConfigDict(populate_by_name=True)
 

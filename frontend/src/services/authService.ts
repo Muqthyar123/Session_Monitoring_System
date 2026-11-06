@@ -15,6 +15,9 @@ export interface LoginResponsePayload {
     role: Role;
     section?: string;
     year?: string;
+    department?: string;
+    branch?: string;
+    branchId?: string;
     roll_number?: string;
   };
 }
@@ -27,13 +30,16 @@ function toAuthUser(user: LoginResponsePayload["user"]): AuthUser {
     role: user.role,
     ...(user.section !== undefined ? { section: user.section } : {}),
     ...(user.year !== undefined ? { year: user.year } : {}),
+    ...(user.department !== undefined ? { department: user.department } : {}),
+    ...(user.branch !== undefined ? { branch: user.branch } : {}),
+    ...(user.branchId !== undefined ? { branchId: user.branchId } : {}),
   };
 }
 
 export async function login(
   email: string,
   password: string,
-  portal: "ADMIN" | "CRLR" | "MENTOR"
+  portal: "SUPER_ADMIN" | "ADMIN" | "CRLR" | "MENTOR"
 ): Promise<AuthUser> {
   const data = await request<LoginResponsePayload>("/auth/login", {
     method: "POST",
@@ -74,6 +80,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 }
 
 export function homeRouteForRole(role: Role): string {
+  if (role === "SUPER_ADMIN") return "/super-admin/dashboard";
   if (role === "ADMIN") return "/admin/dashboard";
   if (role === "MENTOR") return "/mentor/absentees";
   return "/crlr/dashboard";

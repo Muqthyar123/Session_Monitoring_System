@@ -6,7 +6,7 @@ from app.schemas.user import UserRole, UserResponse
 class LoginRequest(BaseModel):
     email: str  # Can be email, mentor ID, or roll number
     password: str
-    portal: Optional[str] = None  # "ADMIN", "CRLR", or "MENTOR"
+    portal: Optional[str] = None  # "SUPER_ADMIN", "ADMIN", "CRLR", or "MENTOR"
 
 
 class AuthUserInfo(BaseModel):
@@ -18,6 +18,8 @@ class AuthUserInfo(BaseModel):
     employee_id: Optional[str] = Field(None, alias="employeeId")
     phone: Optional[str] = None
     department: Optional[str] = None
+    branch: Optional[str] = None
+    branch_id: Optional[str] = Field(None, alias="branchId")
     designation: Optional[str] = None
     section: Optional[str] = None
     year: Optional[str] = None

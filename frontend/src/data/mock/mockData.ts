@@ -1,6 +1,6 @@
 /** Shared frontend API types. */
 
-export type Role = "ADMIN" | "CR" | "LR" | "MENTOR" | "DEPARTMENT_COORDINATOR" | "COORDINATOR";
+export type Role = "SUPER_ADMIN" | "ADMIN" | "CR" | "LR" | "MENTOR" | "DEPARTMENT_COORDINATOR" | "COORDINATOR";
 export type SessionStatus = "Upcoming" | "Active" | "Completed" | "Expired";
 export type FacultyResponse = "Pending" | "Present" | "Not Present" | "Substitute" | "CR/LR Not Marked";
 
@@ -13,6 +13,7 @@ export interface AuthUser {
   section?: string;
   department?: string;
   branch?: string;
+  branchId?: string;
   mentorId?: string;
 }
 
@@ -98,3 +99,103 @@ export interface AppNotification {
   sessionId: string | null;
 }
 
+
+export interface Site {
+  id: string;
+  code: string;
+  name: string;
+  location?: string | null;
+  address?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  description?: string | null;
+  isActive: boolean;
+  branchCount?: number;
+  branchesCount?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Branch {
+  id: string;
+  code: string;
+  name: string;
+  siteId?: string | null;
+  siteName?: string | null;
+  siteCode?: string | null;
+  hodId?: string | null;
+  hodName?: string | null;
+  hodEmail?: string | null;
+  hodPhone?: string | null;
+  description?: string | null;
+  isActive: boolean;
+  studentCount?: number;
+  studentsCount?: number;
+  mentorCount?: number;
+  mentorsCount?: number;
+  sectionCount?: number;
+  sectionsCount?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface HODItem {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  employeeId?: string | null;
+  branchCode?: string | null;
+  branchName?: string | null;
+  branchId?: string | null;
+  role: string;
+  designation?: string;
+  isActive: boolean;
+  studentCount?: number;
+  mentorCount?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SuperAdminDashboardData {
+  total_branches: number;
+  total_sites: number;
+  total_hods: number;
+  total_mentors: number;
+  total_students: number;
+  totalBranches?: number;
+  totalSites?: number;
+  totalHods?: number;
+  totalMentors?: number;
+  totalStudents?: number;
+  branch_stats: Array<{
+    id: string;
+    code: string;
+    name: string;
+    site_name: string;
+    hod_name: string;
+    hod_email: string;
+    hod_phone?: string;
+    student_count: number;
+    mentor_count: number;
+    section_count: number;
+    is_active: boolean;
+  }>;
+  recent_branches: Array<{
+    id: string;
+    code: string;
+    name: string;
+    site_name: string;
+    created_at?: string;
+    is_active: boolean;
+  }>;
+  recent_hods: Array<{
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    branch_code: string;
+    created_at?: string;
+    is_active: boolean;
+  }>;
+}

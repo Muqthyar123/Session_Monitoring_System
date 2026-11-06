@@ -52,6 +52,32 @@ async def create_first_admin(db, email: str, name: str, password: str) -> str:
     return "created"
 
 
+async def create_super_admin(db, email: str, name: str, password: str) -> str:
+    """Create a Super Administrator account."""
+    clean_email = normalize_admin_email(email)
+    validate_admin_password(password)
+
+    existing = await db.users.find_one(_email_query(clean_email))
+    if existing:
+        if existing.get("role") == UserRole.SUPER_ADMIN.value:
+            raise ValueError("This super administrator account already exists.")
+        raise ValueError("This email already belongs to an existing account.")
+
+    now = datetime.now(timezone.utc)
+    await db.users.insert_one({
+        "_id": ObjectId(),
+        "name": name.strip() or "Super Administrator",
+        "email": clean_email,
+        "password_hash": hash_password(password),
+        "role": UserRole.SUPER_ADMIN.value,
+        "designation": "Super Administrator",
+        "is_active": True,
+        "created_at": now,
+        "updated_at": now,
+    })
+    return "created"
+
+
 async def verify_admin_credentials(db, email: str, password: str) -> bool:
     clean_email = normalize_admin_email(email)
     user = await db.users.find_one(_email_query(clean_email))

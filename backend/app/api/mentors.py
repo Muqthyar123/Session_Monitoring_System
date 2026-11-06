@@ -26,20 +26,28 @@ router = APIRouter(prefix="/admin/mentors", tags=["Admin Mentor Management"])
 @router.get("", response_model=ApiResponse[List[UserResponse]])
 async def list_mentors_api(
     search: Optional[str] = Query(None),
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    branch: Optional[str] = Query(None),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
-    users = await get_users(role=UserRole.MENTOR, search=search, limit=10000)
+    admin_branch = admin.get("branch") or admin.get("department")
+    effective_branch = admin_branch if (admin.get("role") == UserRole.ADMIN.value and admin_branch) else branch
+    users = await get_users(role=UserRole.MENTOR, branch=effective_branch, search=search, limit=10000)
     return ApiResponse(success=True, data=users)
 
 
 @router.post("", response_model=ApiResponse[UserResponse], status_code=status.HTTP_201_CREATED)
 async def create_mentor_api(
     data: UserCreate,
-    admin: dict = Depends(require_roles([UserRole.ADMIN])),
+    admin: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN])),
 ):
     db = get_database()
     # Ensure mentor role
     data.role = UserRole.MENTOR
+
+    admin_branch = admin.get("branch") or admin.get("department")
+    if admin.get("role") == UserRole.ADMIN.value and admin_branch:
+        data.branch = admin_branch
+        data.department = admin_branch
 
     mentor_id = (data.mentor_id or data.roll_number or "").strip().upper()
     if not mentor_id:

@@ -74,9 +74,16 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <aside className="hidden h-screen w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex sticky top-0">
           <div className="flex shrink-0 items-center gap-2 border-b border-sidebar-border px-4 py-4">
             <GraduationCap className="size-6 text-sidebar-primary" />
-            <span className="text-sm font-semibold text-sidebar-foreground">
-              Faculty Attendance Monitor
-            </span>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-sidebar-foreground">
+                Faculty Attendance Monitor
+              </span>
+              {user?.branch && (
+                <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                  Branch: {user.branch}
+                </span>
+              )}
+            </div>
           </div>
           {nav}
           <div className="shrink-0 border-t border-sidebar-border p-3">
@@ -125,7 +132,14 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             >
               <Menu className="size-5" />
             </Button>
-            <span className="truncate text-sm font-medium">Admin Portal</span>
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-medium">Admin Portal</span>
+              {user?.branch && (
+                <span className="rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/50 dark:border-indigo-800 dark:text-indigo-300">
+                  Branch: {user.branch}
+                </span>
+              )}
+            </div>
             <div className="ml-auto flex min-w-0 items-center gap-3">
               <span className="hidden truncate text-sm text-muted-foreground sm:inline">
                 {user?.name}

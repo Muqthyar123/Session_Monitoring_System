@@ -100,7 +100,7 @@ async def _enrich_department_counts(doc: dict) -> dict:
 
 @router.get("", response_model=ApiResponse[List[DepartmentResponse]])
 async def list_departments_api(
-    current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
+    current_user: dict = Depends(require_roles([UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_COORDINATOR, UserRole.COORDINATOR])),
 ):
     db = get_database()
     # Auto-seed defaults if database is empty
@@ -122,13 +122,13 @@ async def list_departments_api(
         ]
         await db.departments.insert_many(seed_docs)
 
-    # If coordinator, check if restricted to their department
+    # If coordinator or branch Admin, check if restricted to their department/branch
     user_role = current_user.get("role")
     query = {}
-    if user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
-        user_dept = current_user.get("department") or current_user.get("branch")
-        if user_dept:
-            query = {"$or": [{"code": user_dept.upper()}, {"code": {"$regex": f"^{user_dept}$", "$options": "i"}}]}
+    assigned_branch = current_user.get("branch") or current_user.get("department")
+    if (user_role == UserRole.ADMIN.value and assigned_branch) or user_role in [UserRole.DEPARTMENT_COORDINATOR.value, UserRole.COORDINATOR.value]:
+        if assigned_branch:
+            query = {"$or": [{"code": assigned_branch.upper()}, {"code": {"$regex": f"^{assigned_branch}$", "$options": "i"}}]}
 
     cursor = db.departments.find(query).sort("code", 1)
     results = []
